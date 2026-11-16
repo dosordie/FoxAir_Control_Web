@@ -150,10 +150,22 @@ def require_admin(request: "Request", password: str) -> None:
     from fastapi import HTTPException
     # Refuse transmitting the admin password over plain HTTP on the LAN.
     peer = request.client.host if request.client else ""
-    if request.url.scheme != "https" and peer not in ("127.0.0.1", "::1"):
+    trusted = {x.strip() for x in os.environ.get("FOXAIR_TRUSTED_PROXY_IPS", "").split(",") if x.strip()}
+    via_proxy_https = (peer in trusted and
+                       request.headers.get("x-forwarded-proto", "").lower() == "https")
+    secure = (request.url.scheme == "https" or
+              peer in ("127.0.0.1", "::1") or via_proxy_https)
+    if not secure:
         raise HTTPException(status_code=403, detail="Administration nur über HTTPS oder SSH-Tunnel (Loopback)")
+    # Same-origin check against browser-facing host. X-Forwarded-Host is only
+    # accepted from an explicit trusted reverse proxy.
+    host = request.headers.get("host", "")
+    if via_proxy_https and request.headers.get("x-forwarded-host"):
+        host = request.headers["x-forwarded-host"]
+    external_scheme = "https" if via_proxy_https else request.url.scheme
     origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+    expected = f"{external_scheme}://{host}".rstrip("/")
+    if origin and origin.rstrip("/") != expected:
         raise HTTPException(status_code=403, detail="Unzulässiger Origin")
     if not _check_admin_rate_limit(peer):
         raise HTTPException(status_code=429, detail="Zu viele fehlgeschlagene Anmeldeversuche")
