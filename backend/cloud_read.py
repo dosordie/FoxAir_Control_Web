@@ -1,0 +1,256 @@
+"""Minimal read-only PHNIX / Linked-Go cloud adapter.
+
+Protocol format is based on the existing FoxAir_Control cloud/warmlink_api.py.
+Only allowlisted codes are sent. The credential/token/device identifier never
+leaves the server. Writes and app_heartbeat are not implemented.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import threading
+import urllib.error
+import urllib.request
+from typing import Any
+
+from backend.catalog import load_registers
+
+API_ROOT = "https://cloud.linked-go.com:449/crmservice/api"
+_TIMEOUT = 12
+_cloud_lock = threading.RLock()
+_client: "CloudReader | None" = None
+_client_key: tuple[str, str, str] | None = None
+
+# Confirmed FoxAir_Control mappings. Additional cloud mappings are added
+# only after confirmation with the upstream register/code resolver.
+CLOUD_REGISTERS: dict[int, str] = {
+    1011: "Power",
+    2012: "ModeState",
+    2047: "T08",
+    2048: "T04",
+    2077: "T39",
+    2035: "T40",
+    2036: "T41",
+    1158: "R02",
+}
+
+DASHBOARD_MAPPING = {
+    "power": 1011,
+    "mode": 2012,
+    "flow": 2077,
+    "tank": 2047,
+    "outdoor": 2048,
+    "return": 2035,
+    "supply": 2036,
+    "target": 1158,
+}
+
+
+class CloudError(RuntimeError):
+    """Fixed/sanitized error text only. Never embed credential or server body."""
+
+
+def cloud_configured() -> bool:
+    return all(os.environ.get(key, "").strip() for key in (
+        "FOXAIR_CLOUD_USER",
+        "FOXAIR_CLOUD_PASSWORD",
+        "FOXAIR_CLOUD_DEVICE_CODE",
+    ))
+
+
+def cloud_settings() -> tuple[str, str, str]:
+    if not cloud_configured():
+        raise CloudError("PHNIX-Cloud noch nicht eingerichtet")
+    return (
+        os.environ["FOXAIR_CLOUD_USER"].strip(),
+        os.environ["FOXAIR_CLOUD_PASSWORD"],
+        os.environ["FOXAIR_CLOUD_DEVICE_CODE"].strip(),
+    )
+
+
+class CloudReader:
+    def __init__(self, username: str, password: str, device_code: str):
+        self.username = username
+        self.password = password
+        self.device_code = device_code
+        self.token: str | None = None
+        self.login_method: str | None = None
+
+    def _post(self, endpoint: str, body: dict[str, Any], *, token: str | None = None) -> dict[str, Any]:
+        if endpoint not in ("app/user/login", "app/device/getDataByCode"):
+            raise CloudError("Cloud-Endpunkt nicht zugelassen")
+        content = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            f"{API_ROOT}/{endpoint}",
+            data=content,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json;charset=utf-8",
+                "User-Agent": "FoxAir-Control-Web/0.1",
+                **({"x-token": token} if token else {}),
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+                if response.status != 200:
+                    raise CloudError("Cloud-HTTP-Fehler")
+                if int(response.headers.get("Content-Length", "0") or 0) > 262144:
+                    raise CloudError("Cloud-Antwort zu groß")
+                data = json.loads(response.read(262145))
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                raise CloudError("Cloud-Zugriff abgelehnt") from None
+            raise CloudError("Cloud-HTTP-Fehler") from None
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise CloudError("Cloud-Netzwerkfehler oder Timeout") from None
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+            raise CloudError("Ungültige Cloud-Antwort") from None
+        if not isinstance(data, dict):
+            raise CloudError("Unerwartete Cloud-Antwort")
+        return data
+
+    @staticmethod
+    def _ok(response: dict[str, Any]) -> bool:
+        return bool(
+            response.get("isReusltSuc") or
+            response.get("isResultSuc") or
+            response.get("success")
+        )
+
+    @staticmethod
+    def _expired(response: dict[str, Any]) -> bool:
+        code = str(response.get("error_code") or response.get("code") or "")
+        message = str(response.get("error_msg") or response.get("message") or "").lower()
+        return code in {"401", "-100"} or ("login" in message and "again" in message)
+
+    def login(self) -> None:
+        md5 = hashlib.md5(self.password.encode("utf-8")).hexdigest()
+        variants = {
+            "md5": (md5, False),
+            "md5md5": (hashlib.md5(md5.encode("utf-8")).hexdigest(), False),
+            "plain": (self.password, False),
+            "md5+app": (md5, True),
+            "md5md5+app": (hashlib.md5(md5.encode("utf-8")).hexdigest(), True),
+            "plain+app": (self.password, True),
+        }
+        # As in FoxAir_Control; re-use last successful method to minimize requests.
+        order = ([self.login_method] if self.login_method else []) + list(variants)
+        for method in dict.fromkeys(order):
+            pw, extended = variants[method]
+            payload: dict[str, Any] = {"userName": self.username, "password": pw}
+            if extended:
+                payload.update({"loginSource": "app", "areaCode": "", "appId": "16",
+                                "type": "2", "lang": "en"})
+            result = self._post("app/user/login", payload)
+            obj = result.get("objectResult")
+            if self._ok(result) and isinstance(obj, dict):
+                token = obj.get("x-token") or obj.get("token") or obj.get("xToken")
+                if token and isinstance(token, str):
+                    self.token = token
+                    self.login_method = method
+                    return
+        raise CloudError("Cloud-Anmeldung fehlgeschlagen (Zugangsdaten prüfen)")
+
+    def read_codes(self, codes: list[str]) -> dict[str, dict[str, Any]]:
+        allowlist = set(CLOUD_REGISTERS.values())
+        codes = list(dict.fromkeys(codes))
+        if not codes or len(codes) > 24 or any(code not in allowlist for code in codes):
+            raise CloudError("Cloud-Code nicht freigegeben")
+        if not self.token:
+            self.login()
+
+        def request() -> dict[str, Any]:
+            return self._post(
+                "app/device/getDataByCode",
+                {"deviceCode": self.device_code, "protocalCodes": codes},
+                token=self.token,
+            )
+
+        try:
+            response = request()
+        except CloudError as exc:
+            if str(exc) != "Cloud-Zugriff abgelehnt":
+                raise
+            self.token = None
+            self.login()
+            response = request()
+
+        if self._expired(response):
+            self.token = None
+            self.login()
+            response = request()
+        if not self._ok(response):
+            raise CloudError("Cloud-Leseabfrage abgelehnt")
+
+        raw = response.get("objectResult")
+        if isinstance(raw, list):
+            items = raw
+        elif isinstance(raw, dict):
+            items = next((raw[k] for k in ("data", "list", "records", "rows")
+                          if isinstance(raw.get(k), list)), [raw])
+        else:
+            raise CloudError("Cloud lieferte keine lesbaren Werte")
+
+        output: dict[str, dict[str, Any]] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("code") or item.get("protocalCode")
+                       or item.get("protocolCode") or item.get("name") or "").strip()
+            if not code and len(item) == 1:
+                code, value = next(iter(item.items()))
+            else:
+                value = item.get("value", item.get("dataValue", item.get("val", item.get("currentValue"))))
+            if code not in codes or value in (None, "") or item.get("supported") is False:
+                continue
+            if not isinstance(value, (str, int, float, bool)):
+                continue
+            # API usually supplies engineering values. Do not apply the local
+            # Modbus raw /10 conversion to a Cloud value a second time.
+            output[code] = {"value": value}
+        return output
+
+
+def _reader() -> CloudReader:
+    global _client, _client_key
+    params = cloud_settings()
+    if _client is None or params != _client_key:
+        _client = CloudReader(*params)
+        _client_key = params
+    return _client
+
+
+def read_dashboard() -> dict[str, Any]:
+    with _cloud_lock:
+        client = _reader()
+        values = client.read_codes([CLOUD_REGISTERS[r] for r in DASHBOARD_MAPPING.values()])
+    definitions = load_registers()
+    output: dict[str, dict[str, Any] | None] = {}
+    for key, register in DASHBOARD_MAPPING.items():
+        cloud_code = CLOUD_REGISTERS[register]
+        row = values.get(cloud_code)
+        if row is None:
+            output[key] = None
+            continue
+        definition = definitions.get(str(register), {})
+        unit = definition.get("unit") or ("°C" if definition.get("type") == "TEMP1" else "")
+        output[key] = {"value": row["value"], "raw": None, "unit": unit, "quality": "fresh"}
+    return output
+
+
+def read_register(register: int) -> dict[str, Any]:
+    code = CLOUD_REGISTERS.get(register)
+    if not code:
+        raise CloudError("Register über Cloud noch nicht freigegeben")
+    with _cloud_lock:
+        row = _reader().read_codes([code]).get(code)
+    if not row:
+        raise CloudError("Cloud liefert für dieses Register keinen Wert")
+    definition = load_registers().get(str(register), {})
+    return {
+        "value": row["value"],
+        "raw": None,
+        "unit": definition.get("unit") or ("°C" if definition.get("type") == "TEMP1" else ""),
+    }
