@@ -217,3 +217,8 @@ a{color:inherit}
  .settings-panel.cloud-panel{margin-top:0}
  .settings-input{font-size:16px}
 }
+
+.device-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:13px}
+.device-status>div{display:flex;flex-direction:column;gap:6px;background:#f6f7f9;padding:12px;border-radius:11px;overflow-wrap:anywhere}
+.device-status span{font-size:11px;color:#888d98}
+.device-status strong{font-size:13px;color:#323943}
