@@ -1,0 +1,55 @@
+"""Only safe, catalog-backed codes are offered by read-only dialogs."""
+import unittest
+from unittest.mock import patch
+
+from backend import cloud_dialogs
+from backend.cloud_read import UnsupportedCloudCode
+
+
+class CloudDialogTests(unittest.TestCase):
+    def setUp(self):
+        cloud_dialogs._last_read.clear()
+
+    def test_defs_include_all_special_groups_and_are_read_only(self):
+        catalog = [
+            {"code": "SG01"}, {"code": "SG Status"}, {"code": "H36"},
+            {"code": "CP1-1"}, {"code": "TimerMuteOnHour"},
+            {"code": "M1 Start"}, {"code": "Fault1"},
+        ]
+        with patch("backend.cloud_dialogs.catalog", return_value=catalog):
+            dialogs = cloud_dialogs.definitions()
+        self.assertEqual({row["id"] for row in dialogs},
+                         {"wp", "at", "sg", "silent", "timer", "fault"})
+        self.assertTrue(all(row["read_only"] for row in dialogs))
+        sg = next(row for row in dialogs if row["id"] == "sg")
+        self.assertEqual(sg["codes"], ["SG01", "SG Status"])
+
+    def test_cannot_trigger_unknown_dynamic_code(self):
+        with patch("backend.cloud_dialogs.catalog", return_value=[]):
+            with self.assertRaises(ValueError):
+                cloud_dialogs.refresh("arbitrary; rm -rf /")
+
+    def test_refresh_is_throttled_and_preserves_supported_results(self):
+        rows = [{"code": "SG01"}, {"code": "SG02"}]
+        class Reader:
+            def read_codes(self, codes):
+                if "SG02" in codes:
+                    raise UnsupportedCloudCode("unsupported")
+                return {"SG01": {"value": "2"}}
+        with patch("backend.cloud_dialogs.catalog", return_value=rows), \
+                patch("backend.cloud_dialogs.cached_raw_values", return_value={}), \
+                patch("backend.cloud_dialogs._reader", return_value=Reader()), \
+                patch("backend.cloud_dialogs.merge") as merge, \
+                patch("backend.cloud_dialogs.log_event"):
+            first = cloud_dialogs.refresh("sg")
+            second = cloud_dialogs.refresh("sg")
+        self.assertTrue(first["updated"])
+        self.assertEqual(first["count"], 1)
+        self.assertEqual(first["unsupported"], 1)
+        self.assertFalse(second["updated"])
+        self.assertEqual(second["reason"], "rate_limit")
+        merge.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()
