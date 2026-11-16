@@ -3,9 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
   ChevronRight, Clock3, Cloud, Fan, Gauge, HeartPulse, House,
-  Menu, Minus, Plus, Power, RadioTower, RefreshCw, Search,
-  Settings2, ShieldCheck, SlidersHorizontal, Snowflake, Star,
-  Sun, Thermometer, VolumeX, Waves, Wifi, X, Zap
+  Minus, Plus, Power, RadioTower, RefreshCw, Search,
+  Settings2, ShieldCheck, SlidersHorizontal, Star,
+  Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import { api } from './api'
 import type { Dashboard, Metric, Register, RegisterValue, Transport, TransportId } from './api'
