@@ -6,13 +6,15 @@ display and LTE multi-master protocols are not enabled yet.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.catalog import format_raw, load_registers, search_registers, group_counts
-from backend.cloud_config import cloud_status, credentials, save_cloud, require_admin
+from backend.cloud_config import (cloud_status, credentials, save_cloud, require_admin,
+    check_admin_password, ensure_secure_origin, is_admin_session)
+from backend.admin_session import login as create_admin_session, logout as revoke_admin_session, session_cookie_name
 from backend.cloud_state import (catalog as full_cloud_catalog, value_rows as cloud_values,
     scan_start as cloud_scan_start, logs as cloud_logs, log_event as cloud_log_event)
 from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, cached_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
@@ -70,7 +72,7 @@ def cloud_config():
 
 
 class CloudConfigUpdate(BaseModel):
-    admin_password: str = Field(min_length=1, max_length=256)
+    admin_password: str = Field(default="", max_length=256)
     username: str = Field(default="", max_length=160)
     password: str = Field(default="", max_length=256)
     device_code: str = Field(default="", max_length=128)
@@ -78,6 +80,35 @@ class CloudConfigUpdate(BaseModel):
 
 class CloudAdminAction(BaseModel):
     admin_password: str = Field(min_length=1, max_length=256)
+
+
+@app.get("/api/admin/session")
+def admin_session_state(request: Request):
+    # Reader access is always available, but any mutation requires admin auth.
+    return {"authenticated": is_admin_session(request), "role": "admin" if is_admin_session(request) else "reader"}
+
+
+@app.post("/api/admin/login")
+def admin_login(payload: CloudAdminAction, request: Request, response: Response):
+    check_admin_password(request, payload.admin_password)
+    is_https = ensure_secure_origin(request)
+    token = create_admin_session()
+    response.set_cookie(
+        key=session_cookie_name(), value=token, httponly=True,
+        secure=is_https, samesite="strict", path="/",
+    )
+    cloud_log_event("auth", "Web-Administrator angemeldet")
+    return {"authenticated": True, "role": "admin"}
+
+
+@app.post("/api/admin/logout")
+def admin_logout(request: Request, response: Response):
+    ensure_secure_origin(request)
+    if request.headers.get("x-foxair-admin") != "1":
+        raise HTTPException(status_code=403, detail="Admin-Header fehlt")
+    revoke_admin_session(request.cookies.get(session_cookie_name()))
+    response.delete_cookie(key=session_cookie_name(), path="/")
+    return {"authenticated": False, "role": "reader"}
 
 
 @app.post("/api/cloud/config")
