@@ -16,7 +16,6 @@ import secrets
 import tempfile
 from typing import Any
 
-from fastapi import HTTPException, Request
 
 STATE_DIR = Path(os.environ.get("FOXAIR_STATE_DIR", "/var/lib/foxair-web"))
 CLOUD_FILE = STATE_DIR / "cloud.json"
@@ -118,7 +117,9 @@ def verify_admin(password: str) -> bool:
         return False
 
 
-def require_admin(request: Request, password: str) -> None:
+def require_admin(request: "Request", password: str) -> None:
+    # Imported lazily, so admin bootstrap works with system Python (no FastAPI).
+    from fastapi import HTTPException
     # Refuse transmitting the admin password over plain HTTP on the LAN.
     peer = request.client.host if request.client else ""
     if request.url.scheme != "https" and peer not in ("127.0.0.1", "::1"):
