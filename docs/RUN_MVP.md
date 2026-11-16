@@ -48,6 +48,17 @@ Browser: \`http://127.0.0.1:5173/\`. Vite leitet \`/api\` lokal an \`127.0.0.1:8
 
 **Für den Live-Displaytest ohne Geräteverbindung:** Alle dynamischen Werte bleiben \`—\` und die App erklärt, warum. Der Registerbrowser funktioniert ohne Hardware.
 
+## Ohne Node.js im Zielsystem testen
+
+Die GitHub-Actions-Pipeline baut bei jedem Push auf `main` die Weboberfläche und veröffentlicht ein Artefakt namens **`foxair-frontend-dist`**. Die ZIP-Datei unter [Actions](https://github.com/dosordie/FoxAir_Control_Web/actions/workflows/ci.yml) enthält die fertigen statischen Dateien aus `frontend/dist/`.
+
+1. Erfolgreichen `main`-Build öffnen und Artefakt `foxair-frontend-dist` herunterladen.
+2. Das Artefakt auf das gewünschte Linux-Testsystem übertragen.
+3. In den Repo-Checkout nach `frontend/dist/` entpacken, sodass `frontend/dist/index.html` existiert.
+4. FastAPI mit der Python-venv aus `backend/requirements.txt` starten. Das Backend liefert die statische PWA und die API unter **demselben HTTP-Port** aus.
+
+Das Zielsystem benötigt dafür **kein Node.js und keinen Vue-Build**. Sicherheitsgrenze: Der MVP enthält noch keine Anmeldung; für den ersten Test nur lokal gebunden oder in einem geschützten Entwicklungsnetz betreiben.
+
 ## Optionaler erster Standard-Modbus-Test
 
 Nur wenn ein dedizierter, bereits bestätigter Standard-Modbus-ser2net-Endpunkt existiert – **keine** LTE-/Display-Multi-Master-Schnittstelle dafür verwenden.
