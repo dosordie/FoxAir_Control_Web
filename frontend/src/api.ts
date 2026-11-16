@@ -36,6 +36,8 @@ export type UpdateStatus = {
   current: string | null
   deployed: string | null
   remote: string | null
+  remote_build: string | null
+  build_ready: boolean
   update_available: boolean
   pending: boolean
   running: boolean
