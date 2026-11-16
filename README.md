@@ -1,28 +1,42 @@
 # FoxAir Control Web
 
-Responsive Web-App / PWA für FoxAir-/PHNIX-Wärmepumpen.
+Responsive Web-App / PWA für FoxAir-/PHNIX-Wärmepumpen. Ein **eigenständiges Projekt**, das das Windows-Diagnosetool [FoxAir_Control](https://github.com/dosordie/FoxAir_Control) nicht ersetzen und nicht im Dauerbetrieb benötigen soll.
 
-**Projektstatus:** Initialplanung. Diese Web-App ist ein eigenständiges Projekt; sie ersetzt nicht das Windows-Diagnosetool [FoxAir_Control](https://github.com/dosordie/FoxAir_Control).
+## MVP 0.1
 
-## Ziel
+- WarmLink-inspirierte **Übersichtsseite** für iPhone und Desktop mit Wärmepumpenillustration, Betriebszustand, Temperaturen, Durchfluss und Sollwertanzeige.
+- **Parameter / Einstellungen** per Button erreichbar: Suchfunktion nach Code/Registernummer/Name, Details, einzelne Reads.
+- Letzter Transport pro Browser gespeichert.
+- FoxAir_Control-Registerdatenbank als überprüfter Snapshot ohne parallele manuelle Pflege.
+- **Standard-Modbus read-only** über rohes ser2net/RTU: nur während einer Abfrage geöffnet. **Keine aktive Display-/LTE-Multi-Master-Kommunikation** in dieser Version.
+- FastAPI + Vue 3/TypeScript/Vite und PWA-Manifest.
+- GitHub Actions prüfen Python-Backend und Frontend-Build.
 
-- WarmLink-ähnliche Übersichtsseite mit Betriebszustand, Temperaturen und wichtigen Livewerten.
-- Von der Übersicht per Button in die Parameter-/Einstellungsansicht.
-- PHNIX-/Linked-Go-Cloud sowie lokale Modbus-Verbindungen über bestehende ser2net-Gateways.
-- Speichern der zuletzt gewählten Verbindungsart.
-- Lokale ser2net-Verbindungen im On-Demand-Modus nur während konkreter Abfragen öffnen; optionaler Livebetrieb mit automatischem Timeout.
-- Ein responsives Frontend für iPhone und Desktop.
-- Registerkatalog und Cloud-Mappings aus dem Quellprojekt FoxAir_Control übernehmen statt parallel zu pflegen.
+**Grenze:** Cloud-Adapter, Live-Leases, Sollwertschreiben und alle schreibenden Parameterfunktionen sind noch nicht implementiert. Die angezeigten `—` sind echte *fehlende* Werte, keine Simulationen.
 
-## Geplante Komponenten
+**Sicherheit:** Die erste Implementierung hat noch **keine eigene Authentifizierung**. Nicht ohne Nginx-Zugriffsschutz/MFA, Firewallbegrenzung und Abschluss der Sicherheitsprüfung ins Internet stellen.
 
-- Backend: Python / FastAPI
-- Frontend: Vue 3 / TypeScript / Vite (PWA)
-- Deployment: Debian LXC in Proxmox hinter vorhandenem Nginx-Reverse-Proxy/ACME.
-- Verbindungsarten: Cloud, Standard-Modbus, Display-Modbus und Warmlink-/LTE-Modbus (serielles RTU via ser2net, kein MBAP-Modbus-TCP).
+### Schnellstart zum lokalen Test
 
-## Sicherheitsprinzipien
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --host 127.0.0.1 --port 8081
+```
 
-Konfiguration und Cloud-Geheimnisse nur im Backend; kein ungeprüfter Registerwrite, kein stillschweigender Transport-Fallback, keine unkontrollierte Dauersitzung auf fremden RS485-Bussen.
+In einem zweiten Terminal:
 
-Die App ist derzeit **noch nicht implementiert oder produktiv nutzbar**.
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Dann `http://127.0.0.1:5173/` öffnen. Ohne ser2net-Konfiguration ist die Benutzeroberfläche inklusive Registerbrowser sichtbar, aber es werden keine Livewerte vorgetäuscht.
+
+Alle Details: [MVP-Test und Betrieb](docs/RUN_MVP.md), [Architektur](docs/ARCHITECTURE.md), [UX](docs/UX.md), [Deployment im Genius-LXC CT 103](docs/DEPLOYMENT_GENIUS_LXC.md).
+
+## Lizenz
+
+Vor einer Veröffentlichung/Kopplung der Quellmodule ist die widersprüchliche Lizenzangabe des Upstream-Projekts (README vs. LICENSE) zu klären. Die Quellcode-Synchronisierung erfordert einen geprüften Upstream-Commit.
