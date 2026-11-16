@@ -73,6 +73,26 @@ Der Dienst wird zunächst **nur lokal** auf `127.0.0.1:8081` gebunden. Für eine
 
 Es ist nicht nötig, eine GitHub-Actions-ZIP-Datei manuell herunterzuladen oder Node/npm im produktiven Container zu installieren. Bestehende Dienste werden nicht verändert.
 
+## Optional: Zugriff aus einem privaten LAN
+
+Standardmäßig startet der Beispieldienst nur auf `127.0.0.1:8081`.
+Für einen LAN-Test kann der Bind-Host mit einem **isolierten systemd-Drop-in** angepasst werden, ohne fremde Dienste oder den Repository-Code zu ändern:
+
+~~~bash
+cd /opt/foxair-web/app
+sudo bash scripts/set_listen_address.sh <IP_DES_LINUX_SERVERS_IM_PRIVATEN_LAN>
+~~~
+
+Das Skript akzeptiert ausschließlich eine auf dem Server vorhandene IPv4-Adresse aus privaten RFC1918-Bereichen und startet nur den FoxAir-Dienst neu. Die Adresse wird ausschließlich lokal unter systemd konfiguriert und nicht ins Repository übernommen. Das Drop-in bleibt bei `git pull` und `scripts/update.sh` erhalten.
+
+Zurück auf ausschließlich lokalen Zugriff:
+
+~~~bash
+sudo bash scripts/set_listen_address.sh --local
+~~~
+
+**Achtung:** Der MVP hat noch **keine eigene Anmeldung** und enthält Parameter- und Messwertinformationen. Ohne weitere Authentifizierung darf der Port nur aus einem vertrauenswürdigen, ausdrücklich freigegebenen Netzwerksegment erreichbar sein. Eine IP-Bindung ist **keine Firewall**. Zugriff durch Router/Firewall auf das benötigte LAN bzw. Administrationsnetz begrenzen; **keine WAN-Portfreigabe** einrichten.
+
 ## Optionaler erster Standard-Modbus-Test
 
 Nur wenn ein dedizierter, bereits bestätigter Standard-Modbus-ser2net-Endpunkt existiert – **keine** LTE-/Display-Multi-Master-Schnittstelle dafür verwenden.

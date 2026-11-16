@@ -27,6 +27,10 @@ sudo bash scripts/update.sh
 
 Beim ersten Mal zusätzlich `sudo bash scripts/install_service.sh` (Beispiel für diesen Installationspfad). Beide Anwendungen werden separat verwaltet; der Beispiel-Dienst bindet zunächst nur an `127.0.0.1:8081`. **Keinen ungeschützten Zugriff ins Internet erlauben.** Ausführlich: [RUN_MVP.md](docs/RUN_MVP.md).
 
+### LAN-Zugriff auf den Testdienst
+
+Der Dienst bindet standardmäßig an `127.0.0.1`. Für einen privaten LAN-Test kann er über `scripts/set_listen_address.sh <PRIVATE_LAN_IP>` ausschließlich an die konfigurierte LAN-Adresse gebunden werden. Diese Einstellung bleibt bei Updates erhalten. **Nur in vertrauenswürdigen Netzen verwenden**, da der MVP noch keine eigene Anmeldung hat. Details: [RUN_MVP.md](docs/RUN_MVP.md).
+
 ### Schnellstart zum lokalen Test
 
 ```bash
