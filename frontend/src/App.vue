@@ -908,7 +908,7 @@ onBeforeUnmount(() => {
             <form v-if="!adminAuthenticated" @submit.prevent="loginAsAdmin" class="admin-login-form">
               <label class="field-label" for="admin-password">Web-Administrationspasswort</label>
               <input id="admin-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="current-password" placeholder="Admin-Anmeldung" :disabled="!secureAdminContext" />
-              <button type="submit" class="outlined-action" :disabled="!secureAdminContext || adminBusy || !adminAuthenticated">
+              <button type="submit" class="outlined-action" :disabled="!secureAdminContext || adminBusy || !cloudAdminPassword">
                 <ShieldCheck :size="17" /> {{ adminBusy ? 'Anmeldung läuft …' : 'Als Administrator anmelden' }}
               </button>
               <p v-if="adminLoginError" role="alert" class="read-error">{{ adminLoginError }}</p>
