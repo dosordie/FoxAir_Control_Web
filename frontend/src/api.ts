@@ -34,6 +34,7 @@ export type CloudConfigStatus = {
 export type UpdateStatus = {
   installed: boolean
   current: string | null
+  deployed: string | null
   remote: string | null
   update_available: boolean
   pending: boolean
