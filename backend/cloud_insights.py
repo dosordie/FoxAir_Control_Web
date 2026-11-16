@@ -71,6 +71,8 @@ def request(kind,payload=None):
                 try:
                     stamp=str(row['dateTime'])[:32]
                     parsed=datetime.fromisoformat(stamp)
+                    parsed=parsed.replace(tzinfo=timezone(timedelta(hours=1))) if parsed.tzinfo is None else parsed.astimezone(timezone(timedelta(hours=1)))
+                    stamp=parsed.isoformat()
                     value=float(row['addressValue'])
                     if not math.isfinite(value):continue
                 except (KeyError,ValueError,TypeError):continue

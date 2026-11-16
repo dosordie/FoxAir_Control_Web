@@ -1030,7 +1030,7 @@ onBeforeUnmount(() => {
         <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindung und Anzeige für dieses Gerät.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
-          <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Sie öffnet keine dauerhafte Modbus-Verbindung.</p>
+          <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Unter Verbindungseinstellungen wählst du, wie lange die LTE-Verbindung offen bleibt.</p>
           <div class="transport-options">
             <label v-for="option in (transports.length ? transports : [
               { id: 'cloud', name: 'PHNIX Cloud', configured: false, read_supported: false, reason: '' },

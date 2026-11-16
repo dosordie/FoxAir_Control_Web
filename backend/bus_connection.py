@@ -46,7 +46,7 @@ def observe(frames):
 
 
 def observed_words():
-    with _guard:return {str(reg):{'raw':raw,'age_seconds':round(time.time()-stamp,1),'quality':'observed'} for reg,(raw,stamp) in _words.items()}
+    with _guard:return {str(reg):{'raw':raw,'age_seconds':round(time.time()-stamp,1),'quality':'observed'} for reg,(raw,stamp) in _words.items() if reg >= 2011 or 1011 <= reg < 2000}
 
 
 def bus_lock(endpoint):

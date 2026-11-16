@@ -39,6 +39,7 @@ const chart=computed(()=>{
   </div>
   <div v-if="history">
    <p class="section-hint">{{ history.points.length }} Messpunkte · {{ history.unit }} · Abfrage {{ new Date(history.checked_at).toLocaleString('de-DE') }} {{ history.cached?'(Cache)':'' }}</p>
+   <p v-if="history.points.length" class="section-hint">Wertebereich: {{ Math.min(...history.points.map(p=>p.value)).toLocaleString('de-DE') }}–{{ Math.max(...history.points.map(p=>p.value)).toLocaleString('de-DE') }} {{ history.unit }}</p>
    <svg v-if="chart" viewBox="0 0 600 175" class="history-chart" role="img" aria-label="Zeitlicher Verlauf der Cloud-Messwerte"><path d="M20 10V150H585" fill="none" stroke="#c5cbd2"/><polyline :points="chart" fill="none" stroke="#e87f2d" stroke-width="3"/><text x="20" y="170" font-size="11">{{ history.points[0]?.time.slice(5,16) }}</text><text x="580" y="170" text-anchor="end" font-size="11">{{ history.points[history.points.length-1]?.time.slice(5,16) }}</text></svg>
    <p v-if="history.points.some(p=>p.incomplete)" class="section-hint">Der laufende Tag kann unvollständig sein. Ein dort gemeldeter Nullwert ist kein bestätigter Nullverbrauch.</p>
    <p v-if="!history.points.length">Keine Messpunkte im gewählten Zeitraum.</p>

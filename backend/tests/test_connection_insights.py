@@ -26,13 +26,13 @@ class ConnectionTests(unittest.TestCase):
             create.return_value.close.assert_called_once()
 
     def test_observed_block_is_distinct_from_write_intent(self):
-        frame=(99,16,2001,2,b'\x04\x00\x01\x00\x02',b'',b'',0,0,'word-frame')
+        frame=(99,16,2045,2,b'\x04\x00\x01\x00\x02',b'',b'',0,0,'word-frame')
         with patch.object(bus,'_words',{}):
             bus.observe([frame])
-            self.assertEqual(bus.observed_words()['2002']['raw'],2)
-            self.assertEqual(bus.observed_words()['2002']['quality'],'observed')
-            bus.observe([(*frame[:2],2003,*frame[3:9],'short-write')])
-            self.assertNotIn('2003',bus.observed_words())
+            self.assertEqual(bus.observed_words()['2046']['raw'],2)
+            self.assertEqual(bus.observed_words()['2046']['quality'],'observed')
+            bus.observe([(*frame[:2],2047,*frame[3:9],'short-write')])
+            self.assertNotIn('2047',bus.observed_words())
 
 
 class CloudInsightTests(unittest.TestCase):
@@ -63,6 +63,11 @@ class CloudInsightTests(unittest.TestCase):
         self.reader._request_auth.return_value={'objectResult':{'valueList':[{'dateTime':today+' 00:00:00','addressValue':'0.000'},{'dateTime':'bad','addressValue':'NaN'}]}}
         result=cloud.request('history',{'address':'2078+9'})
         self.assertEqual(len(result['points']),1);self.assertTrue(result['points'][0]['incomplete'])
+    def test_hour_only_history_labels_become_browser_parseable_timestamps(self):
+        self.reader._request_auth.return_value={'objectResult':{'valueList':[{'dateTime':'2026-11-16 23','addressValue':'35.1'}]}}
+        result=cloud.request('history',{'address':'2046'})
+        self.assertEqual(result['points'][0]['time'],'2026-11-16T23:00:00+01:00')
+
     def test_metadata_does_not_expose_identifiers_or_create_grants(self):
         self.reader._request_auth.return_value={'objectResult':[{'address':'2157','content':'PV_Power','deviceCode':'private','token':'secret','write_allowed':True}]}
         result=cloud.request('metadata')
