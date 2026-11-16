@@ -109,6 +109,14 @@ async function openOperation(code:'Power'|'Mode'|'H22'){
 const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99,connection_mode:'on_demand'})
 const connectionSettingsOpen = ref(false)
 const connectionDialogElement = ref<HTMLDialogElement | null>(null)
+const historyOpen=ref(false)
+const historyDialogElement=ref<HTMLDialogElement|null>(null)
+watch(historyOpen, async opened=>{
+  await nextTick()
+  const dialog=historyDialogElement.value
+  if(opened && dialog && !dialog.open)dialog.showModal()
+  else if(!opened && dialog?.open)dialog.close()
+})
 watch(connectionSettingsOpen, opened => {
   const dialog = connectionDialogElement.value
   if (!dialog) return
@@ -880,6 +888,10 @@ onBeforeUnmount(() => {
             <section class="shortcuts panel">
               <div class="section-head"><div><span class="section-caption">SCHNELLZUGRIFF</span><h2>Funktionen</h2></div><span class="muted-text">Parameter auswählen</span></div>
               <div class="shortcut-grid">
+                <button class="shortcut" @click="historyOpen=true">
+                  <span class="shortcut-symbol lilac"><Activity :size="28" /></span>
+                  <strong>Verlauf &amp; Diagramme</strong><small>Historische Cloud-Messwerte</small><ChevronRight :size="16" class="shortcut-arrow" />
+                </button>
                 <button v-for="button in actionButtons" :key="button.label" class="shortcut" @click="openSpecialDialog(button.dialog)">
                   <span class="shortcut-symbol" :class="button.color"><component :is="button.icon" :size="28" /></span>
                   <strong>{{ button.label }}</strong>
@@ -1075,7 +1087,7 @@ onBeforeUnmount(() => {
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
         </section>
 
-        <CloudInsights :admin="adminAuthenticated&&secureAdminContext" />
+        <CloudInsights mode="device" :admin="adminAuthenticated&&secureAdminContext" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
             <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
@@ -1128,6 +1140,12 @@ onBeforeUnmount(() => {
     </main>
 
 
+    <dialog ref="historyDialogElement" class="connection-dialog panel" aria-labelledby="history-dialog-title" @close="historyOpen=false" @cancel="historyOpen=false">
+      <div class="connection-dialog-content">
+        <header class="connection-dialog-header"><div><span class="section-caption">VERLAUF</span><h2 id="history-dialog-title">Verlauf &amp; Diagramme</h2></div><button class="outlined-action" aria-label="Verlauf schließen" @click="historyOpen=false">Schließen</button></header>
+        <CloudInsights v-if="historyOpen" mode="history" :admin="adminAuthenticated&&secureAdminContext" />
+      </div>
+    </dialog>
     <dialog ref="connectionDialogElement" class="connection-dialog panel" aria-labelledby="connection-dialog-title"
       @close="connectionSettingsOpen = false" @cancel="connectionSettingsOpen = false" @click.self="connectionSettingsOpen = false">
       <div class="connection-dialog-content">

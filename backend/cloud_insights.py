@@ -1,6 +1,7 @@
 """Bounded, cached read-only WarmLink 3.5 observations from issue 7."""
 from datetime import datetime,timedelta,timezone
 import math
+import secrets
 import threading
 import time
 
@@ -11,6 +12,7 @@ ADDRESSES={'2045','2046','2047','2048','2078+9'}
 _cache={}
 _attempts={}
 _lock=threading.RLock()
+_details={}
 
 
 def history_args(address,start,end,frequency,zone):
@@ -29,7 +31,8 @@ def history_args(address,start,end,frequency,zone):
 def request(kind,payload=None):
     payload=payload or {}
     endpoints={'history':'device/snapshot/listCollectData','ota':'app/device/ota/judgeUpgradeList',
-               'metadata':'app/device/getControlDetailStatusByDeviceCode'}
+               'metadata':'app/device/getControlDetailStatusByDeviceCode',
+               'enum':'app/protocal/getEnumDataByDetailId'}
     if kind not in endpoints:raise ValueError('Unbekannte Cloud-Abfrage')
     with _lock,_cloud_lock:
         account=credentials()
@@ -44,7 +47,14 @@ def request(kind,payload=None):
         if len(_attempts)>=64:_attempts.pop(next(iter(_attempts)))
         _attempts[attempt_key]=now
         client=_reader()
-        reply=client._request_auth(endpoints[kind],{'deviceCode':client.device_code,**payload})
+        body={'deviceCode':client.device_code,**payload}
+        if kind=='metadata':
+            body.update(pageIndex=1,pageSize=9999,paramName='',num='',protocalId=client.service_protocol())
+        elif kind=='enum':
+            detail=_details.get((account,payload.get('key')))
+            if not detail:raise ValueError('Servicekatalog erneut laden; Eintrag ist nicht mehr verfügbar')
+            body={'detailId':detail}
+        reply=client._request_auth(endpoints[kind],body)
         if not client._ok(reply):raise CloudError('Cloud-Zusatzabfrage abgelehnt')
         obj=reply.get('objectResult')
         result={'checked_at':datetime.now(timezone.utc).isoformat(),'cached':False}
@@ -52,9 +62,22 @@ def request(kind,payload=None):
             if not isinstance(obj,list):raise CloudError('Unbekanntes OTA-Antwortschema')
             result.update(available=bool(obj),count=len(obj))
         elif kind=='metadata':
-            if not isinstance(obj,list):raise CloudError('Unbekanntes Metadaten-Antwortschema')
+            if not isinstance(obj,dict) or not isinstance(obj.get('dataList'),list):raise CloudError('Unbekanntes Metadaten-Antwortschema')
             allowed=('address','num','content','dataValue','tranferUnit','rangeStart','rangeEnd')
-            result['items']=[{k:str(row[k])[:180] for k in allowed if k in row and isinstance(row[k],(str,int,float,bool))} for row in obj[:400] if isinstance(row,dict)]
+            # Only opaque process-local references reach the browser, never the
+            # manufacturer's detail/protocol IDs, account or device metadata.
+            for key in list(_details):
+                if key[0]==account:del _details[key]
+            result['items']=[]
+            for row in obj['dataList'][:500]:
+                if not isinstance(row,dict):continue
+                public={k:str(row[k])[:180] for k in allowed if k in row and isinstance(row[k],(str,int,float,bool))}
+                if row.get('detailId') and isinstance(row['detailId'],(str,int)):
+                    if len(_details)>=2000:_details.pop(next(iter(_details)))
+                    reference=secrets.token_urlsafe(12)
+                    _details[(account,reference)]=str(row['detailId'])
+                    public['enum_key']=reference
+                result['items'].append(public)
             for row in result['items']:
                 if 'dataValue' in row:
                     try:
@@ -62,6 +85,13 @@ def request(kind,payload=None):
                         if not math.isfinite(number) or abs(number)>1000000:row.pop('dataValue',None)
                     except ValueError:row.pop('dataValue',None)
             result['source']='Hersteller-Servicekatalog; keine bestätigten Zuordnungen oder Schreibrechte'
+            result['count']=len(result['items'])
+        elif kind=='enum':
+            if not isinstance(obj,list):raise CloudError('Unbekanntes Enum-Antwortschema')
+            allowed=('value','meaning','enMeaning','description','code','descriptionValue')
+            result['items']=[{k:str(row[k])[:300] for k in allowed if isinstance(row.get(k),(str,int,float,bool))}
+                             for row in obj[:100] if isinstance(row,dict)]
+            result['count']=len(result['items'])
         else:
             if not isinstance(obj,dict) or not isinstance(obj.get('valueList'),list):raise CloudError('Unbekanntes Historien-Antwortschema')
             points=[]

@@ -152,6 +152,7 @@ async function get<T>(path: string): Promise<T> {
 export type WarmlinkConfig = {connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
 export const api = {
+  cloudEnum: (key:string)=>post<{items:Record<string,string>[]}>('/api/cloud/service-enum',{key}),
   cloudInsight: (kind:'ota'|'metadata')=>post<{checked_at:string;cached:boolean;available?:boolean;count?:number;items?:Record<string,string>[];source?:string}>('/api/cloud/insights/'+kind,{}),
   cloudHistory: (address:string,start:string,end:string,frequency:string)=>post<{checked_at:string;cached:boolean;unit:string;points:{time:string;value:number;incomplete:boolean}[]}>('/api/cloud/history',{address,start,end,frequency,time_zone:1}),
   busLease: () => post<object>('/api/warmlink/lease',{}),

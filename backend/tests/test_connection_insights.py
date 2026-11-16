@@ -5,6 +5,7 @@ from unittest.mock import Mock,patch
 from backend import bus_connection as bus,cloud_insights as cloud
 from backend.settings import Endpoint
 from backend.cloud_read import CloudError
+from backend.cloud_read import CloudReader
 
 
 class ConnectionTests(unittest.TestCase):
@@ -64,11 +65,25 @@ class CloudInsightTests(unittest.TestCase):
     def setUp(self):
         self.reader=Mock();self.reader.device_code='private-device';self.reader._ok.return_value=True
         self.patches=[patch.object(cloud,'_cache',{}),patch.object(cloud,'_attempts',{}),
+                      patch.object(cloud,'_details',{}),
                       patch('backend.cloud_insights.credentials',return_value=('user','secret','private-device')),
                       patch('backend.cloud_insights._reader',return_value=self.reader)]
         for p in self.patches:p.start()
     def tearDown(self):
         for p in reversed(self.patches):p.stop()
+    def test_service_protocol_follows_verified_device_and_product(self):
+        client=CloudReader('user','secret','selected')
+        client._service_devices={'selected':{'deviceId':'internal-device','productId':'internal-product'}}
+        def reply(obj):return {'isReusltSuc':True,'objectResult':obj}
+        with patch.object(client,'devices'),patch.object(client,'_request_auth',side_effect=[
+            reply({'deviceCode':'selected','productId':'internal-product'}),
+            reply({'productId':'internal-product','protocalId':'internal-protocol'})]) as calls:
+            self.assertEqual(client.service_protocol(),'internal-protocol')
+            self.assertEqual(calls.call_args_list[0].args,('app/device/queryDeviceById',{'deviceId':'internal-device'}))
+            self.assertEqual(calls.call_args_list[1].args,('app/product/queryProductById',{'id':'internal-product'}))
+        with patch.object(client,'devices'),patch.object(client,'_request_auth',return_value=reply({'deviceCode':'wrong','productId':'internal-product'})) as calls:
+            with self.assertRaises(CloudError):client.service_protocol()
+            self.assertEqual(calls.call_count,1)
     def test_history_window_alias_and_timezone_validation(self):
         cloud.history_args('2078+9','2026-11-01 00:00:00','2026-11-16 00:00:00','month',1)
         for address,start,end,zone in [('9999','2026-11-01 00:00:00','2026-11-16 00:00:00',1),('2045','bad','bad',1),('2045','2026-01-01 00:00:00','2026-11-16 00:00:00',1),('2045','2026-11-01 00:00:00','2026-11-16 00:00:00',2)]:
@@ -94,6 +109,21 @@ class CloudInsightTests(unittest.TestCase):
         self.assertEqual(result['points'][0]['time'],'2026-11-16T23:00:00+01:00')
 
     def test_metadata_does_not_expose_identifiers_or_create_grants(self):
-        self.reader._request_auth.return_value={'objectResult':[{'address':'2157','content':'PV_Power','deviceCode':'private','token':'secret','write_allowed':True}]}
+        self.reader._request_auth.return_value={'objectResult':{'total':1,'dataList':[{'address':'2157','content':'PV_Power','deviceCode':'private','token':'secret','write_allowed':True}]}}
         result=cloud.request('metadata')
         self.assertEqual(result['items'],[{'address':'2157','content':'PV_Power'}])
+        body=self.reader._request_auth.call_args.args[1]
+        self.assertEqual((body['pageIndex'],body['pageSize'],body['paramName'],body['num']),(1,9999,'',''))
+        self.reader.service_protocol.assert_called_once()
+
+    def test_enum_references_are_account_bound_and_strip_provider_ids(self):
+        self.reader._request_auth.return_value={'objectResult':{'dataList':[{'address':'1046','detailId':'private-detail'}]}}
+        result=cloud.request('metadata')
+        key=result['items'][0]['enum_key']
+        self.assertNotIn('private-detail',str(result))
+        self.reader._request_auth.return_value={'objectResult':[{'value':'0','enMeaning':'Off','detailId':'private-detail','creator':'private'}]}
+        result=cloud.request('enum',{'key':key})
+        self.assertEqual(result['items'],[{'value':'0','enMeaning':'Off'}])
+        self.assertEqual(self.reader._request_auth.call_args.args[1],{'detailId':'private-detail'})
+        with patch('backend.cloud_insights.credentials',return_value=('other','secret','other-device')):
+            with self.assertRaises(ValueError):cloud.request('enum',{'key':key})

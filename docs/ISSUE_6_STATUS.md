@@ -90,3 +90,11 @@ Cloud: Historie lieferte live 25 Temperaturpunkte; OTA-Prüfung erfolgreich ohne
 Issue 2: offline prüfbare Herkunft und SHA-256 je Registerdatei, Schema-/Referenzprüfung, Regressionstest für manipulierte Metadaten und reviewbare Änderungen sowie manuell auslösbarer Review-PR-Ablauf ergänzt. Der Build nutzt dieselbe Manifest-Revision statt eines zweiten festen SHAs. Details und offene Punkte in SNAPSHOT_SYNC.md. Der Workflow wurde bisher nicht mit einer tatsächlich neuen Upstream-Revision ausgeführt; keine vollständige Upstream-Synchronisierung oder Lizenzklärung behauptet.
 
 Stand dieses Schritts: 113 Backendtests, drei Frontendtests und Typecheck/Build erfolgreich. Live-Abnahme der geänderten passiven Anzeige folgt nach CI/Installation.
+
+## Flows-2 und Startseiten-Verlauf
+
+Der lokal bereitgestellte Mitschnitt flows-2 bestätigt den Servicekatalog-Request mit deviceCode, pageIndex=1, pageSize=9999, paramName, num und protocalId. Die Protokollkennung wird privat über das ausgewählte Gerät und dessen Produkt abgefragt; Geräte-/Produktzuordnung werden verglichen. Antwortstruktur objectResult.dataList/total statt einer direkten Liste. Keine Rohmitschnitte, Kennungen oder Zugangsdaten übernommen.
+
+Enum-Bedeutungen werden auf Klick anhand kurzlebiger, kontogebundener Referenzen aus dem geladenen Katalog abgerufen. Interne Hersteller-IDs bleiben auf dem Server. Metadaten und Enum-Tabellen verleihen weiterhin keine Schreibrechte.
+
+Historische Diagramme sind jetzt ausschließlich über „Verlauf & Diagramme“ auf der Startseite erreichbar. Der modale Dialog und seine Diagrammkomponente öffnen erst nach Klick; Messdaten werden erst durch „Verlauf laden“ angefragt. OTA und Servicekatalog bleiben in den App-Einstellungen.

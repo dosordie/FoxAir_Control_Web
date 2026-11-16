@@ -87,6 +87,7 @@ class CloudReader:
         self.token: str | None = None
         self.login_method: str | None = None
         self.last_heartbeat: float = 0.0
+        self._service_devices: dict[str, dict[str, str]] = {}
 
     def _post(self, endpoint: str, body: dict[str, Any], *, token: str | None = None,
               method: str = "POST") -> dict[str, Any]:
@@ -95,7 +96,9 @@ class CloudReader:
                      "house/info/listOwnerHouses", "houseRelDevice/v4/selectHouseToDeviceData",
                      "app/device/control", "app/device/control?lang=en",
                      "device/snapshot/listCollectData", "app/device/ota/judgeUpgradeList",
-                     "app/device/getControlDetailStatusByDeviceCode")
+                     "app/device/getControlDetailStatusByDeviceCode",
+                     "app/device/queryDeviceById", "app/product/queryProductById",
+                     "app/protocal/getEnumDataByDetailId")
         if endpoint not in endpoints or method not in ("GET", "POST"):
             raise CloudError("Cloud-Endpunkt nicht zugelassen")
         content = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -348,11 +351,43 @@ class CloudReader:
             errors += 1
             log_event("warn", "Cloud-Hausliste nicht erreichbar")
 
+        # These internal IDs are used only for read-only protocol discovery.
+        # Do not add them to the public device-field allowlist.
+        self._service_devices = {}
+        for row in collected:
+            if isinstance(row,dict) and row.get('deviceCode'):
+                self._service_devices.setdefault(str(row['deviceCode']),{}).update(
+                    {key:str(row[key]) for key in ('deviceId','productId') if row.get(key)})
         result = self._device_fields(collected)
         log_event("device", "Cloud-Geräteübersicht gelesen", count=len(result))
         if not result and errors:
             raise CloudError("Cloud-Geräteübersicht unvollständig: Geräteliste/Hausliste fehlgeschlagen")
         return result
+
+    def service_protocol(self) -> str:
+        """Follow the captured device -> product -> protocol lookup privately."""
+        self.devices()
+        source = self._service_devices.get(self.device_code, {})
+        device_id = source.get('deviceId')
+        if not device_id:
+            raise CloudError('Interne Cloud-Gerätezuordnung fehlt')
+        reply = self._request_auth('app/device/queryDeviceById', {'deviceId':device_id})
+        device = reply.get('objectResult')
+        if not self._ok(reply) or not isinstance(device,dict) or device.get('deviceCode') != self.device_code:
+            raise CloudError('Cloud-Gerätezuordnung nicht bestätigt')
+        product_id = device.get('productId')
+        if not product_id or (source.get('productId') and str(product_id) != source['productId']):
+            raise CloudError('Cloud-Produktzuordnung nicht bestätigt')
+        reply = self._request_auth('app/product/queryProductById', {'id':str(product_id)})
+        product = reply.get('objectResult')
+        if not self._ok(reply) or not isinstance(product,dict):
+            raise CloudError('Cloud-Produktinformationen nicht verfügbar')
+        if product.get('productId') is not None and str(product['productId']) != str(product_id):
+            raise CloudError('Cloud-Produktzuordnung geändert')
+        protocol = product.get('protocalId')
+        if not isinstance(protocol,(str,int)) or isinstance(protocol,bool) or not str(protocol).strip():
+            raise CloudError('Hersteller-Protokollkennung fehlt')
+        return str(protocol)
 
     def read_codes(self, codes: list[str]) -> dict[str, dict[str, Any]]:
         from backend.cloud_state import catalog

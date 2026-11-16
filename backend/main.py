@@ -339,6 +339,19 @@ def cloud_history(payload: HistoryRequest, request: Request):
     except CloudError as exc:raise HTTPException(status_code=503,detail=str(exc)) from None
 
 
+class EnumRequest(CloudAdminAction):
+    key: str = Field(min_length=12, max_length=32, pattern=r'^[A-Za-z0-9_-]+$')
+
+
+@app.post('/api/cloud/service-enum')
+def cloud_service_enum(payload: EnumRequest, request: Request):
+    require_admin(request, payload.admin_password)
+    from backend.cloud_insights import request as query_cloud
+    try:return query_cloud('enum', {'key':payload.key})
+    except ValueError as exc:raise HTTPException(status_code=422, detail=str(exc)) from None
+    except CloudError as exc:raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
 @app.post("/api/cloud/insights/{kind}")
 def cloud_extra(kind: Literal["ota","metadata"], payload: CloudAdminAction, request: Request):
     require_admin(request,payload.admin_password)
