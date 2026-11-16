@@ -41,6 +41,7 @@ CLOUD_REGISTERS: dict[int, str] = {
     2014: "2014",  # Firmware-selected temperature setpoint (not R02 base)
 
     1158: "R02",
+    2072: "T31",  # Actual compressor frequency, not T30 requested frequency
 }
 
 DASHBOARD_MAPPING = {
@@ -53,6 +54,7 @@ DASHBOARD_MAPPING = {
     "supply": 2046,
     "target": 1158,
     "selected_target": 2014,
+    "compressor_frequency": 2072,
 }
 
 
@@ -413,8 +415,10 @@ def _reader() -> CloudReader:
 
 def read_dashboard(*, live: bool = False) -> dict[str, Any]:
     from backend.cloud_state import live_codes, merge, log_event
+    from backend.device_name import refresh_name
     with _cloud_lock:
         client = _reader()
+        refresh_name(client)
         if live:
             client.app_heartbeat()
         codes = list(dict.fromkeys([CLOUD_REGISTERS[r] for r in DASHBOARD_MAPPING.values()]
@@ -519,10 +523,18 @@ def read_register(register: int) -> dict[str, Any]:
 
 
 def discover_devices() -> list[dict[str, Any]]:
+    from backend.device_name import remember_name
     with _cloud_lock:
-        return _reader().devices()
+        account = credentials()
+        rows = _reader().devices()
+        remember_name(next((row for row in rows if row.get("deviceCode") == account[2]), {}), account)
+        return rows
 
 
 def selected_device_status() -> dict[str, Any]:
+    from backend.device_name import remember_name
     with _cloud_lock:
-        return _reader().device_status()
+        account = credentials()
+        row = _reader().device_status()
+        remember_name(row, account)
+        return row

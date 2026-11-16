@@ -64,6 +64,48 @@ class SessionPermissionsTests(unittest.TestCase):
         self.assertEqual(result.status_code, 403)
         self.assertEqual(self.client.get("/api/admin/session").json()["role"], "reader")
 
+    def test_session_actions_accept_empty_or_omitted_password_but_keep_guards(self):
+        actions = {
+            "/api/cloud/account": ("credentials", ("user", "secret", "device")),
+            "/api/cloud/devices": ("discover_devices", []),
+            "/api/cloud/device-status": ("selected_device_status", {}),
+            "/api/cloud/scan": ("cloud_scan_start", {"started": True}),
+            "/api/update/request": ("web_request_update", {"requested": True}),
+            "/api/warmlink/config": ("warmlink_config", {"host": "192.168.1.50", "port": 2001, "enabled": False}),
+        }
+        for path, (name, result) in actions.items():
+            with self.subTest(path=path), patch("backend.main." + name, return_value=result) as action:
+                self.assertEqual(self.client.post(path, json={}, headers={"x-foxair-admin": "1"}).status_code, 403)
+                action.assert_not_called()
+        self.client.post("/api/admin/login", json={"admin_password": "secure-password-for-tests"})
+        for path, (name, result) in actions.items():
+            with self.subTest(path=path), patch("backend.main." + name, return_value=result) as action:
+                for body in ({}, {"admin_password": ""}):
+                    self.assertEqual(self.client.post(path, json=body, headers={"x-foxair-admin": "1"}).status_code, 200)
+                action.reset_mock()
+                self.assertEqual(self.client.post(path, json={}).status_code, 403)
+                self.assertEqual(self.client.post(path, json={}, headers={"x-foxair-admin": "1", "origin": "https://other.invalid"}).status_code, 403)
+                action.assert_not_called()
+
+    def test_login_still_requires_nonempty_password(self):
+        for body in ({}, {"admin_password": ""}):
+            self.assertEqual(self.client.post("/api/admin/login", json=body).status_code, 422)
+
+    def test_lte_mutations_require_session_header_and_same_origin(self):
+        for path, payload, name in (
+            ("/api/warmlink/config/save", {"host": "192.168.1.50", "port": 2001, "enabled": True}, "save_warmlink"),
+            ("/api/warmlink/write", {"code": "R02", "value": 35.5, "expected": 35}, "write_warmlink_control"),
+        ):
+            self.client.post("/api/admin/logout", json={}, headers={"x-foxair-admin": "1"})
+            with self.subTest(path=path), patch("backend.main." + name, return_value={"ok": True}) as action:
+                self.assertEqual(self.client.post(path, json=payload, headers={"x-foxair-admin": "1"}).status_code, 403)
+                self.client.post("/api/admin/login", json={"admin_password": "secure-password-for-tests"})
+                self.assertEqual(self.client.post(path, json=payload).status_code, 403)
+                self.assertEqual(self.client.post(path, json=payload, headers={"x-foxair-admin": "1", "origin": "https://other.invalid"}).status_code, 403)
+                action.assert_not_called()
+                self.assertEqual(self.client.post(path, json=payload, headers={"x-foxair-admin": "1"}).status_code, 200)
+                action.assert_called_once()
+
     def test_arbitrary_code_rejected_before_control(self):
         self.client.post("/api/admin/login", json={"admin_password": "secure-password-for-tests"})
         with patch("backend.main.write_control") as write:

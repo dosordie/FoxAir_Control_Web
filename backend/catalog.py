@@ -1,5 +1,6 @@
 """Register information comes from FoxAir_Control JSON snapshots, not manual copies."""
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -74,7 +75,11 @@ def public_register(number: str, entry: dict) -> dict:
 def search_registers(query: str = "", limit: int = 80, group: str = "") -> list[dict]:
     term = query.strip().casefold()
     out = []
-    for number, definition in sorted(load_registers().items(), key=lambda item: int(item[0])):
+    def code_key(item):
+        code = str(item[1].get("code") or "").casefold()
+        return (not bool(code), [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", code)], int(item[0]))
+
+    for number, definition in sorted(load_registers().items(), key=code_key):
         row = public_register(number, definition)
         if group and row["group"].upper() != group.upper():
             continue

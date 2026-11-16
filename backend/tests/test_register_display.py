@@ -8,11 +8,12 @@ from backend import cloud_state
 
 
 class HumanReadableRegisterTests(unittest.TestCase):
-    def test_registers_are_sorted_by_numeric_main_address(self):
-        rows = search_registers("", limit=200)
-        nums = [r["register"] for r in rows]
-        self.assertEqual(nums, sorted(nums))
-        self.assertEqual(len(nums), len(set(nums)))
+    def test_parameters_sorted_by_code_before_limit(self):
+        source = {"1012": {"code": "R10"}, "1158": {"code": "R02"},
+                  "2045": {"code": "R01"}, "1001": {"code": ""}}
+        with patch("backend.catalog.load_registers", return_value=source):
+            rows = search_registers("", limit=2)
+        self.assertEqual([r["code"] for r in rows], ["R01", "R02"])
 
     def test_reviewed_enum_labels(self):
         defs = load_registers()

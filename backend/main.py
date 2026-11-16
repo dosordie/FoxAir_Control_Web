@@ -23,7 +23,8 @@ from backend.cloud_dialogs import definitions as cloud_dialog_definitions, refre
 from backend.cloud_write import write_control, WriteValidationError, WriteConflictError
 from backend.web_update import status as web_update_status, request_update as web_request_update
 from backend.rtu import open_rtu
-from backend.settings import standard_endpoint, transport_info, TRANSPORTS
+from backend.settings import standard_endpoint, warmlink_endpoint, warmlink_config, save_warmlink, transport_info, TRANSPORTS
+from backend.warmlink import open_warmlink, write_control as write_warmlink_control
 
 app = FastAPI(title="FoxAir Control Web", version="0.1.0", docs_url=None, redoc_url=None)
 
@@ -37,9 +38,10 @@ DASHBOARD_FIELDS = {
     "supply": 2046,
     "target": 1158,
     "base_target": 1158,
+    "compressor_frequency": 2072,
 }
 # FC03 ranges reduce requests; avoid active probing on the Display/LTE bus.
-READ_BLOCKS = ((1011, 1), (1158, 1), (2012, 3), (2035, 14), (2077, 1))
+READ_BLOCKS = ((1011, 1), (1158, 1), (2012, 3), (2035, 14), (2072, 1), (2077, 1))
 VALID_TRANSPORTS = set(TRANSPORTS)
 
 
@@ -81,7 +83,34 @@ class CloudConfigUpdate(BaseModel):
 
 
 class CloudAdminAction(BaseModel):
+    admin_password: str = Field(default="", max_length=256)
+
+
+class AdminLogin(BaseModel):
     admin_password: str = Field(min_length=1, max_length=256)
+
+
+class WarmlinkConfigUpdate(CloudAdminAction):
+    host: str = Field(min_length=1, max_length=64)
+    port: int = Field(ge=1, le=65535)
+    enabled: bool
+
+
+@app.post("/api/warmlink/config")
+def get_warmlink_config(payload: CloudAdminAction, request: Request):
+    require_admin(request, payload.admin_password)
+    return warmlink_config()
+
+
+@app.post("/api/warmlink/config/save")
+def update_warmlink_config(payload: WarmlinkConfigUpdate, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        return save_warmlink(payload.host, payload.port, payload.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except OSError:
+        raise HTTPException(status_code=503, detail="LTE-Konfiguration konnte nicht gespeichert werden") from None
 
 
 @app.get("/api/admin/session")
@@ -91,7 +120,7 @@ def admin_session_state(request: Request):
 
 
 @app.post("/api/admin/login")
-def admin_login(payload: CloudAdminAction, request: Request, response: Response):
+def admin_login(payload: AdminLogin, request: Request, response: Response):
     check_admin_password(request, payload.admin_password)
     is_https = ensure_secure_origin(request)
     token = create_admin_session()
@@ -213,6 +242,19 @@ class CloudFirstWrite(BaseModel):
     admin_password: str = Field(default="", max_length=256)
 
 
+@app.post("/api/warmlink/write")
+def write_warmlink(payload: CloudFirstWrite, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        return write_warmlink_control(payload.code, payload.value, payload.expected)
+    except WriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except WriteValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="LTE-Prüfung fehlgeschlagen: " + str(exc)) from None
+
+
 @app.post("/api/cloud/write")
 def write_cloud_first(payload: CloudFirstWrite, request: Request):
     require_admin(request, payload.admin_password)
@@ -266,11 +308,11 @@ def register_read(register: int, transport: str = "cloud"):
             raise HTTPException(status_code=503, detail=str(exc)) from None
         return {"register": register, **result, "transport": transport,
                 "timestamp": now_iso(), "quality": "fresh"}
-    if transport != "standard_modbus":
+    if transport not in ("standard_modbus", "warmlink_raw"):
         raise HTTPException(status_code=501, detail="Dieser Transport unterstützt noch keine aktiven Registerreads")
-    endpoint = standard_endpoint()
+    endpoint = warmlink_endpoint() if transport == "warmlink_raw" else standard_endpoint()
     if endpoint is None:
-        raise HTTPException(status_code=503, detail="Standard-Modbus noch nicht konfiguriert")
+        raise HTTPException(status_code=503, detail="Modbus-Anschluss noch nicht konfiguriert")
     definitions = load_registers()
     entry = definitions.get(str(register))
     if entry is None:
@@ -278,7 +320,7 @@ def register_read(register: int, transport: str = "cloud"):
     if str(entry.get("mode") or "read").lower() in ("write", "w"):
         raise HTTPException(status_code=403, detail="Register ist nicht lesbar")
     try:
-        with open_rtu(endpoint) as session:
+        with (open_warmlink(endpoint) if transport == "warmlink_raw" else open_rtu(endpoint)) as session:
             raw = session.read_holding(register, 1)[0]
     except (OSError, ConnectionError, TimeoutError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="Modbus-Lesefehler: " + str(exc)) from exc
@@ -289,9 +331,11 @@ def register_read(register: int, transport: str = "cloud"):
 
 @app.get("/api/dashboard")
 def dashboard(transport: str = "cloud", live: bool = False):
+    from backend.device_name import get_name
     require_transport(transport)
     snapshot = {
         "transport": transport,
+        "device_name": get_name(),
         "timestamp": now_iso(),
         "status": "unavailable",
         "error": None,
@@ -322,18 +366,19 @@ def dashboard(transport: str = "cloud", live: bool = False):
                     snapshot["metrics"][key] = item
             snapshot["error"] = str(exc) + " · letzte bekannte Werte (veraltet)"
             snapshot["status"] = "unavailable"
+        snapshot["device_name"] = get_name()
         return snapshot
-    if transport != "standard_modbus":
+    if transport not in ("standard_modbus", "warmlink_raw"):
         snapshot["error"] = "Adapter noch nicht implementiert; keine simulierten Gerätewerte"
         return snapshot
-    endpoint = standard_endpoint()
+    endpoint = warmlink_endpoint() if transport == "warmlink_raw" else standard_endpoint()
     if endpoint is None:
-        snapshot["error"] = "Standard-Modbus noch nicht konfiguriert"
+        snapshot["error"] = "Modbus-Anschluss noch nicht konfiguriert"
         return snapshot
     words: dict[int, int] = {}
     errors: list[str] = []
     try:
-        with open_rtu(endpoint) as session:
+        with (open_warmlink(endpoint) if transport == "warmlink_raw" else open_rtu(endpoint)) as session:
             for start, count in READ_BLOCKS:
                 try:
                     values = session.read_holding(start, count)

@@ -5,7 +5,8 @@ export type Dashboard = {
   status: 'online' | 'partial' | 'unavailable'
   timestamp: string
   error: string | null
-  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target', Metric>
+  device_name?: string
+  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'compressor_frequency', Metric>
   live_supported: boolean
 }
 export type Transport = { id: TransportId; name: string; configured: boolean; read_supported: boolean; reason: string }
@@ -100,6 +101,28 @@ export type CloudDevice = {
   houseRoleType?: string
 }
 
+export function errorMessage(body: unknown, status: number): string {
+  function describe(value: unknown): string {
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) return value.map(describe).filter(Boolean).join('; ')
+    if (value && typeof value === 'object') {
+      const item = value as Record<string, unknown>
+      if (item.detail) return describe(item.detail)
+      if (item.msg || item.message || item.error) {
+        const location = Array.isArray(item.loc) ? item.loc.filter(x => x !== 'body').join('.') : ''
+        return (location ? location + ': ' : '') + describe(item.msg || item.message || item.error)
+      }
+    }
+    return ''
+  }
+  return describe(body) || 'Anfrage fehlgeschlagen (HTTP ' + status + ')'
+}
+
+// Vue number inputs emit numbers even without an explicit .number modifier.
+export function writeValueText(value: string | number): string {
+  return String(value).trim()
+}
+
 async function post<T>(path: string, body: object): Promise<T> {
   const response = await fetch(path, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-FoxAir-Admin': '1' },
@@ -107,7 +130,7 @@ async function post<T>(path: string, body: object): Promise<T> {
   })
   if (!response.ok) {
     const data = await response.json().catch(() => ({})) as { detail?: string }
-    throw new Error(data.detail || 'HTTP ' + response.status)
+    throw new Error(errorMessage(data, response.status))
   }
   return await response.json() as T
 }
@@ -119,14 +142,18 @@ async function get<T>(path: string): Promise<T> {
     const response = await fetch(path, { signal: controller.signal, headers: { Accept: 'application/json' }, cache: 'no-store' })
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { detail?: string }
-      throw new Error(body.detail || 'HTTP ' + response.status)
+      throw new Error(errorMessage(body, response.status))
     }
     return await response.json() as T
   } finally {
     clearTimeout(timer)
   }
 }
+export type WarmlinkConfig = {host:string;port:number;enabled:boolean;slave:number}
 export const api = {
+  warmlinkConfig: () => post<WarmlinkConfig>('/api/warmlink/config', {}),
+  saveWarmlinkConfig: (config: WarmlinkConfig) => post<WarmlinkConfig>('/api/warmlink/config/save', config),
+  warmlinkWrite: (code:'Mode'|'R02',value:string,expected:string) => post<CloudWriteResult>('/api/warmlink/write',{code,value,expected}),
   health: () => get<{ ok: boolean; version: string }>('/api/health'),
   transports: () => get<{ items: Transport[]; live_supported: boolean }>('/api/transports'),
   dashboard: (transport: TransportId, live = false) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport) + (live ? '&live=true' : '')),

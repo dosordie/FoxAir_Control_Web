@@ -7,8 +7,8 @@ import {
   Settings2, ShieldCheck, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
-import { api } from './api'
-import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId, UpdateStatus } from './api'
+import { api, writeValueText } from './api'
+import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId, UpdateStatus } from './api'
 
 type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -59,10 +59,48 @@ const cloudDeviceCode = ref('')
 const cloudAdminPassword = ref('')
 const adminAuthenticated = ref(false)
 const adminBusy = ref(false)
+const loginOpen = ref(false)
+const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const adminLoginError = ref('')
 type FirstWriteCode = 'Mode' | 'R02'
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Mode: '', R02: '' })
 const writeBusy = ref(false)
+const writeReading = ref(false)
+const lteWriteSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
+const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99})
+const lteBusy = ref(false)
+const lteMessage = ref('')
+const lteError = ref('')
+async function loadLteConfig() {
+  if (!adminAuthenticated.value) return
+  try { lteConfig.value = await api.warmlinkConfig() }
+  catch(e) { lteError.value = e instanceof Error ? e.message : 'LTE-Einstellungen nicht verfügbar' }
+}
+async function saveLteConfig() {
+  lteBusy.value = true; lteError.value = ''; lteMessage.value = ''
+  try {
+    lteConfig.value = await api.saveWarmlinkConfig(lteConfig.value)
+    transports.value = (await api.transports()).items
+    lteWriteSources.value = {}
+    lteMessage.value = 'LTE-Anschluss gespeichert. Die Verbindung kann jetzt ausgewählt und geprüft werden.'
+  } catch(e) { lteError.value = e instanceof Error ? e.message : 'Speichern fehlgeschlagen' }
+  finally { lteBusy.value = false }
+}
+async function refreshWriteSources() {
+  writeReading.value = true; writeError.value = ''
+  const transport = selectedTransport.value
+  try {
+    for (const [code, reg] of [['Mode',1012],['R02',1158]] as const) {
+      const row = await api.read(reg, transport)
+      if (transport !== selectedTransport.value) return
+      const value = transport === 'warmlink_raw' && code === 'Mode' ? row.raw ?? row.value : row.value
+      if (transport === 'warmlink_raw') lteWriteSources.value[code] = {...row, value}
+      writeDrafts.value[code] = String(value)
+    }
+    if (transport === 'cloud') await loadCloudValues()
+  } catch(e) { writeError.value = e instanceof Error ? e.message : 'Lesen fehlgeschlagen' }
+  finally { writeReading.value = false }
+}
 const writeFeedback = ref('')
 const writeError = ref('')
 const writableRegisterCode = computed<FirstWriteCode | null>(() => {
@@ -70,38 +108,43 @@ const writableRegisterCode = computed<FirstWriteCode | null>(() => {
   if (selectedRegister.value?.register === 1158) return 'R02'
   return null
 })
-function writeSource(code: FirstWriteCode): CloudRow | null {
+function writeSource(code: FirstWriteCode): CloudRow | RegisterValue | null {
+  if (selectedTransport.value === 'warmlink_raw') return lteWriteSources.value[code] || null
   return cloudRows.value.find(row => row.code === code) || null
 }
 function canWrite(code: FirstWriteCode): boolean {
   const source = writeSource(code)
-  return secureAdminContext && adminAuthenticated.value && selectedTransport.value === 'cloud' &&
-    !writeBusy.value && !!source && source.value !== null && source.quality === 'fresh'
+  return secureAdminContext && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
+    !writeBusy.value && !writeReading.value && !!source && source.value !== null && ['fresh', 'cached'].includes(source.quality)
 }
 async function submitCloudWrite(code: FirstWriteCode) {
   const source = writeSource(code)
-  const desired = writeDrafts.value[code].trim()
+  const desired = writeValueText(writeDrafts.value[code])
   if (!canWrite(code) || !source || source.value === null || !desired) return
   const description = code === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert'
   const choice = code === 'Mode'
     ? ({'0':'Warmwasser','1':'Heizen','2':'Kühlen','3':'Warmwasser + Heizen','4':'Warmwasser + Kühlen'} as Record<string,string>)[desired] || desired
     : desired + ' °C'
-  if (!window.confirm(description + ' ändern?\\nAktuell: ' + source.value +
-    (code === 'R02' ? ' °C' : '') + '\\nNeu: ' + choice +
-    '\\n\\nEin Cloud-Steuerbefehl wird gesendet, danach der Wert kontrolliert.')) return
+  const isLte = selectedTransport.value === 'warmlink_raw'
+  if (!window.confirm(description + ' ändern?\nAktuell: ' + source.value +
+    (code === 'R02' ? ' °C' : '') + '\nNeu: ' + choice +
+    '\n\nEin Steuerbefehl wird gesendet, danach der Wert kontrolliert.')) return
   writeBusy.value = true
   writeFeedback.value = ''
   writeError.value = ''
   try {
-    const result = await api.cloudWrite(code, desired, String(source.value))
+    const result = await (isLte ? api.warmlinkWrite : api.cloudWrite)(code, desired, String(source.value))
     if (result.confirmed) {
       writeFeedback.value = result.status === 'unchanged' ? 'Wert ist bereits eingestellt.' :
-        description + ' wurde durch Cloud-Readback bestätigt.'
+        description + ' wurde durch ' + (isLte ? 'LTE' : 'Cloud') + '-Readback bestätigt.'
       writeDrafts.value[code] = String(result.value ?? desired)
     } else {
-      writeError.value = result.message || 'Cloud-Schreiben nicht bestätigt; bitte Wert kontrollieren.'
+      writeError.value = result.message || 'Schreiben nicht bestätigt; bitte Wert kontrollieren.'
     }
-    await loadCloudValues()
+    if (isLte) {
+      lteWriteSources.value = {}
+      await refreshWriteSources()
+    } else await loadCloudValues()
     if (page.value === 'home') void loadDashboard(false)
   } catch (e) {
     writeError.value = e instanceof Error ? e.message : 'Schreiben fehlgeschlagen'
@@ -191,8 +234,7 @@ const filteredCloudRows = computed(() => {
     return !term || [row.code, row.name, String(row.register ?? ''), row.group]
       .some(part => part.toLowerCase().includes(term))
   }).sort((a, b) =>
-    (a.register ?? Number.MAX_SAFE_INTEGER) - (b.register ?? Number.MAX_SAFE_INTEGER) ||
-    a.code.localeCompare(b.code, 'de')
+    a.code.localeCompare(b.code, 'de', { numeric: true })
   )
 })
 
@@ -208,6 +250,7 @@ const cloudByRegister = computed(() => {
   return result
 })
 function currentCloudRegisterValue(register: number) {
+  if (selectedTransport.value !== 'cloud') return null
   return cloudByRegister.value.get(register) || null
 }
 function textValue(value: string | number | null | undefined): string {
@@ -393,8 +436,9 @@ async function loginAsAdmin() {
   try {
     adminAuthenticated.value = (await api.adminLogin(cloudAdminPassword.value)).authenticated
     cloudAdminPassword.value = ''
+    loginOpen.value = false
     if (adminAuthenticated.value) {
-      await Promise.all([loadStoredAccount(), loadGitUpdateStatus()])
+      await Promise.all([loadStoredAccount(), loadGitUpdateStatus(), loadLteConfig()])
     }
   } catch (e) {
     adminAuthenticated.value = false
@@ -526,7 +570,7 @@ async function loadRegisters() {
   registerLoading.value = true
   try {
     const result = await api.registers(search.value, selectedGroup.value)
-    registers.value = result.items
+    registers.value = result.items.map(row => selectedTransport.value === 'cloud' ? row : {...row, cloud: null})
     catalogSize.value = result.catalog_size
   } catch (err) {
     readError.value = err instanceof Error ? err.message : 'Registerkatalog nicht erreichbar'
@@ -549,6 +593,12 @@ async function readRegister() {
   currentValue.value = null
   try {
     currentValue.value = await api.read(selectedRegister.value.register, selectedTransport.value)
+    if (selectedTransport.value === 'cloud') await loadCloudValues()
+    if (selectedTransport.value === 'warmlink_raw' && writableRegisterCode.value) {
+      const value = writableRegisterCode.value === 'Mode' ? currentValue.value.raw ?? currentValue.value.value : currentValue.value.value
+      lteWriteSources.value[writableRegisterCode.value] = {...currentValue.value, value}
+      writeDrafts.value[writableRegisterCode.value] = String(value)
+    }
   } catch (err) {
     readError.value = err instanceof Error ? err.message : 'Lesefehler'
   } finally {
@@ -558,6 +608,9 @@ async function readRegister() {
 watch(selectedTransport, (value) => {
   window.localStorage.setItem('foxair.lastTransport', value)
   currentValue.value = null
+  lteWriteSources.value = {}
+  if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
+  void loadRegisters()
   clearTimeout(refreshTimer)
   snapshot.value = null
   void loadDashboard()
@@ -587,7 +640,7 @@ onMounted(async () => {
     // Backend not reachable; show unavailable values, never demo values.
   }
   await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues(), checkAdminSession()])
-  if (adminAuthenticated.value) void loadStoredAccount()
+  if (adminAuthenticated.value) { void loadStoredAccount(); void loadLteConfig() }
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
@@ -621,7 +674,22 @@ onBeforeUnmount(() => {
         <button :class="{ selected: page === 'settings' }" @click="navigate('settings')">Einstellungen</button>
       </nav>
       <div class="shell-header-right">
-        <span class="mini-label">FoxAir 9 Greenline</span>
+        <div class="user-menu">
+          <button class="outlined-action" type="button" :aria-expanded="loginOpen" @click="loginOpen = !loginOpen">
+            <ShieldCheck :size="17" /> {{ adminAuthenticated ? 'Administrator' : 'Gast · Anmelden' }}
+          </button>
+          <div v-if="loginOpen" class="login-popover">
+            <p><strong>{{ adminAuthenticated ? 'Administrator' : 'Lesender Gast' }}</strong></p>
+            <button v-if="adminAuthenticated" class="outlined-action" @click="logoutAsAdmin">Abmelden</button>
+            <form v-else @submit.prevent="loginAsAdmin">
+              <label class="field-label" for="header-password">Admin-Passwort</label>
+              <input id="header-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="current-password" :disabled="!secureAdminContext" />
+              <p v-if="!secureAdminContext" class="read-error">Anmeldung benötigt HTTPS.</p>
+              <p v-if="adminLoginError" class="read-error" role="alert">{{ adminLoginError }}</p>
+              <button class="main-action" :disabled="!secureAdminContext || adminBusy || !cloudAdminPassword">{{ adminBusy ? 'Anmeldung läuft …' : 'Anmelden' }}</button>
+            </form>
+          </div>
+        </div>
         <button class="header-icon" type="button" @click="navigate('settings')" aria-label="App-Einstellungen"><Settings2 :size="21" /></button>
       </div>
     </header>
@@ -632,7 +700,7 @@ onBeforeUnmount(() => {
           <div class="room-illustration" aria-hidden="true"><i></i><i></i><i></i></div>
           <div class="hero-content">
             <div class="hero-top">
-              <div class="device-name"><span class="device-kicker">DEINE WÄRMEPUMPE</span><h1>FoxAir 9 Greenline</h1></div>
+              <div class="device-name"><h1>{{ deviceName }}</h1></div>
               <div class="connection">
                 <span class="connection-dot" :class="{ online }"></span>
                 <span>{{ online ? 'Verbunden' : snapshot?.status === 'partial' ? 'Teilweise verbunden' : 'Nicht verbunden' }}</span>
@@ -642,6 +710,7 @@ onBeforeUnmount(() => {
               <div class="unit-container" aria-label="Illustration einer Wärmepumpe">
                 <div class="unit">
                   <div class="fan-ring" :class="{ 'fan-running': fanRunning }"><Fan :size="94" :stroke-width="1.3" /></div>
+                  <span class="compressor-hz" :class="{ 'is-stale': snapshot?.metrics.compressor_frequency?.quality === 'stale' }" aria-label="Kompressor-Istfrequenz">{{ metric('compressor_frequency') }} Hz</span>
                   <span class="unit-brand">FOX<span>AIR</span></span>
                 </div>
                 <span class="unit-ground"></span>
@@ -651,6 +720,7 @@ onBeforeUnmount(() => {
                 <div class="temp-adjust target-readonly">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                 </div>
+                <span class="target-delta">Δ Soll–VL: {{ deltaText(supplyDelta) }} K</span>
                 <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>
@@ -663,9 +733,6 @@ onBeforeUnmount(() => {
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong>{{ metric(item.key) }} <small class="metric-unit">{{ item.unit }}</small></strong>
                 <span class="metric-label">{{ item.label }}</span>
-                <span v-if="item.key === 'supply'" class="metric-subvalue">
-                  Δ Soll–VL: {{ deltaText(supplyDelta) }} K
-                </span>
               </div>
               <div class="hero-metric" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
                 <Waves :size="24" :stroke-width="1.8" />
@@ -725,7 +792,7 @@ onBeforeUnmount(() => {
                 <div class="operation"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>—</strong></div>
               </div>
               <button class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
-              <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreibfunktionen bleiben deaktiviert.</p>
+              <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreiben erfordert die Admin-Anmeldung.</p>
             </section>
           </div>
           <section class="panel main-register-preview">
@@ -844,9 +911,10 @@ onBeforeUnmount(() => {
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <section v-if="writableRegisterCode && selectedTransport === 'cloud'" class="cloud-write-panel">
-                <strong>Cloud-Steuerung: {{ writableRegisterCode === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert' }}</strong>
+              <section v-if="writableRegisterCode && ['cloud','warmlink_raw'].includes(selectedTransport)" class="cloud-write-panel">
+                <strong>Steuerung: {{ writableRegisterCode === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert' }}</strong>
                 <p class="section-hint">Nur für angemeldete Administratoren. Der vorhandene Wert wird vor dem Schreiben erneut geprüft; ohne Readback keine Bestätigung.</p>
+                <button type="button" class="outlined-action" :disabled="writeReading || writeBusy" @click="refreshWriteSources">Ausgangswerte neu lesen</button>
                 <label class="field-label" for="register-write-value">Neuer Wert</label>
                 <select v-if="writableRegisterCode === 'Mode'" id="register-write-value" class="settings-input" v-model="writeDrafts.Mode">
                   <option value="0">Warmwasser</option><option value="1">Heizen</option>
@@ -858,8 +926,8 @@ onBeforeUnmount(() => {
                   @click="submitCloudWrite(writableRegisterCode)">
                   <ShieldCheck :size="17" /> {{ writeBusy ? 'Prüfe und schreibe …' : 'Wert mit Readback schreiben' }}
                 </button>
-                <p v-if="!adminAuthenticated" class="section-hint">Für Schreibzugriff unter App-Einstellungen als Admin anmelden.</p>
-                <p v-else-if="writeSource(writableRegisterCode)?.quality !== 'fresh'" class="section-hint">Zuerst aktuelle Cloudwerte abfragen.</p>
+                <p v-if="!adminAuthenticated" class="section-hint">Für Schreibzugriff oben rechts als Admin anmelden.</p>
+                <p v-else-if="writeSource(writableRegisterCode)?.quality !== 'fresh'" class="section-hint">Zuerst Ausgangswerte neu lesen.</p>
                 <p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
                 <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p>
               </section>
@@ -888,9 +956,25 @@ onBeforeUnmount(() => {
               <span class="choice-mark"></span>
             </label>
           </div>
-          <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-/Display-Anbindung folgt separat.</p></div>
+          <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-Anschluss unten konfigurieren; Display-Anbindung folgt separat.</p></div>
           <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
+        <section class="settings-panel panel">
+          <div class="section-heading"><div><span class="section-caption">LTE / WARMLINK</span><h2>Lokaler LTE-Bus</h2></div></div>
+          <p class="section-hint">Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.</p>
+          <p v-if="!adminAuthenticated" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
+          <form v-else @submit.prevent="saveLteConfig" class="cloud-form">
+            <label class="field-label" for="lte-host">IP-Adresse</label>
+            <input id="lte-host" class="settings-input" v-model="lteConfig.host" required />
+            <label class="field-label" for="lte-port">TCP-Port</label>
+            <input id="lte-port" class="settings-input" type="number" min="1" max="65535" v-model.number="lteConfig.port" required />
+            <label><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Lesen und Modus/R02-Schreiben aktivieren</label>
+            <button class="main-action" :disabled="lteBusy">{{ lteBusy ? 'Speichert …' : 'LTE-Anschluss speichern' }}</button>
+          </form>
+          <p v-if="lteMessage" class="section-hint" role="status">{{ lteMessage }}</p>
+          <p v-if="lteError" class="read-error" role="alert">{{ lteError }}</p>
+        </section>
+
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">LIVEABFRAGE</span><h2>Cloud-Aktualisierung</h2></div><RefreshCw :size="22" /></div>
           <label class="settings-check"><input type="checkbox" v-model="liveEnabled" /> Automatisch aktualisieren, solange die Übersicht sichtbar ist</label>
@@ -1031,11 +1115,12 @@ onBeforeUnmount(() => {
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
         <section v-if="selectedSpecial?.id === 'wp'" class="cloud-write-panel">
-          <h3>Cloud-Steuerung (Admin)</h3>
-          <p class="section-hint">Nur Mode und R02 sind freigegeben. Bestätigung vor dem Senden und Cloud-Readback danach.</p>
+          <h3>Steuerung (Admin)</h3>
+          <p class="section-hint">Nur Mode und R02 sind freigegeben. Bestätigung vor dem Senden und Readback über die ausgewählte Verbindung danach.</p>
           <div class="cloud-write-grid">
             <div>
               <label class="field-label">Betriebsart (Mode)</label>
+              <button type="button" class="outlined-action" :disabled="writeReading || writeBusy" @click="refreshWriteSources">Ausgangswerte neu lesen</button>
               <select class="settings-input" v-model="writeDrafts.Mode">
                 <option value="0">Warmwasser</option><option value="1">Heizen</option>
                 <option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option>
@@ -1049,7 +1134,7 @@ onBeforeUnmount(() => {
               <button type="button" class="outlined-action" :disabled="!canWrite('R02')" @click="submitCloudWrite('R02')">Sollwert schreiben</button>
             </div>
           </div>
-          <p v-if="!adminAuthenticated" class="section-hint">Schreiben erfordert die Admin-Anmeldung in den App-Einstellungen.</p>
+          <p v-if="!adminAuthenticated" class="section-hint">Schreiben erfordert die Admin-Anmeldung oben rechts.</p>
           <p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
           <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p>
         </section>
