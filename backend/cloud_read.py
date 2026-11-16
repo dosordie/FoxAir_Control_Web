@@ -109,6 +109,16 @@ class CloudReader:
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise CloudError("Cloud-Zugriff abgelehnt") from None
+            if exc.code in (400, 422) and endpoint == "app/device/getDataByCode":
+                # Desktop client isolates invalid candidates for HTTP 4xx
+                # responses too. Keep provider text internal, never log it.
+                try:
+                    raw = json.loads(exc.read(8192).decode("utf-8"))
+                    if isinstance(raw, dict):
+                        raw["http_status"] = exc.code
+                        return raw
+                except (OSError, ValueError, UnicodeDecodeError):
+                    pass
             raise CloudError("Cloud-HTTP-Fehler") from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise CloudError("Cloud-Netzwerkfehler oder Timeout") from None
