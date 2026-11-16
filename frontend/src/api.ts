@@ -75,6 +75,13 @@ export type CloudValues = {
   last_scan: number
   error: string | null
 }
+export type CloudWriteResult = {
+  status: 'confirmed' | 'unchanged' | 'rejected' | 'unconfirmed'
+  confirmed: boolean
+  code: string
+  value?: number
+  message?: string
+}
 export type CloudLog = {time: string; kind: string; message: string; count?: number}
 export type CloudAccount = {username: string; device_code: string}
 
@@ -130,6 +137,8 @@ export const api = {
     post<{ authenticated: boolean; role: string }>('/api/admin/login', { admin_password }),
   adminLogout: () =>
     post<{ authenticated: boolean; role: string }>('/api/admin/logout', {}),
+  cloudWrite: (code: 'Mode' | 'R02', value: string, expected: string) =>
+    post<CloudWriteResult>('/api/cloud/write', { code, value, expected }),
   cloudStatus: () => get<CloudConfigStatus>('/api/cloud/config'),
   cloudSave: (admin_password: string, username: string, password: string, device_code: string) =>
     post<CloudConfigStatus>('/api/cloud/config', { admin_password, username, password, device_code }),
