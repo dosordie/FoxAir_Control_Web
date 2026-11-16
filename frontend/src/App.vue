@@ -33,7 +33,9 @@ const specialLoading = ref(false)
 const specialError = ref('')
 const specialMessage = ref('')
 const selectedSpecial = computed(() => specialDialogs.value.find(x => x.id === specialDialog.value) || null)
+const specialLocalRows = ref<CloudRow[]>([])
 const specialRows = computed(() => {
+  if (selectedTransport.value !== 'cloud') return specialLocalRows.value
   const selected = selectedSpecial.value
   if (!selected) return []
   const byCode = new Map(cloudRows.value.map(row => [row.code, row]))
@@ -69,6 +71,13 @@ const writeReading = ref(false)
 const lteWriteSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
 const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99})
 const connectionSettingsOpen = ref(false)
+const connectionDialogElement = ref<HTMLDialogElement | null>(null)
+watch(connectionSettingsOpen, opened => {
+  const dialog = connectionDialogElement.value
+  if (!dialog) return
+  if (opened && !dialog.open) dialog.showModal()
+  else if (!opened && dialog.open) dialog.close()
+})
 const lteBusy = ref(false)
 const lteMessage = ref('')
 const lteError = ref('')
@@ -387,6 +396,7 @@ async function openSpecialDialog(dialog: string) {
     catch { specialError.value = 'Spezialdialoge derzeit nicht verfügbar'; return }
   }
   if (!specialDialogs.value.some(x => x.id === dialog)) return
+  specialLocalRows.value = []
   specialDialog.value = dialog
   await loadCloudValues()
   void refreshSelectedSpecial()
@@ -398,6 +408,21 @@ async function refreshSelectedSpecial() {
   specialError.value = ''
   specialMessage.value = ''
   try {
+    if (selectedTransport.value !== 'cloud') {
+      const transport = selectedTransport.value
+      const codes = new Set(selectedSpecial.value?.codes || [])
+      const rows = cloudRows.value.filter(row => codes.has(row.code) && row.register != null && row.register <= 65535 && row.confidence === 'confirmed')
+      if (!rows.length) { specialMessage.value = 'Keine bestätigten lokalen Register für diesen Dialog.'; return }
+      const fresh: CloudRow[] = []
+      for (const row of rows) {
+        const result = await api.read(row.register!, transport)
+        if (selectedTransport.value !== transport || specialDialog.value !== id) return
+        fresh.push({...row, value:result.value, unit:result.unit, timestamp:result.timestamp, quality:result.quality, display_value:null})
+        specialLocalRows.value = [...fresh]
+      }
+      specialMessage.value = fresh.length + ' Werte über ' + transportLabel.value + ' aktualisiert'
+      return
+    }
     const result = await api.refreshSpecialDialog(id)
     specialMessage.value = result.updated
       ? result.count + ' aktuelle Cloudwerte gelesen'
@@ -604,6 +629,7 @@ watch(selectedTransport, (value) => {
   window.localStorage.setItem('foxair.lastTransport', value)
   currentValue.value = null
   lteWriteSources.value = {}
+  specialLocalRows.value = []
   if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
   void loadRegisters()
   clearTimeout(refreshTimer)
@@ -703,10 +729,11 @@ onBeforeUnmount(() => {
             </div>
             <div class="hero-main">
               <div class="unit-container" aria-label="Illustration einer Wärmepumpe">
-                <div class="unit">
+                <div class="unit illustrated-unit">
+                  <img class="heatpump-art" src="/foxair-heatpump.png" alt="FoxAir-Wärmepumpe mit Fuchsmotiv" />
                   <div class="fan-ring" :class="{ 'fan-running': fanRunning }"><Fan :size="94" :stroke-width="1.3" /></div>
                   <span class="compressor-hz" :class="{ 'is-stale': snapshot?.metrics.compressor_frequency?.quality === 'stale' }" aria-label="Kompressor-Istfrequenz">{{ metric('compressor_frequency') }} Hz</span>
-                  <span class="unit-brand">FOX<span>AIR</span></span>
+                  
                 </div>
                 <span class="unit-ground"></span>
               </div>
@@ -936,7 +963,7 @@ onBeforeUnmount(() => {
       <template v-else>
         <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindung und Anzeige für dieses Gerät.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <section class="settings-panel panel">
-          <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen {{ connectionSettingsOpen ? 'schließen' : 'öffnen' }}</button></div><ShieldCheck :size="24" /></div>
+          <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
           <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Sie öffnet keine dauerhafte Modbus-Verbindung.</p>
           <div class="transport-options">
             <label v-for="option in (transports.length ? transports : [
@@ -951,10 +978,80 @@ onBeforeUnmount(() => {
               <span class="choice-mark"></span>
             </label>
           </div>
-          <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-Anschluss unten konfigurieren; Display-Anbindung folgt separat.</p></div>
+          <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-Anschluss unter Verbindungseinstellungen konfigurieren; Display-Anbindung folgt separat.</p></div>
           <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
-        <section v-if="connectionSettingsOpen" class="settings-panel panel">
+        
+
+        <section class="settings-panel panel">
+          <div class="section-head"><div><span class="section-caption">LIVEABFRAGE</span><h2>Cloud-Aktualisierung</h2></div><RefreshCw :size="22" /></div>
+          <label class="settings-check"><input type="checkbox" v-model="liveEnabled" /> Automatisch aktualisieren, solange die Übersicht sichtbar ist</label>
+          <label class="field-label" for="live-interval">Intervall (10–3600 Sekunden)</label>
+          <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
+          <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
+        </section>
+        
+        <section class="settings-panel panel">
+          <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
+            <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
+          <p class="section-hint">Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC installiert.</p>
+          <div class="update-versions">
+            <div><span>Installierter Commit</span><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong></div>
+            <div><span>GitHub main</span><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong></div>
+            <div><span>Aktiver Web-Build</span><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong></div>
+            <div><span>GitHub web-dist</span><strong>{{ updateInfo?.remote_build?.slice(0, 10) || 'noch nicht erreichbar' }}</strong></div>
+            <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
+            <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
+          </div>
+          <p v-if="updateInfo?.remote && updateInfo?.deployed === updateInfo.remote" class="success-text"><strong>Alles aktuell – neueste Web-Version installiert.</strong></p>
+          <p v-else-if="updateInfo?.remote && updateInfo?.deployed !== updateInfo.remote" class="notice"><strong>Neue Version verfügbar{{ updateInfo.build_ready ? ' – bereit zur Installation' : ' – Build läuft noch' }}.</strong></p>
+          <p v-if="updateInfo?.update_available" class="success-text">Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.</p>
+          <p v-if="updateInfo?.remote && !updateInfo?.build_ready" class="section-hint">
+            GitHub Actions baut noch den passenden Web-Stand. Der Updateknopf ist bis zur Fertigstellung gesperrt.
+          </p>
+          <p v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote" class="section-hint">Installierter Code entspricht dem aktuellen main-Commit.</p>
+          <p v-if="!updateInfo?.installed" class="section-hint">Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code></p>
+          <div class="update-actions">
+            <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
+              <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
+            </button>
+            <button type="button" class="main-action" :disabled="!updateInfo?.installed || !updateInfo?.build_ready || updateInfo?.running || updateInfo?.pending || !adminAuthenticated || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
+              <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
+              {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
+            </button>
+          </div>
+          <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
+          <p v-if="updateError" class="read-error">{{ updateError }}</p>
+          <p class="section-hint">Für den Update-Knopf im Bereich „Cloud-Zugang & Geräte“ als Administrator anmelden. Die Anmeldung gilt für diese Browser-Sitzung. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
+        </section>
+        <section class="settings-panel panel">
+          <div class="section-head">
+            <div><span class="section-caption">DIAGNOSE</span><h2>Verbindungsprotokoll</h2></div>
+            <button type="button" class="outlined-action" @click="loadCloudLogs"><RefreshCw :size="16" /> Aktualisieren</button>
+          </div>
+          <p class="section-hint">Ereignisse für Cloud und lokale Busse: Verbindungen, Leseabfragen, LTE-Telegramme und Fehler. Ohne Zugangsdaten oder Tokens. Das Protokoll wird beim Dienstneustart zurückgesetzt.</p>
+          <div class="cloud-log-list">
+            <div v-for="(entry, index) in cloudLogs" :key="index" class="cloud-log-item">
+              <time>{{ new Date(entry.time).toLocaleString('de-DE') }}</time>
+              <span class="cloud-log-kind" :class="entry.kind">{{ entry.kind }}</span>
+              <span>{{ entry.message }} <template v-if="entry.count !== undefined">({{ entry.count }})</template></span>
+            </div>
+            <p v-if="!cloudLogs.length" class="empty-state">Noch keine Cloud-Ereignisse aufgezeichnet.</p>
+          </div>
+        </section>
+      </template>
+    </main>
+
+
+    <dialog ref="connectionDialogElement" class="connection-dialog panel" aria-labelledby="connection-dialog-title"
+      @close="connectionSettingsOpen = false" @cancel="connectionSettingsOpen = false" @click.self="connectionSettingsOpen = false">
+      <div class="connection-dialog-content">
+        <header class="connection-dialog-header">
+          <div><span class="section-caption">VERBINDUNG</span><h2 id="connection-dialog-title">Verbindungseinstellungen</h2></div>
+          <button class="outlined-action" type="button" aria-label="Verbindungseinstellungen schließen" @click="connectionSettingsOpen = false">Schließen</button>
+        </header>
+        <p class="section-hint">Cloud-Zugang und lokaler LTE-Anschluss. Die aktive Verbindung wählst du auf der Einstellungsseite.</p>
+<section class="connection-section">
           <div class="section-heading"><div><span class="section-caption">LTE / WARMLINK</span><h2>Lokaler LTE-Bus</h2></div></div>
           <p class="section-hint">Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.</p>
           <p v-if="!adminAuthenticated" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
@@ -969,15 +1066,7 @@ onBeforeUnmount(() => {
           <p v-if="lteMessage" class="section-hint" role="status">{{ lteMessage }}</p>
           <p v-if="lteError" class="read-error" role="alert">{{ lteError }}</p>
         </section>
-
-        <section class="settings-panel panel">
-          <div class="section-head"><div><span class="section-caption">LIVEABFRAGE</span><h2>Cloud-Aktualisierung</h2></div><RefreshCw :size="22" /></div>
-          <label class="settings-check"><input type="checkbox" v-model="liveEnabled" /> Automatisch aktualisieren, solange die Übersicht sichtbar ist</label>
-          <label class="field-label" for="live-interval">Intervall (10–3600 Sekunden)</label>
-          <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
-          <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
-        </section>
-        <section v-if="connectionSettingsOpen" class="settings-panel panel cloud-panel">
+<section class="connection-section cloud-panel">
           <div class="section-head"><div><span class="section-caption">PHNIX / WARMLINK</span><h2>Cloud-Zugang & Geräte</h2></div><Cloud :size="24" /></div>
           <p>Cloud: <strong>{{ cloudStatus?.configured ? 'eingerichtet' : 'nicht vollständig' }}</strong> · Benutzer {{ cloudStatus?.username_configured ? 'vorhanden' : 'fehlt' }} · Gerätekennung {{ cloudStatus?.device_configured ? 'vorhanden' : 'fehlt' }}</p>
           <p v-if="!cloudStatus?.admin_enabled" class="read-error">Web-Administration lokal einrichten: <code>python3 scripts/setup_web_admin.py</code></p>
@@ -1042,70 +1131,23 @@ onBeforeUnmount(() => {
           </div>
           <p class="section-hint">Geräteinformationen stammen aus Geräteliste und Hauszuordnungen. Cloud-Passwort und Token werden nicht aus dem Server ausgelesen.</p>
         </section>
-        <section class="settings-panel panel">
-          <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
-            <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
-          <p class="section-hint">Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC installiert.</p>
-          <div class="update-versions">
-            <div><span>Installierter Commit</span><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong></div>
-            <div><span>GitHub main</span><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong></div>
-            <div><span>Aktiver Web-Build</span><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong></div>
-            <div><span>GitHub web-dist</span><strong>{{ updateInfo?.remote_build?.slice(0, 10) || 'noch nicht erreichbar' }}</strong></div>
-            <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
-            <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
-          </div>
-          <p v-if="updateInfo?.remote && updateInfo?.deployed === updateInfo.remote" class="success-text"><strong>Alles aktuell – neueste Web-Version installiert.</strong></p>
-          <p v-else-if="updateInfo?.remote && updateInfo?.deployed !== updateInfo.remote" class="notice"><strong>Neue Version verfügbar{{ updateInfo.build_ready ? ' – bereit zur Installation' : ' – Build läuft noch' }}.</strong></p>
-          <p v-if="updateInfo?.update_available" class="success-text">Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.</p>
-          <p v-if="updateInfo?.remote && !updateInfo?.build_ready" class="section-hint">
-            GitHub Actions baut noch den passenden Web-Stand. Der Updateknopf ist bis zur Fertigstellung gesperrt.
-          </p>
-          <p v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote" class="section-hint">Installierter Code entspricht dem aktuellen main-Commit.</p>
-          <p v-if="!updateInfo?.installed" class="section-hint">Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code></p>
-          <div class="update-actions">
-            <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
-              <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
-            </button>
-            <button type="button" class="main-action" :disabled="!updateInfo?.installed || !updateInfo?.build_ready || updateInfo?.running || updateInfo?.pending || !adminAuthenticated || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
-              <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
-              {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
-            </button>
-          </div>
-          <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
-          <p v-if="updateError" class="read-error">{{ updateError }}</p>
-          <p class="section-hint">Für den Update-Knopf im Bereich „Cloud-Zugang & Geräte“ als Administrator anmelden. Die Anmeldung gilt für diese Browser-Sitzung. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
-        </section>
-        <section class="settings-panel panel">
-          <div class="section-head">
-            <div><span class="section-caption">DIAGNOSE</span><h2>Verbindungsprotokoll</h2></div>
-            <button type="button" class="outlined-action" @click="loadCloudLogs"><RefreshCw :size="16" /> Aktualisieren</button>
-          </div>
-          <p class="section-hint">Letzte Ereignisse aus dem laufenden Webserver: Login-/Lese- und Scanstatus, ohne Zugangsdaten, Tokens oder Gerätekennungen. Das Protokoll wird beim Dienstneustart zurückgesetzt.</p>
-          <div class="cloud-log-list">
-            <div v-for="(entry, index) in cloudLogs" :key="index" class="cloud-log-item">
-              <time>{{ new Date(entry.time).toLocaleString('de-DE') }}</time>
-              <span class="cloud-log-kind" :class="entry.kind">{{ entry.kind }}</span>
-              <span>{{ entry.message }} <template v-if="entry.count !== undefined">({{ entry.count }})</template></span>
-            </div>
-            <p v-if="!cloudLogs.length" class="empty-state">Noch keine Cloud-Ereignisse aufgezeichnet.</p>
-          </div>
-        </section>
-      </template>
-    </main>
+        <section class="connection-section"><h2>Weitere lokale Busse</h2><p class="section-hint">Standard-Modbus wird derzeit serverseitig eingerichtet. Display-Modbus ist noch nicht implementiert.</p></section>
+      </div>
+    </dialog>
 
     <div v-if="specialDialog" class="special-overlay" @click.self="specialDialog = null">
       <section class="special-modal panel" role="dialog" aria-modal="true" aria-labelledby="special-modal-title">
         <div class="special-top">
-          <div><span class="section-caption">FOX AIR / CLOUD</span>
+          <div><span class="section-caption">FOX AIR / {{ transportLabel }}</span>
             <h2 id="special-modal-title">{{ selectedSpecial?.title || 'Spezialdialog' }}</h2>
             <p>{{ selectedSpecial?.description }}</p></div>
           <button type="button" class="outlined-action" aria-label="Dialog schließen" @click="specialDialog = null">Schließen</button>
         </div>
-        <p class="section-hint">Anzeige der bekannten Cloud-Werte wie in FoxAir_Control. Nur die WP-Betriebsart und R02 sind für Admins schreibbar. Andere Spezialfunktionen bleiben lesend.</p>
+        <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Nur die WP-Betriebsart und R02 sind für Admins schreibbar. Andere Spezialfunktionen bleiben lesend.</p>
         <div class="special-toolbar">
           <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
-            {{ specialLoading ? 'Frage Cloudwerte ab …' : 'Werte aktualisieren (Cloud)' }}
+            {{ specialLoading ? 'Werte werden gelesen …' : 'Werte aktualisieren' }}
           </button>
           <span>{{ specialRows.filter(row => row.value !== null).length }} / {{ specialRows.length }} mit Wert</span>
         </div>
@@ -1113,7 +1155,7 @@ onBeforeUnmount(() => {
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
         <section v-if="selectedSpecial?.id === 'wp'" class="cloud-write-panel">
           <h3>Steuerung (Admin)</h3>
-          <p class="section-hint">Nur Mode und R02 sind freigegeben. Bestätigung vor dem Senden und Readback über die ausgewählte Verbindung danach.</p>
+          <p class="section-hint">Nur Mode und R02 sind freigegeben. Werteprüfung vor dem Senden und Readback über die ausgewählte Verbindung danach.</p>
           <div class="cloud-write-grid">
             <div>
               <label class="field-label">Betriebsart (Mode)</label>

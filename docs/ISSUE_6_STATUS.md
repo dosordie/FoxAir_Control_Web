@@ -49,3 +49,9 @@ CI veröffentlicht nach erfolgreichem Backend-/Frontendlauf `web-dist` mit `.bui
 - Serverlogs geprüft: sporadische LTE-Lesefehler, danach erfolgreiche Reads. HTTP-200-Schreibantwort allein gilt nicht als Hardwarebestätigung.
 
 Weiter offen: dauerhafter passiver Busempfang, vollständiger Mapping-Audit gegen Desktop, allgemeine Schreibfreigaben mit quellbasierten Wertebereichen, Betriebs-Popups, grafische Spezialdialoge und neues WP-Motiv. Displaybus bleibt nicht implementiert. Kein Modus-/Power-Test mit Geräteänderung in diesem Schritt.
+
+## Oberfläche: Verbindungspop-up und Originalmotiv
+
+Verbindungseinstellungen liegen jetzt in einem nativen modalen Dialog (Cloud/LTE, eigener Scrollbereich, Fokusbindung, Escape/Schließen). Auf Desktop und 390-Pixel-Breite visuell geprüft. Hauptseite verwendet das unveränderte `app_icon.png` aus FoxAir_Control 34ce0ed als `foxair-heatpump.png`; Ist-Hz und animierter Lüfterstatus bleiben als Overlays erhalten. Keine KI-generierte Ersatzgrafik.
+
+Zusätzlich: Spezialdialoge aktualisieren bei lokalen Transporten bestätigte lokale Register statt heimlich Cloudwerte zu lesen. Quelle wird im Dialogkopf angezeigt, der Knopf heißt „Werte aktualisieren“. Cloud-only-Codes werden nicht als lokale Register angefragt. Lokale Aktualisierung erfolgt einzeln und bedarfsgesteuert; kein passiver Dauerempfang. Texte zur entfernten Schreibbestätigung und zum Verbindungsprotokoll korrigiert.
