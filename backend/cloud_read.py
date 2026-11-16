@@ -462,7 +462,7 @@ def project_dashboard(values: dict[str, dict[str, Any]],
             value = mapping.get(str(value), value)
         output[key] = {
             "value": value, "raw": None, "unit": row.get("unit") or unit,
-            "quality": "stale" if stale else row.get("quality", "fresh"),
+            "quality": row.get("quality", "stale") if stale else row.get("quality", "fresh"),
             "timestamp": row.get("timestamp") if stale else None,
         }
     # The firmware-selected runtime setpoint is distinct from the user R02

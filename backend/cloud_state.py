@@ -176,12 +176,19 @@ def cached_raw_values() -> dict[str, dict[str, Any]]:
     _reset_if_changed()
     with _LOCK:
         result = dict(_ROWS)
-    return {
-        code: {**row, "quality": "stale"}
-        for code, row in result.items()
-        if isinstance(row.get("timestamp"), str) and
-        isinstance(row.get("value"), (str, int, float, bool))
-    }
+    now = datetime.now(timezone.utc)
+    output: dict[str, dict[str, Any]] = {}
+    for code, row in result.items():
+        if not isinstance(row.get("timestamp"), str):
+            continue
+        if not isinstance(row.get("value"), (str, int, float, bool)):
+            continue
+        try:
+            age = (now - datetime.fromisoformat(row["timestamp"])).total_seconds()
+        except (ValueError, TypeError):
+            continue
+        output[code] = {**row, "quality": "stale" if age > STALE_AFTER_SECONDS else "cached"}
+    return output
 
 
 def value_rows() -> dict[str, Any]:

@@ -133,7 +133,8 @@ function relativeTimestamp(value: string | null | undefined): string {
 const lastUpdated = computed(() => {
   if (!snapshot.value?.timestamp) return 'Noch keine Messwerte'
   if (snapshot.value.status === 'unavailable') {
-    const last = Object.values(snapshot.value.metrics).find(v => v?.quality === 'stale')
+    const last = Object.values(snapshot.value.metrics)
+      .find(v => v && ['stale', 'cached'].includes(v.quality))
     return last?.timestamp ? 'Verbindung unterbrochen · letzter Messwert ' +
       new Date(last.timestamp).toLocaleString('de-DE') : 'Verbindung unterbrochen'
   }
