@@ -51,6 +51,47 @@ class CloudReadTests(unittest.TestCase):
         self.assertNotIn("T04", result)
         self.assertEqual(result["T08"]["value"], 0)
 
+    def test_live_heartbeat_is_dedicated_and_throttled(self):
+        client = CloudReader("fake", "fake", "device-test")
+        calls = []
+        with patch.object(client, "_request_auth",
+                          side_effect=lambda endpoint, payload: (
+                              calls.append((endpoint, payload)) or
+                              {"isReusltSuc": True}
+                          )), patch("backend.cloud_read.time.sleep") as pause:
+            self.assertTrue(client.app_heartbeat())
+            self.assertFalse(client.app_heartbeat())
+        self.assertEqual(len(calls), 1)
+        endpoint, payload = calls[0]
+        self.assertEqual(endpoint, "app/device/control")
+        self.assertEqual(payload, {"param": [{
+            "deviceCode": "device-test", "protocolCode": "app_heartbeat",
+            "value": "23205",
+        }]})
+        pause.assert_called_once_with(1.0)
+
+    def test_initial_dashboard_does_not_send_heartbeat(self):
+        from backend.cloud_read import read_dashboard
+        client = CloudReader("fake", "fake", "device-test")
+        with patch("backend.cloud_read._reader", return_value=client), \
+                patch.object(client, "read_codes", return_value={"T04": {"value": 3.4}}), \
+                patch.object(client, "app_heartbeat") as heartbeat:
+            data = read_dashboard(live=False)
+            self.assertEqual(data["outdoor"]["value"], 3.4)
+            heartbeat.assert_not_called()
+
+    def test_live_dashboard_sends_heartbeat_before_read(self):
+        from backend.cloud_read import read_dashboard
+        client = CloudReader("fake", "fake", "device-test")
+        order = []
+        with patch("backend.cloud_read._reader", return_value=client), \
+                patch.object(client, "read_codes",
+                             side_effect=lambda codes: (order.append("read") or {})), \
+                patch.object(client, "app_heartbeat",
+                             side_effect=lambda: (order.append("heartbeat") or True)):
+            read_dashboard(live=True)
+        self.assertEqual(order, ["heartbeat", "read"])
+
     def test_known_mapping_includes_verified_dashboard_codes(self):
         self.assertEqual(CLOUD_REGISTERS[2048], "T04")
         self.assertEqual(CLOUD_REGISTERS[2047], "T08")
