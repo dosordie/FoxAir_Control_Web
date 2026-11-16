@@ -2,7 +2,7 @@
 
 **Status:** Entwurf zur Implementierung, noch keine produktive Hardwareanbindung.  
 **Quellprojekt:** [dosordie/FoxAir_Control](https://github.com/dosordie/FoxAir_Control).  
-**Zielplattform:** Debian-LXC in Proxmox hinter vorhandenem Nginx-Reverse-Proxy mit ACME.
+**Zielplattform:** vorhandener Debian-LXC CT 103 (Genius-Gateway) auf Proxmox, als vollständig eigenständiger FoxAir-Systemdienst mit eigener venv, eigenem Nutzer und TCP 8081; vorhandener Nginx-Reverse-Proxy mit ACME außerhalb des CT. Gemessene Ressourcen und Auflagen: [DEPLOYMENT_GENIUS_LXC.md](DEPLOYMENT_GENIUS_LXC.md).
 
 ## Ziel und Abgrenzung
 
@@ -16,10 +16,10 @@ Die Startseite ist eine **WarmLink-artige Übersicht**, nicht der Registerbrowse
 Safari PWA / Desktop Browser
     | HTTPS
     v
-vorhandener Nginx + ACME + Zugriffsschutz
+vorhandener separater Nginx + ACME + Zugriffsschutz
     | internes HTTP (nur Nginx-LAN)
     v
-FoxAir_Web (Debian-LXC)
+FoxAir_Web (eigenständiger systemd-Dienst in CT 103)
   - FastAPI: API, Auth/Sitzungen, Berechtigungen, Parametrierung
   - Vue 3/TypeScript: responsive Übersicht, Parameter, App-Einstellungen
   - Adapter Cloud (PHNIX/Linked-Go HTTPS)
