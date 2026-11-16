@@ -93,7 +93,7 @@ export type CloudDevice = {
 
 async function post<T>(path: string, body: object): Promise<T> {
   const response = await fetch(path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-FoxAir-Admin': '1' },
     body: JSON.stringify(body), cache: 'no-store', credentials: 'same-origin'
   })
   if (!response.ok) {
@@ -123,6 +123,11 @@ export const api = {
   dashboard: (transport: TransportId, live = false) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport) + (live ? '&live=true' : '')),
   registerGroups: () => get<{ items: { group: string; count: number }[] }>('/api/register-groups'),
   registers: (query: string, group = '') => get<{ items: Register[]; catalog_size: number }>('/api/registers?query=' + encodeURIComponent(query) + '&group=' + encodeURIComponent(group) + '&limit=200'),
+  adminSession: () => get<{ authenticated: boolean; role: string }>('/api/admin/session'),
+  adminLogin: (admin_password: string) =>
+    post<{ authenticated: boolean; role: string }>('/api/admin/login', { admin_password }),
+  adminLogout: () =>
+    post<{ authenticated: boolean; role: string }>('/api/admin/logout', {}),
   cloudStatus: () => get<CloudConfigStatus>('/api/cloud/config'),
   cloudSave: (admin_password: string, username: string, password: string, device_code: string) =>
     post<CloudConfigStatus>('/api/cloud/config', { admin_password, username, password, device_code }),
