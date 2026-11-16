@@ -8,7 +8,7 @@ import {
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import { api } from './api'
-import type { Dashboard, Metric, Register, RegisterValue, Transport, TransportId } from './api'
+import type { CloudConfigStatus, CloudDevice, Dashboard, Metric, Register, RegisterValue, Transport, TransportId } from './api'
 
 type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -20,6 +20,27 @@ const snapshot = ref<Dashboard | null>(null)
 const refreshing = ref(false)
 const error = ref('')
 const search = ref('')
+const selectedGroup = ref('')
+const registerGroups = ref<{ group: string; count: number }[]>([])
+const cloudStatus = ref<CloudConfigStatus | null>(null)
+const cloudDevices = ref<CloudDevice[]>([])
+const cloudUsername = ref('')
+const cloudPassword = ref('')
+const cloudDeviceCode = ref('')
+const cloudAdminPassword = ref('')
+const cloudSaving = ref(false)
+const cloudDiscovering = ref(false)
+const cloudMessage = ref('')
+const cloudError = ref('')
+const secureAdminContext = window.location.protocol === 'https:' ||
+  ['127.0.0.1', 'localhost', '[::1]'].includes(window.location.hostname)
+const liveEnabled = ref(window.localStorage.getItem('foxair.cloudLiveEnabled') !== 'false')
+const storedInterval = Number(window.localStorage.getItem('foxair.cloudLiveInterval') || 30)
+const liveInterval = ref(Number.isFinite(storedInterval) ? Math.max(10, Math.min(3600, storedInterval)) : 30)
+const liveActive = computed(() => page.value === 'home' && selectedTransport.value === 'cloud' &&
+  liveEnabled.value && !document.hidden)
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
+let unmounted = false
 const registers = ref<Register[]>([])
 const catalogSize = ref(0)
 const registerLoading = ref(false)
@@ -64,30 +85,95 @@ function routeFromHash(): Page {
   const path = window.location.hash.slice(1).split('?')[0]
   return path === '/parameters' ? 'parameters' : path === '/settings' ? 'settings' : 'home'
 }
-function syncRoute() { page.value = routeFromHash() }
+function syncRoute() {
+  page.value = routeFromHash()
+  scheduleRefresh()
+}
 function navigate(target: Page, term = '') {
   if (target === 'parameters' && term) search.value = term
   window.location.hash = target === 'home' ? '#/' : '#/' + target
   syncRoute()
   if (target === 'parameters') void loadRegisters()
 }
-async function loadDashboard() {
+function scheduleRefresh() {
+  clearTimeout(refreshTimer)
+  if (unmounted || !liveActive.value) return
+  refreshTimer = setTimeout(() => { void loadDashboard(true) }, liveInterval.value * 1000)
+}
+
+async function loadDashboard(live = false) {
+  if (refreshing.value) return
+  const source = selectedTransport.value
   refreshing.value = true
   error.value = ''
-  snapshot.value = null
   try {
-    snapshot.value = await api.dashboard(selectedTransport.value)
-    if (snapshot.value.error) error.value = snapshot.value.error
+    const data = await api.dashboard(source, live && source === 'cloud')
+    if (source !== selectedTransport.value) return
+    snapshot.value = data
+    if (data.error) error.value = data.error
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Keine Verbindung zum Webserver'
+    if (source === selectedTransport.value)
+      error.value = err instanceof Error ? err.message : 'Keine Verbindung zum Webserver'
   } finally {
     refreshing.value = false
+    scheduleRefresh()
+  }
+}
+
+function onVisibilityChange() {
+  clearTimeout(refreshTimer)
+  if (!document.hidden && page.value === 'home') {
+    void loadDashboard(false)
+  }
+}
+
+async function loadCloudStatus() {
+  try { cloudStatus.value = await api.cloudStatus() }
+  catch { cloudStatus.value = null }
+}
+
+async function saveCloudSettings() {
+  if (!secureAdminContext) {
+    cloudError.value = 'Cloud-Konfiguration nur über HTTPS oder einen lokalen SSH-Tunnel.'
+    return
+  }
+  cloudSaving.value = true
+  cloudError.value = ''
+  cloudMessage.value = ''
+  try {
+    cloudStatus.value = await api.cloudSave(
+      cloudAdminPassword.value, cloudUsername.value, cloudPassword.value, cloudDeviceCode.value
+    )
+    cloudPassword.value = ''
+    cloudMessage.value = 'Cloud-Einstellungen gespeichert. Verbindungsdaten werden nur auf dem Server abgelegt.'
+    const list = await api.transports()
+    transports.value = list.items
+    if (selectedTransport.value === 'cloud') void loadDashboard()
+  } catch (e) {
+    cloudError.value = e instanceof Error ? e.message : 'Einstellungen konnten nicht gespeichert werden.'
+  } finally {
+    cloudSaving.value = false
+  }
+}
+
+async function discoverCloudDevices() {
+  cloudDiscovering.value = true
+  cloudError.value = ''
+  cloudMessage.value = ''
+  try {
+    const result = await api.cloudDevices(cloudAdminPassword.value)
+    cloudDevices.value = result.items
+    cloudMessage.value = result.count ? result.count + ' Cloud-Geräte gefunden.' : 'Keine Geräte gefunden.'
+  } catch (e) {
+    cloudError.value = e instanceof Error ? e.message : 'Geräteabfrage fehlgeschlagen'
+  } finally {
+    cloudDiscovering.value = false
   }
 }
 async function loadRegisters() {
   registerLoading.value = true
   try {
-    const result = await api.registers(search.value)
+    const result = await api.registers(search.value, selectedGroup.value)
     registers.value = result.items
     catalogSize.value = result.catalog_size
   } catch (err) {
@@ -118,7 +204,18 @@ async function readRegister() {
 watch(selectedTransport, (value) => {
   window.localStorage.setItem('foxair.lastTransport', value)
   currentValue.value = null
+  clearTimeout(refreshTimer)
+  snapshot.value = null
   void loadDashboard()
+})
+watch([liveEnabled, liveInterval], () => {
+  window.localStorage.setItem('foxair.cloudLiveEnabled', String(liveEnabled.value))
+  window.localStorage.setItem('foxair.cloudLiveInterval', String(liveInterval.value))
+  scheduleRefresh()
+})
+watch(selectedGroup, () => {
+  selectedRegister.value = null
+  if (page.value === 'parameters') void loadRegisters()
 })
 watch(search, () => {
   clearTimeout(searchTimer)
@@ -127,18 +224,26 @@ watch(search, () => {
 onMounted(async () => {
   syncRoute()
   window.addEventListener('hashchange', syncRoute)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   try {
     const response = await api.transports()
     transports.value = response.items
   } catch {
     // Backend not reachable; show unavailable values, never demo values.
   }
-  await loadDashboard()
+  await Promise.all([loadDashboard(), loadCloudStatus()])
+  try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
+  scheduleRefresh()
 })
 onBeforeUnmount(() => {
+  unmounted = true
   window.removeEventListener('hashchange', syncRoute)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   clearTimeout(searchTimer)
+  clearTimeout(refreshTimer)
+  cloudAdminPassword.value = ''
+  cloudPassword.value = ''
 })
 </script>
 
