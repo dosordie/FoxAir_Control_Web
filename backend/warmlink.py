@@ -36,7 +36,9 @@ class WarmlinkSession:
         self.buffer.extend(data)
         if len(self.buffer) > 4096:
             raise ValueError("LTE-Stream nicht synchronisiert")
-        return find_frames(self.buffer, 125)
+        frames = find_frames(self.buffer, 125)
+        log_event("lte-rx", f"LTE RX: {len(data)} Bytes, {len(frames)} gültige Frames, {len(self.buffer)} Restbytes")
+        return frames
 
     def quiet(self):
         if self.poisoned:
@@ -108,8 +110,16 @@ def open_warmlink(endpoint):
     with _bus_guard:
         lock = _bus_locks.setdefault(key, threading.Lock())
     with lock:
-        with socket.create_connection(key, timeout=endpoint.timeout) as sock:
-            yield WarmlinkSession(sock, endpoint)
+        try:
+            with socket.create_connection(key, timeout=endpoint.timeout) as sock:
+                log_event("lte", "LTE TCP verbunden; bedarfsgesteuerte Sitzung")
+                try:
+                    yield WarmlinkSession(sock, endpoint)
+                finally:
+                    log_event("lte", "LTE TCP-Sitzung beendet")
+        except (OSError, ValueError) as exc:
+            log_event("lte-error", "LTE-Abfrage abgebrochen: " + type(exc).__name__)
+            raise
 
 
 def write_control(code, requested, expected):
