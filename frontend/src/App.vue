@@ -412,13 +412,18 @@ onBeforeUnmount(() => {
                 <span class="unit-ground"></span>
               </div>
               <div class="target-temperature">
-                <span class="overline">Heizungs-Solltemperatur</span>
+                <span class="overline">{{ snapshot?.metrics.target?.label || 'Heizungs-Basissollwert' }}</span>
                 <div class="temp-adjust">
                   <button class="round-adjust" type="button" disabled title="Sollwertschreiben folgt in einer späteren Version" aria-label="Solltemperatur senken"><Minus :size="25" /></button>
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                   <button class="round-adjust" type="button" disabled title="Sollwertschreiben folgt in einer späteren Version" aria-label="Solltemperatur erhöhen"><Plus :size="25" /></button>
                 </div>
-                <span class="hero-footnote">{{ modeText === '—' ? 'Zieltemperatur · noch kein Messwert' : 'Aktueller Modus: ' + modeText }}</span>
+                <span class="hero-footnote">
+                  {{ snapshot?.metrics.target?.source_code === '2014' ? 'Betriebsabhängig gewählter Wassersollwert (2014)' : 'Basiswert R02 · ohne bestätigte Korrektur' }}
+                  <template v-if="snapshot?.metrics.base_target && snapshot?.metrics.target?.source_code === '2014'">
+                    · R02: {{ displayMetric(snapshot.metrics.base_target) }} °C
+                  </template>
+                </span>
                 <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>

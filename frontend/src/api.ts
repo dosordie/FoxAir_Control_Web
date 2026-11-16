@@ -1,5 +1,5 @@
 export type TransportId = 'cloud' | 'standard_modbus' | 'display_modbus' | 'warmlink_raw'
-export type Metric = { value: number | string; unit: string; raw: number | null; quality: string; timestamp: string } | null
+export type Metric = { value: number | string; unit: string; raw: number | null; quality: string; timestamp: string; source_code?: string; label?: string } | null
 export type Dashboard = {
   transport: TransportId
   status: 'online' | 'partial' | 'unavailable'

@@ -251,3 +251,21 @@ a{color:inherit}
   .cloud-log-item{grid-template-columns:1fr 50px;gap:3px;padding:12px}
   .cloud-log-item>span:last-child{grid-column:1/-1}
 }
+
+/* #6: keep the parameter filter scrolling inside its own panel on iPhone. */
+.app-shell,.work-layout,.register-list,.register-detail,.panel{min-width:0}
+.work-layout{max-width:100%;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+.register-list{overflow:hidden}
+.parameter-groups{width:100%;min-width:0;max-width:100%;overscroll-behavior-x:contain;touch-action:pan-x;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+.parameter-groups>.group-chip{flex:0 0 auto}
+@media(max-width:800px){
+  .work-layout{grid-template-columns:minmax(0,1fr)}
+  .register-list{max-width:100%}
+}
+@media(max-width:600px){
+  .app-shell{width:100%;max-width:100%}
+  .work-layout{width:100%;padding-left:12px;padding-right:12px}
+  .parameter-groups{scrollbar-width:none}
+  .parameter-groups::-webkit-scrollbar{display:none}
+  .register-item{min-width:0}
+}
