@@ -68,3 +68,5 @@ Zusätzlich: Spezialdialoge aktualisieren bei lokalen Transporten bestätigte lo
 Geprüft: 97 Backendtests, drei Frontendtests, Typecheck/Build; lokal alle drei Timerarten live per LTE gelesen und unveränderte Aufträge akzeptiert. Power-Pop-up ebenfalls mit unverändertem Wert geprüft. Keine Gerätewerte oder Zeitpläne verändert. Ändernde Timer-/Power-/H22-Schreibvorgänge bisher nur mit Mocks geprüft, nicht als Hardwareabnahme markieren.
 
 Weiter offen: permanenter passiver RX, vollständige SG-/AT-Schreibeditoren, allgemeine parameterabhängige Schreibfreigaben und Displaybus. Aus früheren Abschnitten offene Timer-/Betriebs-Pop-ups sind mit diesem Abschnitt teilweise umgesetzt; die Hardwareabnahme von Änderungen steht aus.
+
+Nachprüfung: 98 Backendtests erfolgreich. Dezimale Cloud-Schalter wie 1.0/0.0 werden wie lokale Schalter übersetzt (Klartext und Lüfterzustand). Ungültige Timer-Eingaben bleiben als Entwurf sichtbar und sperren Senden; frisches Lesen setzt sie zurück.

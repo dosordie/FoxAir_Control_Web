@@ -380,3 +380,5 @@ a{color:inherit}
 .timer-time-card>label:has(input[type=checkbox]){display:flex;align-items:center;gap:10px}.timer-time-card input[type=checkbox]{width:18px;height:18px;flex:0 0 18px}
 
 .native-special{margin:auto;border:0;color:#292c32;box-shadow:0 24px 90px #0004}.native-special:not([open]){display:none}.native-special::backdrop{background:#10151e99;backdrop-filter:blur(4px)}.special-dialog-content{display:flex;flex-direction:column;min-height:0;overflow:hidden}.special-dialog-content>.special-top{flex-shrink:0}.special-dialog-content>.special-rows{min-height:0}.operation-dialog:not([open]){display:none}
+
+.program-tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}.program-tabs button{padding:10px 3px;font-size:13px}

@@ -7,6 +7,8 @@ const kind=ref(props.silent?'silent':'operating')
 const values=ref<Record<string,number>>({})
 const baseline=ref<Record<string,number>>({})
 const invalid=ref(new Set<number>())
+const numberDrafts=ref<Record<number,string>>({})
+const timeDrafts=ref<Record<number,string>>({})
 const busy=ref(false), loaded=ref(false), error=ref(''), message=ref('')
 const tab=ref(0)
 const days=['Mo','Di','Mi','Do','Fr','Sa','So']
@@ -20,7 +22,7 @@ let generation=0
 async function read(){
   if(busy.value || !transportSupported.value)return
   const request=++generation, transport=props.transport, group=kind.value
-  busy.value=true; loaded.value=false; invalid.value.clear(); error.value=''; message.value=''
+  busy.value=true; loaded.value=false; invalid.value.clear(); numberDrafts.value={};timeDrafts.value={}; error.value=''; message.value=''
   try{
     const result=await api.timerRead(group,transport)
     if(request!==generation)return
@@ -40,16 +42,17 @@ async function save(){
   }catch(e){if(request===generation){error.value=e instanceof Error?e.message:'Schreiben fehlgeschlagen';loaded.value=false}}
   finally{if(request===generation)busy.value=false}
 }
-function timeText(reg:number){const v=values.value[reg];if(v==null || v>>8>23 || (v&255)>59)return '';return String(v>>8).padStart(2,'0')+':'+String(v&255).padStart(2,'0')}
-function setTime(reg:number,event:Event){const [h,m]=(event.target as HTMLInputElement).value.split(':').map(Number);if(Number.isFinite(h)&&Number.isFinite(m)){values.value[reg]=h*256+m;invalid.value.delete(reg)}else invalid.value.add(reg)}
+function timeText(reg:number){if(reg in timeDrafts.value)return timeDrafts.value[reg];const v=values.value[reg];if(v==null || v>>8>23 || (v&255)>59)return '';return String(v>>8).padStart(2,'0')+':'+String(v&255).padStart(2,'0')}
+function setTime(reg:number,event:Event){const text=(event.target as HTMLInputElement).value;timeDrafts.value[reg]=text;const [h,m]=text.split(':').map(Number);if(Number.isFinite(h)&&Number.isFinite(m)){values.value[reg]=h*256+m;invalid.value.delete(reg)}else invalid.value.add(reg)}
 function setOwnBit(bit:number,event:Event){const old=values.value[maskReg.value]??0;const enabled=(event.target as HTMLInputElement).checked;const flag=bit<<shift.value;values.value[maskReg.value]=enabled?old|flag:old&~flag}
 function numberInput(reg:number,event:Event){
   const text=(event.target as HTMLInputElement).value, n=Number(text)
+  numberDrafts.value[reg]=text
   if(text===''||!Number.isFinite(n)||n < -3276.8||n > 3276.7||Math.abs(n*10-Math.round(n*10))>1e-7){invalid.value.add(reg);return}
   invalid.value.delete(reg);values.value[reg]=Math.round(n*10)&65535
 }
-function silentTime(start:boolean){const r=start?1245:1248;return String(values.value[r]??0).padStart(2,'0')+':'+String(values.value[r+1]??0).padStart(2,'0')}
-function setSilentTime(start:boolean,event:Event){const [h,m]=(event.target as HTMLInputElement).value.split(':').map(Number);const r=start?1245:1248;if(Number.isFinite(h)&&Number.isFinite(m)){values.value[r]=h;values.value[r+1]=m;invalid.value.delete(r)}else invalid.value.add(r)}
+function silentTime(start:boolean){const r=start?1245:1248;if(r in timeDrafts.value)return timeDrafts.value[r];return String(values.value[r]??0).padStart(2,'0')+':'+String(values.value[r+1]??0).padStart(2,'0')}
+function setSilentTime(start:boolean,event:Event){const text=(event.target as HTMLInputElement).value;const [h,m]=text.split(':').map(Number);const r=start?1245:1248;timeDrafts.value[r]=text;if(Number.isFinite(h)&&Number.isFinite(m)){values.value[r]=h;values.value[r+1]=m;invalid.value.delete(r)}else invalid.value.add(r)}
 watch([()=>props.transport,kind],()=>{generation++;busy.value=false;loaded.value=false;values.value={};tab.value=0;void read()})
 onMounted(read)
 </script>
@@ -65,7 +68,7 @@ onMounted(read)
     <p v-if="message" role="status" class="success-text">{{ message }}</p>
     <button type="button" class="outlined-action" :disabled="busy||!transportSupported" @click="read">{{ busy?'Bitte warten …':'Werte aktualisieren' }}</button>
     <template v-if="loaded">
-      <div v-if="!silent" class="timer-tabs"><button v-for="n in 6" :key="n" type="button" :disabled="busy" :class="{selected:tab===n-1}" @click="tab=n-1">{{ kind==='operating'?'M':'' }}{{ n }}</button></div>
+      <div v-if="!silent" class="timer-tabs program-tabs"><button v-for="n in 6" :key="n" type="button" :disabled="busy" :class="{selected:tab===n-1}" @click="tab=n-1">{{ kind==='operating'?'M':'' }}{{ n }}</button></div>
       <fieldset :disabled="busy||!admin" class="timer-fields">
         <template v-if="silent">
           <div v-for="start in [true,false]" :key="String(start)" class="timer-time-card">
@@ -83,7 +86,7 @@ onMounted(read)
             <label>Ende<input class="settings-input" type="time" :value="timeText(base+1)" @input="setTime(base+1,$event)" required /></label>
             <template v-if="kind==='operating'">
               <label>Betriebsart<select class="settings-input" v-model.number="values[base+5]"><option v-for="[label,value] in modes" :key="value" :value="value">{{ label }}</option></select></label>
-              <label v-for="[label,offset] in [['Warmwasser (°C)',2],['Heizen (°C)',3],['Kühlen (°C)',4],['Max. Leistung (kW)',6]] as const" :key="offset">{{ label }}<input class="settings-input" type="number" step="0.1" :value="((values[base+offset]??0)>=32768?(values[base+offset]??0)-65536:(values[base+offset]??0))/10" @input="numberInput(base+offset,$event)" /></label>
+              <label v-for="[label,offset] in [['Warmwasser (°C)',2],['Heizen (°C)',3],['Kühlen (°C)',4],['Max. Leistung (kW)',6]] as const" :key="offset">{{ label }}<input class="settings-input" type="number" step="0.1" :value="numberDrafts[base+offset] ?? ((values[base+offset]??0)>=32768?(values[base+offset]??0)-65536:(values[base+offset]??0))/10" @input="numberInput(base+offset,$event)" /></label>
             </template>
           </div>
         </template>
