@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 import secrets
 import tempfile
+import time
+import threading
 from typing import Any
 
 
@@ -117,6 +119,32 @@ def verify_admin(password: str) -> bool:
         return False
 
 
+_admin_lock = threading.Lock()
+_failed_admin_attempts: dict[str, list[float]] = {}
+
+
+def _check_admin_rate_limit(peer: str) -> bool:
+    now = time.monotonic()
+    with _admin_lock:
+        # Bound memory and reject repeated password guesses for one IP.
+        for client in list(_failed_admin_attempts):
+            _failed_admin_attempts[client] = [
+                t for t in _failed_admin_attempts[client] if now - t < 60
+            ]
+            if not _failed_admin_attempts[client]:
+                del _failed_admin_attempts[client]
+        return len(_failed_admin_attempts.get(peer, [])) < 5
+
+
+def _admin_attempt_result(peer: str, success: bool) -> None:
+    with _admin_lock:
+        if success:
+            _failed_admin_attempts.pop(peer, None)
+        else:
+            if len(_failed_admin_attempts) < 256 or peer in _failed_admin_attempts:
+                _failed_admin_attempts.setdefault(peer, []).append(time.monotonic())
+
+
 def require_admin(request: "Request", password: str) -> None:
     # Imported lazily, so admin bootstrap works with system Python (no FastAPI).
     from fastapi import HTTPException
@@ -127,5 +155,9 @@ def require_admin(request: "Request", password: str) -> None:
     origin = request.headers.get("origin")
     if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
         raise HTTPException(status_code=403, detail="Unzulässiger Origin")
-    if not verify_admin(password):
+    if not _check_admin_rate_limit(peer):
+        raise HTTPException(status_code=429, detail="Zu viele fehlgeschlagene Anmeldeversuche")
+    valid = verify_admin(password)
+    _admin_attempt_result(peer, valid)
+    if not valid:
         raise HTTPException(status_code=403, detail="Administrationspasswort fehlt oder ist ungültig")
