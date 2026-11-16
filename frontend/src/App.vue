@@ -143,7 +143,9 @@ const fanRunning = computed(() =>
   ['Ein', '1', 'ON'].includes(powerText.value))
 const supplyDelta = computed(() => {
   const data = snapshot.value?.metrics
-  if (!data || data.target?.source_code !== '2014') return null
+  if (!data || snapshot.value?.status === 'unavailable' ||
+      data.target?.quality === 'stale' || data.supply?.quality === 'stale' ||
+      data.target?.source_code !== '2014') return null
   const target = Number(String(data.target.value).replace(',', '.'))
   const supply = Number(String(data.supply?.value ?? '').replace(',', '.'))
   return Number.isFinite(target) && data.supply != null && Number.isFinite(supply)
@@ -151,7 +153,8 @@ const supplyDelta = computed(() => {
 })
 const waterSpread = computed(() => {
   const data = snapshot.value?.metrics
-  if (!data || !data.supply || !data.return) return null
+  if (!data || snapshot.value?.status === 'unavailable' || !data.supply || !data.return ||
+      data.supply.quality === 'stale' || data.return.quality === 'stale') return null
   const supply = Number(String(data.supply.value).replace(',', '.'))
   const waterReturn = Number(String(data.return.value).replace(',', '.'))
   return Number.isFinite(supply) && Number.isFinite(waterReturn)
@@ -584,6 +587,7 @@ onMounted(async () => {
     // Backend not reachable; show unavailable values, never demo values.
   }
   await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues(), checkAdminSession()])
+  if (adminAuthenticated.value) void loadStoredAccount()
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
