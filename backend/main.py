@@ -66,9 +66,9 @@ def cloud_config():
 
 class CloudConfigUpdate(BaseModel):
     admin_password: str = Field(min_length=1, max_length=256)
-    username: str = Field(min_length=1, max_length=160)
+    username: str = Field(default="", max_length=160)
     password: str = Field(default="", max_length=256)
-    device_code: str = Field(min_length=3, max_length=128)
+    device_code: str = Field(default="", max_length=128)
 
 
 class CloudAdminAction(BaseModel):
@@ -78,9 +78,10 @@ class CloudAdminAction(BaseModel):
 @app.post("/api/cloud/config")
 def cloud_config_update(payload: CloudConfigUpdate, request: Request):
     require_admin(request, payload.admin_password)
-    _, existing_password, _ = credentials()
+    existing_username, existing_password, existing_device = credentials()
     try:
-        save_cloud(payload.username, payload.password or existing_password, payload.device_code)
+        save_cloud(payload.username or existing_username, payload.password or existing_password,
+                   payload.device_code or existing_device)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except OSError:
