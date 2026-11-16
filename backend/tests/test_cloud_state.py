@@ -1,8 +1,8 @@
 """No-network full scan tests with reviewed code kinds and unsupported bisection."""
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from pathlib import Path
-from tempfile import TemporaryDirectory, Mock
+from tempfile import TemporaryDirectory
 
 from backend import cloud_state
 from backend.cloud_read import UnsupportedCloudCode
