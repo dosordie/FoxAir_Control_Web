@@ -17,7 +17,7 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/api/transports")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["items"]), 4)
-        self.assertFalse(response.json()["live_supported"])
+        self.assertTrue(response.json()["live_supported"])
 
     def test_cloud_unconfigured_has_no_values(self):
         from unittest.mock import patch

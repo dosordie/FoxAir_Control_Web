@@ -5,6 +5,9 @@ import getpass
 import os
 from pathlib import Path
 import pwd
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 if os.geteuid() != 0:
     raise SystemExit("Nur als root ausführen")
