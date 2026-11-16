@@ -57,6 +57,9 @@ const cloudUsername = ref('')
 const cloudPassword = ref('')
 const cloudDeviceCode = ref('')
 const cloudAdminPassword = ref('')
+const adminAuthenticated = ref(false)
+const adminBusy = ref(false)
+const adminLoginError = ref('')
 const cloudSaving = ref(false)
 const cloudDiscovering = ref(false)
 const cloudMessage = ref('')
@@ -319,11 +322,42 @@ async function loadCloudLogs() {
   try { cloudLogs.value = (await api.cloudLogs()).items }
   catch { /* Logs are optional and must not block operation */ }
 }
+async function checkAdminSession() {
+  try {
+    adminAuthenticated.value = (await api.adminSession()).authenticated
+  } catch { adminAuthenticated.value = false }
+}
+async function loginAsAdmin() {
+  if (!secureAdminContext || !cloudAdminPassword.value) return
+  adminBusy.value = true
+  adminLoginError.value = ''
+  try {
+    adminAuthenticated.value = (await api.adminLogin(cloudAdminPassword.value)).authenticated
+    cloudAdminPassword.value = ''
+    if (adminAuthenticated.value) {
+      await Promise.all([loadStoredAccount(), loadGitUpdateStatus()])
+    }
+  } catch (e) {
+    adminAuthenticated.value = false
+    adminLoginError.value = e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen'
+  } finally { adminBusy.value = false }
+}
+async function logoutAsAdmin() {
+  try { await api.adminLogout() } catch { /* log out UI regardless */ }
+  adminAuthenticated.value = false
+  cloudUsername.value = ''
+  cloudDeviceCode.value = ''
+  cloudPassword.value = ''
+  cloudAdminPassword.value = ''
+  accountLoaded.value = false
+  cloudDevices.value = []
+  selectedCloudStatus.value = {}
+}
 async function loadStoredAccount() {
   accountLoading.value = true
   cloudError.value = ''
   try {
-    const result = await api.cloudAccount(cloudAdminPassword.value)
+    const result = await api.cloudAccount('')
     cloudUsername.value = result.username
     cloudDeviceCode.value = result.device_code
     accountLoaded.value = true
@@ -338,7 +372,7 @@ async function rescanCloud() {
   cloudScanLoading.value = true
   cloudError.value = ''
   try {
-    const result = await api.cloudScan(cloudAdminPassword.value)
+    const result = await api.cloudScan('')
     cloudMessage.value = result.started ? 'Cloud-Vollscan gestartet.' : 'Cloud-Vollscan läuft bereits.'
     await loadCloudValues()
   } catch (e) {
@@ -356,7 +390,7 @@ async function loadGitUpdateStatus() {
   finally { updateLoading.value = false }
 }
 async function submitGitUpdate() {
-  if (!secureAdminContext || !cloudAdminPassword.value) {
+  if (!secureAdminContext || !adminAuthenticated.value) {
     updateError.value = 'HTTPS und Web-Administrationspasswort erforderlich.'
     return
   }
@@ -364,7 +398,7 @@ async function submitGitUpdate() {
   updateError.value = ''
   updateMessage.value = ''
   try {
-    await api.requestUpdate(cloudAdminPassword.value)
+    await api.requestUpdate('')
     updateMessage.value = 'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert den passenden Git-Build. Die Web-App kann dabei kurz neu starten.'
     // Do not claim an installation succeeded: completion is observed separately.
   } catch (e) {
@@ -389,7 +423,7 @@ async function saveCloudSettings() {
   cloudMessage.value = ''
   try {
     cloudStatus.value = await api.cloudSave(
-      cloudAdminPassword.value, cloudUsername.value, cloudPassword.value, cloudDeviceCode.value
+      '', cloudUsername.value, cloudPassword.value, cloudDeviceCode.value
     )
     cloudPassword.value = ''
     cloudMessage.value = 'Cloud-Einstellungen gespeichert. Verbindungsdaten werden nur auf dem Server abgelegt.'
@@ -407,7 +441,7 @@ async function queryCloudDeviceStatus() {
   cloudStatusLoading.value = true
   cloudError.value = ''
   try {
-    selectedCloudStatus.value = (await api.cloudDeviceStatus(cloudAdminPassword.value)).status
+    selectedCloudStatus.value = (await api.cloudDeviceStatus('')).status
   } catch (e) {
     cloudError.value = e instanceof Error ? e.message : 'Gerätestatus nicht verfügbar'
   } finally {
@@ -420,7 +454,7 @@ async function discoverCloudDevices() {
   cloudError.value = ''
   cloudMessage.value = ''
   try {
-    const result = await api.cloudDevices(cloudAdminPassword.value)
+    const result = await api.cloudDevices('')
     cloudDevices.value = result.items
     cloudMessage.value = result.count ? result.count + ' Cloud-Geräte gefunden.' : 'Keine Geräte gefunden.'
   } catch (e) {
@@ -491,7 +525,7 @@ onMounted(async () => {
   } catch {
     // Backend not reachable; show unavailable values, never demo values.
   }
-  await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues()])
+  await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues(), checkAdminSession()])
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
@@ -788,10 +822,22 @@ onBeforeUnmount(() => {
           <p>Cloud: <strong>{{ cloudStatus?.configured ? 'eingerichtet' : 'nicht vollständig' }}</strong> · Benutzer {{ cloudStatus?.username_configured ? 'vorhanden' : 'fehlt' }} · Gerätekennung {{ cloudStatus?.device_configured ? 'vorhanden' : 'fehlt' }}</p>
           <p v-if="!cloudStatus?.admin_enabled" class="read-error">Web-Administration lokal einrichten: <code>python3 scripts/setup_web_admin.py</code></p>
           <p v-else-if="!secureAdminContext" class="read-error">Für die Cloud-Bearbeitung HTTPS oder einen lokalen SSH-Tunnel verwenden. Über unverschlüsseltes LAN-HTTP bleibt sie gesperrt.</p>
+          <div class="admin-session">
+            <p><strong>Zugriff: {{ adminAuthenticated ? 'Administrator' : 'Lesender Gast' }}</strong> — Werte sind ohne Anmeldung sichtbar.</p>
+            <form v-if="!adminAuthenticated" @submit.prevent="loginAsAdmin" class="admin-login-form">
+              <label class="field-label" for="admin-password">Web-Administrationspasswort</label>
+              <input id="admin-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="current-password" placeholder="Admin-Anmeldung" :disabled="!secureAdminContext" />
+              <button type="submit" class="outlined-action" :disabled="!secureAdminContext || adminBusy || !adminAuthenticated">
+                <ShieldCheck :size="17" /> {{ adminBusy ? 'Anmeldung läuft …' : 'Als Administrator anmelden' }}
+              </button>
+              <p v-if="adminLoginError" role="alert" class="read-error">{{ adminLoginError }}</p>
+            </form>
+            <button v-else type="button" class="outlined-action" @click="logoutAsAdmin">
+              <ShieldCheck :size="17" /> Admin abmelden
+            </button>
+          </div>
           <form class="cloud-form" @submit.prevent="saveCloudSettings">
-            <label class="field-label" for="admin-password">Web-Administrationspasswort</label>
-            <input id="admin-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="off" placeholder="Lokal eingerichtet" :disabled="!secureAdminContext" />
-            <button type="button" class="outlined-action account-load" :disabled="accountLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="loadStoredAccount">
+            <button type="button" class="outlined-action account-load" :disabled="accountLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="loadStoredAccount">
               <ShieldCheck :size="17" /> {{ accountLoading ? 'Prüfe Adminzugang …' : 'Aktuelle E-Mail und Gerätekennung anzeigen' }}
             </button>
             <p v-if="accountLoaded" class="success-text">Gespeicherter Benutzer und deviceCode wurden in die beiden Felder unten übernommen. Das Cloud-Passwort bleibt verborgen.</p>
@@ -801,10 +847,10 @@ onBeforeUnmount(() => {
             <input id="cloud-password" class="settings-input" v-model="cloudPassword" type="password" autocomplete="new-password" placeholder="Leer = bisheriges Passwort behalten" :disabled="!secureAdminContext" />
             <label class="field-label" for="cloud-device">Gerätekennung (deviceCode)</label>
             <input id="cloud-device" class="settings-input" v-model="cloudDeviceCode" placeholder="Leer = bisherige Kennung behalten" :disabled="!secureAdminContext" />
-            <button class="main-action" type="submit" :disabled="cloudSaving || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword">{{ cloudSaving ? 'Speichert …' : 'Cloud-Einstellungen speichern' }}</button>
+            <button class="main-action" type="submit" :disabled="cloudSaving || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated">{{ cloudSaving ? 'Speichert …' : 'Cloud-Einstellungen speichern' }}</button>
           </form>
           <div class="cloud-discovery">
-            <button class="outlined-action" type="button" :disabled="cloudDiscovering || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="discoverCloudDevices">
+            <button class="outlined-action" type="button" :disabled="cloudDiscovering || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="discoverCloudDevices">
               <Search :size="17" /> {{ cloudDiscovering ? 'Suche läuft …' : 'Cloud-Geräte und Informationen abrufen' }}
             </button>
             <div v-if="cloudDevices.length" class="device-list">
@@ -819,7 +865,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="cloud-discovery">
-            <button type="button" class="outlined-action" :disabled="cloudStatusLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="queryCloudDeviceStatus">
+            <button type="button" class="outlined-action" :disabled="cloudStatusLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="queryCloudDeviceStatus">
               <Activity :size="17" /> {{ cloudStatusLoading ? 'Frage Gerätestatus ab …' : 'Status des ausgewählten Cloud-Geräts abrufen' }}
             </button>
             <div v-if="Object.keys(selectedCloudStatus).length" class="device-status">
@@ -829,7 +875,7 @@ onBeforeUnmount(() => {
           <p v-if="cloudMessage" role="status" class="success-text">{{ cloudMessage }}</p>
           <p v-if="cloudError" role="alert" class="read-error">{{ cloudError }}</p>
           <div class="cloud-discovery">
-            <button type="button" class="outlined-action" :disabled="cloudScanLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="rescanCloud">
+            <button type="button" class="outlined-action" :disabled="cloudScanLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="rescanCloud">
               <RefreshCw :size="17" :class="{ spinning: cloudScanLoading }" /> Vollständigen Cloud-Katalog erneut abfragen
             </button>
             <p class="section-hint">{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Cloud-Codes mit Wert · Scanstatus: {{ cloudOverview?.status || 'unbekannt' }}</p>
@@ -858,14 +904,14 @@ onBeforeUnmount(() => {
             <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
               <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
             </button>
-            <button type="button" class="main-action" :disabled="!updateInfo?.installed || !updateInfo?.build_ready || updateInfo?.running || updateInfo?.pending || !cloudAdminPassword || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
+            <button type="button" class="main-action" :disabled="!updateInfo?.installed || !updateInfo?.build_ready || updateInfo?.running || updateInfo?.pending || !adminAuthenticated || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
               <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
               {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
             </button>
           </div>
           <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
           <p v-if="updateError" class="read-error">{{ updateError }}</p>
-          <p class="section-hint">Für den Update-Knopf das Administrationspasswort im Bereich „Cloud-Zugang & Geräte“ eingeben. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
+          <p class="section-hint">Für den Update-Knopf im Bereich „Cloud-Zugang & Geräte“ als Administrator anmelden. Die Anmeldung gilt für diese Browser-Sitzung. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
         </section>
         <section class="settings-panel panel">
           <div class="section-head">
