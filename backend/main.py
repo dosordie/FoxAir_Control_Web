@@ -16,6 +16,7 @@ from backend.cloud_config import cloud_status, credentials, save_cloud, require_
 from backend.cloud_state import (catalog as full_cloud_catalog, value_rows as cloud_values,
     scan_start as cloud_scan_start, logs as cloud_logs, log_event as cloud_log_event)
 from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, cached_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
+from backend.cloud_dialogs import definitions as cloud_dialog_definitions, refresh as refresh_cloud_dialog
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
 
@@ -136,6 +137,21 @@ def cloud_device_status(payload: CloudAdminAction, request: Request):
     require_admin(request, payload.admin_password)
     try:
         return {"status": selected_device_status()}
+    except CloudError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+@app.get("/api/cloud/dialogs")
+def cloud_dialogs():
+    return {"items": cloud_dialog_definitions()}
+
+
+@app.post("/api/cloud/dialogs/{dialog_id}/refresh")
+def cloud_dialog_refresh(dialog_id: str):
+    try:
+        return refresh_cloud_dialog(dialog_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Spezialdialog nicht vorhanden") from None
     except CloudError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
 
