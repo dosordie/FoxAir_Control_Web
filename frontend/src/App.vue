@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
   ChevronRight, Clock3, Cloud, Fan, Gauge, HeartPulse, House,
-  Minus, Plus, Power, RadioTower, RefreshCw, Search,
+  Power, RadioTower, RefreshCw, Search,
   Settings2, ShieldCheck, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
@@ -676,16 +676,16 @@ onBeforeUnmount(() => {
               <div class="register-preview-controls">
                 <label class="search-box"><Search :size="17" /><input v-model="mainRegisterSearch" placeholder="Register oder Code suchen" aria-label="Hauptfenster Register filtern" /></label>
                 <div class="parameter-groups">
-                  <button v-for="grp in ['T', 'H', 'P', 'R', 'D', 'E', 'SG', 'CLOUD', '']" :key="grp" class="group-chip"
+                  <button v-for="grp in [...orderedGroups.map(g => g.group), '']" :key="grp" class="group-chip"
                     :class="{ active: mainRegisterGroup === grp }" @click="mainRegisterGroup = grp">{{ grp || 'Alle' }}</button>
                 </div>
               </div>
               <div class="main-register-list">
                 <div v-for="entry in mainRegisterRows" :key="entry.code" class="main-register-row"
                   :class="{ 'is-stale': entry.quality === 'stale' }">
-                  <span class="register-code">{{ entry.code }}</span>
+                  <span class="register-code">{{ entry.register ?? entry.code }}</span>
                   <span class="register-title">{{ entry.name }}<small>{{ entry.register ?? 'Nur Cloud' }}</small></span>
-                  <strong :title="relativeTimestamp(entry.timestamp)">{{ textValue(entry.value) }} {{ entry.unit }}</strong>
+                  <strong :title="relativeTimestamp(entry.timestamp)">{{ entry.display_value ?? textValue(entry.value) }} {{ entry.unit }}</strong>
                 </div>
                 <p v-if="!mainRegisterRows.length" class="empty-state">Noch keine Registerwerte vorhanden.</p>
               </div>
@@ -724,12 +724,12 @@ onBeforeUnmount(() => {
             <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
-                <span class="register-code">{{ entry.code || entry.register }}</span>
-                <span class="register-title">{{ entry.name }}<small>Register {{ entry.register }} <template v-if="entry.cloud?.code"> · Cloud {{ entry.cloud.code }}</template></small></span>
+                <span class="register-code">{{ entry.register }}</span>
+                <span class="register-title">{{ entry.name }}<small>{{ entry.code || 'MAIN' }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
                 <span class="register-measure" :class="{ unknown: currentCloudRegisterValue(entry.register)?.value == null,
                     'is-stale': currentCloudRegisterValue(entry.register)?.quality === 'stale' }"
                   :title="relativeTimestamp(currentCloudRegisterValue(entry.register)?.timestamp)">
-                  {{ textValue(currentCloudRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
+                  {{ currentCloudRegisterValue(entry.register)?.display_value ?? entry.cloud?.display_value ?? textValue(currentCloudRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
                   <small>{{ currentCloudRegisterValue(entry.register)?.unit || entry.cloud?.unit || '' }}</small>
                   <small v-if="currentCloudRegisterValue(entry.register)?.quality === 'stale'">veraltet</small>
                 </span>
@@ -740,11 +740,11 @@ onBeforeUnmount(() => {
             <div v-else class="register-items">
               <button v-for="entry in filteredCloudRows" :key="entry.code" class="register-item"
                 :class="{ active: cloudCodeSelected?.code === entry.code }" @click="cloudCodeSelected = entry">
-                <span class="register-code">{{ entry.code }}</span>
+                <span class="register-code">{{ entry.register ?? entry.code }}</span>
                 <span class="register-title">{{ entry.name }}
                   <small>{{ entry.register ? 'MAIN ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
                 <span class="register-measure" :class="{ unknown: entry.value == null, 'is-stale': entry.quality === 'stale' }" :title="relativeTimestamp(entry.timestamp)">
-                  {{ textValue(entry.value) }}<small>{{ entry.unit }}</small>
+                  {{ entry.display_value ?? textValue(entry.value) }} <small>{{ entry.unit }}</small>
                   <small v-if="entry.quality === 'stale'">veraltet</small>
                 </span>
                 <ChevronRight :size="16" />
@@ -759,7 +759,7 @@ onBeforeUnmount(() => {
               <span class="register-code large">{{ cloudCodeSelected.code }}</span>
               <div class="detail-value">
                 <span>Cloud-Wert</span>
-                <strong>{{ textValue(cloudCodeSelected.value) }} <small>{{ cloudCodeSelected.unit }}</small></strong>
+                <strong>{{ cloudCodeSelected.display_value ?? textValue(cloudCodeSelected.value) }} <small>{{ cloudCodeSelected.unit }}</small></strong>
                 <p>{{ relativeTimestamp(cloudCodeSelected.timestamp) }} · {{ cloudCodeSelected.quality }}</p>
               </div>
               <div class="detail-metadata">
@@ -774,7 +774,7 @@ onBeforeUnmount(() => {
               <span class="section-caption">PARAMETERDETAILS</span>
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><Star :size="23" class="star-muted" /></div>
               <div class="detail-value"><span>Aktueller Wert</span>
-                <strong>{{ textValue(currentValue?.value ?? currentCloudRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
+                <strong>{{ currentCloudRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentValue?.value ?? currentCloudRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
                   <small>{{ currentValue?.unit || currentCloudRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
                 <p>{{ relativeTimestamp(currentValue?.timestamp ?? currentCloudRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
               </div>
@@ -952,7 +952,7 @@ onBeforeUnmount(() => {
         <div class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
             :class="{ 'is-stale': entry.quality === 'stale' }">
-            <span class="register-code">{{ entry.code }}</span>
+            <span class="register-code">{{ entry.register ?? entry.code }}</span>
             <span class="register-title">{{ entry.name }}
               <small>{{ entry.register != null ? 'MAIN ' + entry.register : 'Nur Cloud' }}</small>
             </span>

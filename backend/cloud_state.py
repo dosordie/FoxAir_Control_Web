@@ -202,7 +202,9 @@ def value_rows() -> dict[str, Any]:
         err = _LAST_ERROR
     values: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc)
-    for row in items:
+    for row in sorted(items, key=lambda r:
+                      (r.get("register") if isinstance(r.get("register"), int) else 999999,
+                       r["code"])):
         current = states.get(row["code"])
         quality = current.get("quality", "unknown") if current else "unknown"
         if current and current.get("timestamp"):
@@ -221,6 +223,8 @@ def value_rows() -> dict[str, Any]:
             "unit": (current or {}).get("unit") or row.get("unit") or "",
             "confidence": row.get("confidence") or "",
             "value": current.get("value") if current else None,
+            "display_value": display_label(row.get("register"),
+                                            current.get("value") if current else None),
             "timestamp": current.get("timestamp") if current else None,
             "quality": quality,
             "supported": current is not None,
@@ -230,6 +234,26 @@ def value_rows() -> dict[str, Any]:
         "supported": len(states), "status": status,
         "progress": progress, "last_scan": last_scan, "error": err,
     }
+
+
+def display_label(register: int | None, raw: Any) -> str | None:
+    """Use reviewed MAIN register enums; never guess an unknown code's meaning."""
+    from backend.catalog import load_registers
+    if register is None or raw is None:
+        return None
+    entry = load_registers().get(str(register), {})
+    choices = entry.get("value_map")
+    if not isinstance(choices, dict):
+        return None
+    value = str(raw).strip()
+    try:
+        number = float(value)
+        if number.is_integer():
+            value = str(int(number))
+    except (ValueError, OverflowError):
+        pass
+    label = choices.get(value)
+    return str(label) if label is not None else None
 
 
 def live_codes() -> list[str]:

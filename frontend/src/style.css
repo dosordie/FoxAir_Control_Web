@@ -334,3 +334,8 @@ a{color:inherit}
 .register-measure small:last-child:not(:first-child){white-space:normal}
 @media(max-width:800px){.hero-metrics{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:16px}}
 @media(max-width:600px){.hero-metric .metric-subvalue{font-size:9px;white-space:normal}}
+
+.admin-session{padding:15px;background:#f7f9fc;border:1px solid #e8edf2;border-radius:14px;margin:16px 0}
+.admin-session p{font-size:13px;color:#525b67}
+.admin-login-form{display:grid;gap:10px;max-width:550px}
+.admin-login-form .outlined-action{justify-content:center}

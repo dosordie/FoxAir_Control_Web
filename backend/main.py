@@ -229,6 +229,7 @@ def registers(query: str = "", group: str = Query("", max_length=18),
                 "unit": match.get("unit") or row.get("unit") or "",
                 "timestamp": match["timestamp"],
                 "quality": match["quality"],
+                "display_value": match.get("display_value"),
             } if match else None
     return {"items": items, "catalog_size": len(load_registers())}
 

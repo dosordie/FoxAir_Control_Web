@@ -66,7 +66,8 @@ def public_register(number: str, entry: dict) -> dict:
         "unit": entry.get("unit") or ("°C" if entry.get("type") == "TEMP1" else ""),
         "type": entry.get("type") or "RAW",
         "mode": entry.get("mode") or "read",
-        "write_available": False,  # Deliberately disabled until backend safety/write checks exist.
+        "value_map": entry.get("value_map") if isinstance(entry.get("value_map"), dict) else {},
+        "write_available": False,  # Write availability is controlled per code in API.
     }
 
 

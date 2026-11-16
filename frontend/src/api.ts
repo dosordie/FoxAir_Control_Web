@@ -19,7 +19,8 @@ export type Register = {
   type: string
   mode: string
   write_available: boolean
-  cloud?: {code:string;value:string|number;unit:string;timestamp:string;quality:string}|null
+  value_map: Record<string,string>
+  cloud?: {code:string;value:string|number;unit:string;timestamp:string;quality:string;display_value?:string|null}|null
 }
 export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string }
 
@@ -60,6 +61,7 @@ export type CloudRow = {
   unit: string
   confidence: string
   value: string | number | null
+  display_value: string | null
   timestamp: string | null
   quality: string
   supported: boolean
