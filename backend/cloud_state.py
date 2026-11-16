@@ -108,8 +108,17 @@ def value_rows() -> dict[str, Any]:
         last_scan = _LAST_SCAN
         err = _LAST_ERROR
     values: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
     for row in items:
         current = states.get(row["code"])
+        quality = current.get("quality", "unknown") if current else "unknown"
+        if current and current.get("timestamp"):
+            try:
+                age = (now - datetime.fromisoformat(current["timestamp"])).total_seconds()
+                if age > (150 if row.get("kind") == "live" else 86400):
+                    quality = "stale"
+            except (ValueError, TypeError):
+                quality = "unknown"
         values.append({
             "code": row["code"],
             "name": row.get("name") or row["code"],
@@ -120,7 +129,7 @@ def value_rows() -> dict[str, Any]:
             "confidence": row.get("confidence") or "",
             "value": current.get("value") if current else None,
             "timestamp": current.get("timestamp") if current else None,
-            "quality": current.get("quality", "unknown") if current else "unknown",
+            "quality": quality,
             "supported": current is not None,
         })
     return {
