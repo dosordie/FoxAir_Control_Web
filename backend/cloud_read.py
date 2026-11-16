@@ -465,7 +465,9 @@ def project_dashboard(values: dict[str, dict[str, Any]],
         # Translate explicit enum states, not already scaled physical measurements.
         mapping = definition.get("value_map")
         if isinstance(mapping, dict):
-            value = mapping.get(str(value), value)
+            from backend.cloud_state import display_label
+            label = display_label(register, value)
+            value = label if label is not None else value
         output[key] = {
             "value": value, "raw": None, "unit": row.get("unit") or unit,
             "quality": row.get("quality", "stale") if stale else row.get("quality", "fresh"),

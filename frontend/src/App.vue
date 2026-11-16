@@ -94,7 +94,8 @@ async function refreshOperation(){
   try {
     const row=await api.read({Power:1011,Mode:1012,H22:1030}[code],transport)
     if(transport!==selectedTransport.value || code!==operationCode.value)return
-    const value=transport==='cloud'?row.value:row.raw??row.value
+    const rawValue=transport==='cloud'?row.value:row.raw??row.value
+    const value=Number.isFinite(Number(rawValue))?Number(rawValue):rawValue
     operationSources.value[code]={...row,value}
     writeDrafts.value[code]=String(value)
   } catch(e){writeError.value=e instanceof Error?e.message:'Lesen fehlgeschlagen'}

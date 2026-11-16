@@ -23,3 +23,8 @@ class DashboardIdentityTests(unittest.TestCase):
         values = {"T30": {"value": 70}, "T31": {"value": 43}}
         self.assertEqual(project_dashboard(values)["compressor_frequency"]["value"], 43)
         self.assertEqual(project_dashboard(values, stale=True)["compressor_frequency"]["quality"], "stale")
+
+    def test_decimal_cloud_switches_use_same_labels_as_local_bus(self):
+        values = {"Power":{"value":"1.0"},"H22":{"value":"0.0"}}
+        self.assertEqual(project_dashboard(values)["power"]["value"], "Ein")
+        self.assertEqual(project_dashboard(values)["silent"]["value"], "Silent-Modus aus")
