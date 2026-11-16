@@ -8,7 +8,7 @@ import {
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import { api } from './api'
-import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
+import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId, UpdateStatus } from './api'
 
 type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -45,6 +45,11 @@ const cloudCodeSelected = ref<CloudRow | null>(null)
 const accountLoading = ref(false)
 const accountLoaded = ref(false)
 const cloudScanLoading = ref(false)
+const updateInfo = ref<UpdateStatus | null>(null)
+const updateLoading = ref(false)
+const updateRequesting = ref(false)
+const updateError = ref('')
+const updateMessage = ref('')
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
 const cloudStatusLoading = ref(false)
@@ -170,6 +175,7 @@ function syncRoute() {
   if (page.value === 'settings') {
     void loadCloudLogs()
     void loadCloudStatus()
+    void loadGitUpdateStatus()
   }
 }
 function navigate(target: Page, term = '') {
@@ -309,6 +315,32 @@ async function rescanCloud() {
   }
 }
 
+async function loadGitUpdateStatus() {
+  updateLoading.value = true
+  updateError.value = ''
+  try { updateInfo.value = await api.updateStatus() }
+  catch (e) { updateError.value = e instanceof Error ? e.message : 'Update-Status nicht erreichbar' }
+  finally { updateLoading.value = false }
+}
+async function submitGitUpdate() {
+  if (!secureAdminContext || !cloudAdminPassword.value) {
+    updateError.value = 'HTTPS und Web-Administrationspasswort erforderlich.'
+    return
+  }
+  updateRequesting.value = true
+  updateError.value = ''
+  updateMessage.value = ''
+  try {
+    await api.requestUpdate(cloudAdminPassword.value)
+    updateMessage.value = 'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert den passenden Git-Build. Die Web-App kann dabei kurz neu starten.'
+    // Do not claim an installation succeeded: completion is observed separately.
+  } catch (e) {
+    updateError.value = e instanceof Error ? e.message : 'Update-Anforderung fehlgeschlagen'
+  } finally {
+    updateRequesting.value = false
+  }
+}
+
 async function loadCloudStatus() {
   try { cloudStatus.value = await api.cloudStatus() }
   catch { cloudStatus.value = null }
@@ -430,7 +462,7 @@ onMounted(async () => {
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
-  if (page.value === 'settings') await loadCloudLogs()
+  if (page.value === 'settings') await Promise.all([loadCloudLogs(), loadGitUpdateStatus()])
   scheduleRefresh()
   scheduleValueRefresh()
 })
@@ -715,6 +747,32 @@ onBeforeUnmount(() => {
           <label class="field-label" for="live-interval">Intervall (10–3600 Sekunden)</label>
           <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
+        </section>
+        <section class="settings-panel panel">
+          <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
+            <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
+          <p class="section-hint">Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC installiert.</p>
+          <div class="update-versions">
+            <div><span>Installierter Commit</span><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong></div>
+            <div><span>GitHub main</span><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong></div>
+            <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
+            <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
+          </div>
+          <p v-if="updateInfo?.update_available" class="success-text">Ein neuer GitHub-Commit ist verfügbar.</p>
+          <p v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote" class="section-hint">Installierter Code entspricht dem aktuellen main-Commit.</p>
+          <p v-if="!updateInfo?.installed" class="section-hint">Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code></p>
+          <div class="update-actions">
+            <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
+              <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
+            </button>
+            <button type="button" class="main-action" :disabled="!updateInfo?.installed || updateInfo?.running || updateInfo?.pending || !cloudAdminPassword || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
+              <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
+              {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
+            </button>
+          </div>
+          <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
+          <p v-if="updateError" class="read-error">{{ updateError }}</p>
+          <p class="section-hint">Für den Update-Knopf das Administrationspasswort im Bereich „Cloud-Zugang & Geräte“ eingeben. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
         </section>
         <section class="settings-panel panel cloud-panel">
           <div class="section-head"><div><span class="section-caption">PHNIX / WARMLINK</span><h2>Cloud-Zugang & Geräte</h2></div><Cloud :size="24" /></div>
