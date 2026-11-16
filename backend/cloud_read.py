@@ -167,7 +167,11 @@ class CloudReader:
                 if token and isinstance(token, str):
                     self.token = token
                     self.login_method = method
+                    from backend.cloud_state import log_event
+                    log_event("auth", "Cloud-Anmeldung erfolgreich")
                     return
+        from backend.cloud_state import log_event
+        log_event("error", "Cloud-Anmeldung abgelehnt")
         raise CloudError("Cloud-Anmeldung fehlgeschlagen (Zugangsdaten prüfen)")
 
     def _request_auth(self, endpoint: str, payload: dict[str, Any],
