@@ -126,7 +126,7 @@ def admin_login(payload: AdminLogin, request: Request, response: Response):
     token = create_admin_session()
     response.set_cookie(
         key=session_cookie_name(), value=token, httponly=True,
-        secure=is_https, samesite="strict", path="/",
+        secure=is_https, samesite="strict", path="/", max_age=30 * 24 * 3600,
     )
     cloud_log_event("auth", "Web-Administrator angemeldet")
     return {"authenticated": True, "role": "admin"}

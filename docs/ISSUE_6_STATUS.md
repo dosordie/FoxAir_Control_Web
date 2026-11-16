@@ -35,3 +35,17 @@ Eine lokale Sperre und Ruheprüfung koordinieren **keinen fremden DTU-Master auf
 - Optional konfigurierbarer Stale-Grenzwert und individuelle Admin-Konten.
 
 CI veröffentlicht nach erfolgreichem Backend-/Frontendlauf `web-dist` mit `.build-source-sha`. Installation erst, wenn diese Revision zum aktuellen `main` passt.
+
+## Zweiter Prüfschritt
+
+- Delta jetzt Vorlauf minus Soll; positiv bedeutet Vorlauf wärmer als Soll.
+- Parametercode im Rahmen, MAIN-Adresse darunter; Hauptfensterregister behalten MAIN-Darstellung.
+- Verbindungseinstellungen per Schaltfläche ein-/ausblendbar (Cloud und LTE).
+- Anmeldung 30 Tage mit HttpOnly-Cookie; serverseitig nur Tokenhashes privat gespeichert, überlebt Dienstneustarts. Abmelden widerruft die Sitzung.
+- Zusätzliche Browser-Bestätigungsabfrage beim Schreiben entfernt; Validierung und Readback bleiben.
+- LTE TX/RX, CRC-bestätigte Antworten, ACKs und unklare Antworten erscheinen im Verbindungsprotokoll.
+- Versionsanzeige unterscheidet aktuellen Build und neue Version deutlicher.
+- Grauer Hero-Hintergrund bei gemeldetem Power=Aus.
+- Serverlogs geprüft: sporadische LTE-Lesefehler, danach erfolgreiche Reads. HTTP-200-Schreibantwort allein gilt nicht als Hardwarebestätigung.
+
+Weiter offen: dauerhafter passiver Busempfang, vollständiger Mapping-Audit gegen Desktop, allgemeine Schreibfreigaben mit quellbasierten Wertebereichen, Betriebs-Popups, grafische Spezialdialoge und neues WP-Motiv. Displaybus bleibt nicht implementiert. Kein Modus-/Power-Test mit Geräteänderung in diesem Schritt.

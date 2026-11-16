@@ -14,6 +14,7 @@ class SessionPermissionsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory()
         self.patches = [
+            patch("backend.admin_session.SESSION_FILE", Path(self.tmp.name) / "sessions.json"),
             patch.object(cloud_config, "ADMIN_FILE", Path(self.tmp.name) / "admin.json"),
             patch.object(cloud_config, "CLOUD_FILE", Path(self.tmp.name) / "cloud.json"),
         ]
@@ -58,6 +59,15 @@ class SessionPermissionsTests(unittest.TestCase):
                                   headers={"x-foxair-admin": "1"})
         self.assertEqual(logout.status_code, 200)
         self.assertEqual(self.client.get("/api/admin/session").json()["role"], "reader")
+
+    def test_session_survives_memory_reset_and_stores_no_bearer_token(self):
+        from backend import admin_session
+        token = admin_session.login()
+        self.assertNotIn(token, admin_session.SESSION_FILE.read_text())
+        admin_session._SESSIONS.clear()
+        self.assertTrue(admin_session.authenticated(token))
+        admin_session.logout(token)
+        self.assertFalse(admin_session.authenticated(token))
 
     def test_wrong_password_does_not_create_session(self):
         result = self.client.post("/api/admin/login", json={"admin_password": "wrong"})

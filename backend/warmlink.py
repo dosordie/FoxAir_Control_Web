@@ -12,6 +12,7 @@ import time
 
 from backend.rtu import with_crc, _bus_guard, _bus_locks
 from backend.warmlink_frames import find_frames
+from backend.cloud_state import log_event
 
 _last_write = {}
 
@@ -62,6 +63,7 @@ class WarmlinkSession:
 
     def exchange(self, request, mode, register, count):
         self.quiet()
+        log_event("lte", f"LTE TX: {mode}, MAIN {register}, Anzahl {count}")
         self.sock.sendall(request)
         deadline = time.monotonic() + self.endpoint.timeout
         try:
@@ -77,11 +79,14 @@ class WarmlinkSession:
                     if mode == "read" and kind == "read-response":
                         if length != count * 2:
                             raise ValueError("LTE-Antwort gehört nicht zur aktuellen Anfrage")
+                        log_event("lte", f"LTE RX: MAIN {register}, Anzahl {count}, CRC gültig")
                         return [int.from_bytes(payload[i:i+2], "big") for i in range(0, length, 2)]
                     if mode == "write" and kind == "write-response" and start == register and length == count:
+                        log_event("lte", f"LTE Schreib-ACK: MAIN {register}")
                         return []
             raise TimeoutError("Keine eindeutige LTE-Antwort; kein automatischer Retry")
         except (OSError, ValueError):
+            log_event("lte-error", "LTE-Antwort unklar oder Timeout; Verbindung gesperrt")
             self.poisoned = True
             raise
 

@@ -68,6 +68,7 @@ const writeBusy = ref(false)
 const writeReading = ref(false)
 const lteWriteSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
 const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99})
+const connectionSettingsOpen = ref(false)
 const lteBusy = ref(false)
 const lteMessage = ref('')
 const lteError = ref('')
@@ -122,13 +123,7 @@ async function submitCloudWrite(code: FirstWriteCode) {
   const desired = writeValueText(writeDrafts.value[code])
   if (!canWrite(code) || !source || source.value === null || !desired) return
   const description = code === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert'
-  const choice = code === 'Mode'
-    ? ({'0':'Warmwasser','1':'Heizen','2':'Kühlen','3':'Warmwasser + Heizen','4':'Warmwasser + Kühlen'} as Record<string,string>)[desired] || desired
-    : desired + ' °C'
   const isLte = selectedTransport.value === 'warmlink_raw'
-  if (!window.confirm(description + ' ändern?\nAktuell: ' + source.value +
-    (code === 'R02' ? ' °C' : '') + '\nNeu: ' + choice +
-    '\n\nEin Steuerbefehl wird gesendet, danach der Wert kontrolliert.')) return
   writeBusy.value = true
   writeFeedback.value = ''
   writeError.value = ''
@@ -192,7 +187,7 @@ const supplyDelta = computed(() => {
   const target = Number(String(data.target.value).replace(',', '.'))
   const supply = Number(String(data.supply?.value ?? '').replace(',', '.'))
   return Number.isFinite(target) && data.supply != null && Number.isFinite(supply)
-    ? Math.round((target - supply) * 10) / 10 : null
+    ? Math.round((supply - target) * 10) / 10 : null
 })
 const waterSpread = computed(() => {
   const data = snapshot.value?.metrics
@@ -696,7 +691,7 @@ onBeforeUnmount(() => {
 
     <main>
       <template v-if="page === 'home'">
-        <section class="heat-hero">
+        <section class="heat-hero" :class="{ 'heat-hero-off': powerText === 'Aus' }">
           <div class="room-illustration" aria-hidden="true"><i></i><i></i><i></i></div>
           <div class="hero-content">
             <div class="hero-top">
@@ -720,7 +715,7 @@ onBeforeUnmount(() => {
                 <div class="temp-adjust target-readonly">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                 </div>
-                <span class="target-delta">Δ Soll–VL: {{ deltaText(supplyDelta) }} K</span>
+                <span class="target-delta">Δ VL–Soll: {{ deltaText(supplyDelta) }} K</span>
                 <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>
@@ -853,8 +848,8 @@ onBeforeUnmount(() => {
             <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
-                <span class="register-code">{{ entry.register }}</span>
-                <span class="register-title">{{ entry.name }}<small>{{ entry.code || 'MAIN' }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
+                <span class="register-code">{{ entry.code || entry.register }}</span>
+                <span class="register-title">{{ entry.name }}<small>MAIN {{ entry.register }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
                 <span class="register-measure" :class="{ unknown: currentCloudRegisterValue(entry.register)?.value == null,
                     'is-stale': currentCloudRegisterValue(entry.register)?.quality === 'stale' }"
                   :title="relativeTimestamp(currentCloudRegisterValue(entry.register)?.timestamp)">
@@ -869,7 +864,7 @@ onBeforeUnmount(() => {
             <div v-else class="register-items">
               <button v-for="entry in filteredCloudRows" :key="entry.code" class="register-item"
                 :class="{ active: cloudCodeSelected?.code === entry.code }" @click="cloudCodeSelected = entry">
-                <span class="register-code">{{ entry.register ?? entry.code }}</span>
+                <span class="register-code">{{ entry.code }}</span>
                 <span class="register-title">{{ entry.name }}
                   <small>{{ entry.register ? 'MAIN ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
                 <span class="register-measure" :class="{ unknown: entry.value == null, 'is-stale': entry.quality === 'stale' }" :title="relativeTimestamp(entry.timestamp)">
@@ -941,7 +936,7 @@ onBeforeUnmount(() => {
       <template v-else>
         <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindung und Anzeige für dieses Gerät.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <section class="settings-panel panel">
-          <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2></div><ShieldCheck :size="24" /></div>
+          <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen {{ connectionSettingsOpen ? 'schließen' : 'öffnen' }}</button></div><ShieldCheck :size="24" /></div>
           <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Sie öffnet keine dauerhafte Modbus-Verbindung.</p>
           <div class="transport-options">
             <label v-for="option in (transports.length ? transports : [
@@ -959,7 +954,7 @@ onBeforeUnmount(() => {
           <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-Anschluss unten konfigurieren; Display-Anbindung folgt separat.</p></div>
           <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
-        <section class="settings-panel panel">
+        <section v-if="connectionSettingsOpen" class="settings-panel panel">
           <div class="section-heading"><div><span class="section-caption">LTE / WARMLINK</span><h2>Lokaler LTE-Bus</h2></div></div>
           <p class="section-hint">Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.</p>
           <p v-if="!adminAuthenticated" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
@@ -982,7 +977,7 @@ onBeforeUnmount(() => {
           <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
         </section>
-        <section class="settings-panel panel cloud-panel">
+        <section v-if="connectionSettingsOpen" class="settings-panel panel cloud-panel">
           <div class="section-head"><div><span class="section-caption">PHNIX / WARMLINK</span><h2>Cloud-Zugang & Geräte</h2></div><Cloud :size="24" /></div>
           <p>Cloud: <strong>{{ cloudStatus?.configured ? 'eingerichtet' : 'nicht vollständig' }}</strong> · Benutzer {{ cloudStatus?.username_configured ? 'vorhanden' : 'fehlt' }} · Gerätekennung {{ cloudStatus?.device_configured ? 'vorhanden' : 'fehlt' }}</p>
           <p v-if="!cloudStatus?.admin_enabled" class="read-error">Web-Administration lokal einrichten: <code>python3 scripts/setup_web_admin.py</code></p>
@@ -1059,6 +1054,8 @@ onBeforeUnmount(() => {
             <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
             <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
           </div>
+          <p v-if="updateInfo?.remote && updateInfo?.deployed === updateInfo.remote" class="success-text"><strong>Alles aktuell – neueste Web-Version installiert.</strong></p>
+          <p v-else-if="updateInfo?.remote && updateInfo?.deployed !== updateInfo.remote" class="notice"><strong>Neue Version verfügbar{{ updateInfo.build_ready ? ' – bereit zur Installation' : ' – Build läuft noch' }}.</strong></p>
           <p v-if="updateInfo?.update_available" class="success-text">Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.</p>
           <p v-if="updateInfo?.remote && !updateInfo?.build_ready" class="section-hint">
             GitHub Actions baut noch den passenden Web-Stand. Der Updateknopf ist bis zur Fertigstellung gesperrt.
@@ -1080,7 +1077,7 @@ onBeforeUnmount(() => {
         </section>
         <section class="settings-panel panel">
           <div class="section-head">
-            <div><span class="section-caption">DIAGNOSE</span><h2>Cloud-Protokoll</h2></div>
+            <div><span class="section-caption">DIAGNOSE</span><h2>Verbindungsprotokoll</h2></div>
             <button type="button" class="outlined-action" @click="loadCloudLogs"><RefreshCw :size="16" /> Aktualisieren</button>
           </div>
           <p class="section-hint">Letzte Ereignisse aus dem laufenden Webserver: Login-/Lese- und Scanstatus, ohne Zugangsdaten, Tokens oder Gerätekennungen. Das Protokoll wird beim Dienstneustart zurückgesetzt.</p>
@@ -1108,7 +1105,7 @@ onBeforeUnmount(() => {
         <div class="special-toolbar">
           <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
-            {{ specialLoading ? 'Frage Cloudwerte ab …' : 'Cloudwerte neu abfragen' }}
+            {{ specialLoading ? 'Frage Cloudwerte ab …' : 'Werte aktualisieren (Cloud)' }}
           </button>
           <span>{{ specialRows.filter(row => row.value !== null).length }} / {{ specialRows.length }} mit Wert</span>
         </div>
