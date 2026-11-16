@@ -31,6 +31,15 @@ export type CloudConfigStatus = {
   storage: string
   admin_enabled: boolean
 }
+export type UpdateStatus = {
+  installed: boolean
+  current: string | null
+  remote: string | null
+  update_available: boolean
+  pending: boolean
+  running: boolean
+  last_result: string | null
+}
 export type SpecialDialog = {
   id: string
   title: string
@@ -122,6 +131,9 @@ export const api = {
     post<CloudAccount>('/api/cloud/account', { admin_password }),
   cloudLogs: () => get<{ items: CloudLog[] }>('/api/cloud/logs'),
   cloudValues: () => get<CloudValues>('/api/cloud/values'),
+  updateStatus: () => get<UpdateStatus>('/api/update/status'),
+  requestUpdate: (admin_password: string) =>
+    post<{requested:boolean}>('/api/update/request', {admin_password}),
   specialDialogs: () => get<{items: SpecialDialog[]}>('/api/cloud/dialogs'),
   refreshSpecialDialog: (id: string) =>
     post<{updated:boolean;reason?:string;count:number;unsupported?:number}>(
