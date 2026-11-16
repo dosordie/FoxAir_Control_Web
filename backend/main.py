@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt, StrictFloat
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -39,9 +39,10 @@ DASHBOARD_FIELDS = {
     "target": 1158,
     "base_target": 1158,
     "compressor_frequency": 2072,
+    "silent": 1030,
 }
 # FC03 ranges reduce requests; avoid active probing on the Display/LTE bus.
-READ_BLOCKS = ((1011, 1), (1158, 1), (2012, 3), (2035, 14), (2072, 1), (2077, 1))
+READ_BLOCKS = ((1011, 1), (1030, 1), (1158, 1), (2012, 3), (2035, 14), (2072, 1), (2077, 1))
 VALID_TRANSPORTS = set(TRANSPORTS)
 
 
@@ -236,9 +237,9 @@ def update_request(payload: CloudAdminAction, request: Request):
 
 
 class CloudFirstWrite(BaseModel):
-    code: Literal["Mode", "R02"]
-    value: str | int | float
-    expected: str | int | float
+    code: Literal["Power", "Mode", "H22", "R02"]
+    value: str | StrictInt | StrictFloat
+    expected: str | StrictInt | StrictFloat
     admin_password: str = Field(default="", max_length=256)
 
 
@@ -266,6 +267,37 @@ def write_cloud_first(payload: CloudFirstWrite, request: Request):
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except CloudError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+class TimerWrite(BaseModel):
+    transport: Literal["cloud", "warmlink_raw"]
+    values: dict[str, StrictInt]
+    expected: dict[str, StrictInt]
+
+
+@app.get("/api/timers/{kind}")
+def timer_read(kind: str, transport: str = "cloud"):
+    from backend import timers
+    try:
+        return timers.read(kind, transport)
+    except WriteValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except (OSError, ValueError, CloudError) as exc:
+        raise HTTPException(status_code=503, detail="Timer konnte nicht gelesen werden: " + str(exc)) from None
+
+
+@app.post("/api/timers/{kind}")
+def timer_write(kind: str, payload: TimerWrite, request: Request):
+    from backend import timers
+    require_admin(request)
+    try:
+        return timers.write(kind, payload.transport, payload.values, payload.expected)
+    except WriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except WriteValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except (OSError, ValueError, CloudError) as exc:
+        raise HTTPException(status_code=503, detail="Timerprüfung fehlgeschlagen: " + str(exc)) from None
 
 
 @app.get("/api/registers")

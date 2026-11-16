@@ -46,6 +46,16 @@ class CloudFirstWriteTests(unittest.TestCase):
         )
         self.assertEqual(self.reader.read_codes.call_count, 2)
 
+    def test_power_uses_binary_engineering_payload_and_readback(self):
+        self.reader.read_codes.side_effect = [{"Power":{"value":0}},{"Power":{"value":1}}]
+        self.assertTrue(cloud_write.write_control("Power",1,0)["confirmed"])
+        self.reader._post.assert_called_once()
+        self.assertEqual(self.reader._post.call_args.args[1]["param"][0]["value"],"1")
+
+    def test_silent_rejects_nonbinary_before_network(self):
+        with self.assertRaises(WriteValidationError): cloud_write.write_control("H22",2,0)
+        self.reader.read_codes.assert_not_called()
+
     def test_r02_uses_live_r10_r11_limits_and_cloud_engineering_value(self):
         self.reader.read_codes.side_effect = [
             {"R02": {"value": "35.0"}, "R10": {"value": 25}, "R11": {"value": 53}},

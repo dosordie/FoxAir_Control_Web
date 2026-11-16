@@ -80,6 +80,25 @@ class LteStreamTests(unittest.TestCase):
         data[-1] ^= 128
         self.assertEqual(find_frames(data, 125), [])
 
+    def test_observed_orphan_tail_is_drained_before_any_transmit(self):
+        sock = Mock()
+        sock.recv.side_effect = [b"\x00\x3d"] + [socket.timeout()] * 30
+        client = warmlink.WarmlinkSession(sock, Endpoint("private", 1, timeout=5))
+        ticks = iter(i * .05 for i in range(300))
+        with patch("backend.warmlink.time.monotonic", side_effect=lambda: next(ticks)):
+            client.quiet()
+        self.assertEqual(client.buffer, bytearray())
+        sock.sendall.assert_not_called()
+
+    def test_incomplete_real_candidate_is_never_discarded_to_send(self):
+        sock = Mock()
+        sock.recv.side_effect = [b"\x63\x03\x02\x01"] + [socket.timeout()] * 50
+        client = warmlink.WarmlinkSession(sock, Endpoint("private", 1, timeout=2))
+        ticks = iter(i * .05 for i in range(300))
+        with patch("backend.warmlink.time.monotonic", side_effect=lambda: next(ticks)):
+            with self.assertRaises(TimeoutError): client.read_holding(1158)
+        sock.sendall.assert_not_called()
+
 
 class LteWriteTests(unittest.TestCase):
     def setUp(self):
@@ -112,6 +131,11 @@ class LteWriteTests(unittest.TestCase):
         with self.assertRaises(WriteValidationError):
             warmlink.write_control("R02", 40, 35)
         self.client.write_one.assert_not_called()
+
+    def test_silent_switch_targets_main_1030_without_temperature_scale(self):
+        self.client.read_holding.side_effect = [[0],[1]]
+        self.assertTrue(warmlink.write_control("H22",1,0)["confirmed"])
+        self.client.write_one.assert_called_once_with(1030,1)
 
     def test_unclear_write_not_retried(self):
         self.client.read_holding.return_value = [1]

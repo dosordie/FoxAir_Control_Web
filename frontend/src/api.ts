@@ -6,7 +6,7 @@ export type Dashboard = {
   timestamp: string
   error: string | null
   device_name?: string
-  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'compressor_frequency', Metric>
+  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency', Metric>
   live_supported: boolean
 }
 export type Transport = { id: TransportId; name: string; configured: boolean; read_supported: boolean; reason: string }
@@ -150,10 +150,13 @@ async function get<T>(path: string): Promise<T> {
   }
 }
 export type WarmlinkConfig = {host:string;port:number;enabled:boolean;slave:number}
+export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
 export const api = {
+  timerRead: (kind:string,transport:TransportId) => get<TimerSnapshot>('/api/timers/'+kind+'?transport='+encodeURIComponent(transport)),
+  timerWrite: (kind:string,transport:TransportId,values:Record<string,number>,expected:Record<string,number>) => post<{confirmed:boolean;status:string;values?:Record<string,number>;message?:string}>('/api/timers/'+kind,{transport,values,expected}),
   warmlinkConfig: () => post<WarmlinkConfig>('/api/warmlink/config', {}),
   saveWarmlinkConfig: (config: WarmlinkConfig) => post<WarmlinkConfig>('/api/warmlink/config/save', config),
-  warmlinkWrite: (code:'Mode'|'R02',value:string,expected:string) => post<CloudWriteResult>('/api/warmlink/write',{code,value,expected}),
+  warmlinkWrite: (code:'Power'|'Mode'|'H22'|'R02',value:string,expected:string) => post<CloudWriteResult>('/api/warmlink/write',{code,value,expected}),
   health: () => get<{ ok: boolean; version: string }>('/api/health'),
   transports: () => get<{ items: Transport[]; live_supported: boolean }>('/api/transports'),
   dashboard: (transport: TransportId, live = false) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport) + (live ? '&live=true' : '')),
@@ -164,7 +167,7 @@ export const api = {
     post<{ authenticated: boolean; role: string }>('/api/admin/login', { admin_password }),
   adminLogout: () =>
     post<{ authenticated: boolean; role: string }>('/api/admin/logout', {}),
-  cloudWrite: (code: 'Mode' | 'R02', value: string, expected: string) =>
+  cloudWrite: (code: 'Power' | 'Mode' | 'H22' | 'R02', value: string, expected: string) =>
     post<CloudWriteResult>('/api/cloud/write', { code, value, expected }),
   cloudStatus: () => get<CloudConfigStatus>('/api/cloud/config'),
   cloudSave: (admin_password: string, username: string, password: string, device_code: string) =>

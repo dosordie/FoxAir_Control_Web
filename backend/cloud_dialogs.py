@@ -1,8 +1,7 @@
-"""Read-only special configuration dialogs (source-backed Cloud codes).
+"""Source-backed special dialog definitions and targeted Cloud refresh.
 
-No register writes. The dialog code lists are intentionally reviewed against
-FoxAir_Control, while requests are further constrained to bundled catalog
-entries and confirmed live-supported codes. No arbitrary code input.
+Timer editing uses backend.timers; operating switches use cloud_write.
+SG, AT and fault entries remain read-only.
 """
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ _BASE_DIALOGS = (
      ("Timer_Mute_On_En", "TimerMuteOnHour", "TimerMuteOnMinute",
       "Timer_Mute_Off_En", "TimerMuteOffHour", "TimerMuteOffMinute")),
     ("timer", "Zeitprogramme", "Ein/Aus-Wochentimer und Betriebsarten-Timer M1–M6",
-     tuple(str(v) for v in range(1256, 1270)) +
+     tuple(f"KG{v}" for v in range(1, 13)) + ("KG13~KG28", "KG29~KG44", "KG45~KG60") +
      tuple(f"M{n} {suffix}" for n in range(1, 7)
            for suffix in ("Start", "End", "Mode", "Heating Target",
                           "Cooling Target", "Hot Water Target", "Max. Power")) +
@@ -51,7 +50,7 @@ def definitions() -> list[dict[str, Any]]:
         result.append({
             "id": slug, "title": name, "description": description,
             "codes": [row["code"] for row in rows],
-            "read_only": True, "count": len(rows),
+            "read_only": slug not in ("wp", "timer", "silent"), "count": len(rows),
         })
     return result
 

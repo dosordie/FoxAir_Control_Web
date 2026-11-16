@@ -41,6 +41,7 @@ CLOUD_REGISTERS: dict[int, str] = {
     2014: "2014",  # Firmware-selected temperature setpoint (not R02 base)
 
     1158: "R02",
+    1030: "H22",
     2072: "T31",  # Actual compressor frequency, not T30 requested frequency
 }
 
@@ -55,6 +56,7 @@ DASHBOARD_MAPPING = {
     "target": 1158,
     "selected_target": 2014,
     "compressor_frequency": 2072,
+    "silent": 1030,
 }
 
 

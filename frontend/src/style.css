@@ -271,7 +271,7 @@ a{color:inherit}
 }
 
 /* Issue #6: fan only animates while the compressor unit's on/off state is live. */
-.fan-ring.fan-running svg{animation:foxair-fan-rotate 3s linear infinite;transform-origin:50% 50%}
+.fan-ring.fan-running .fan-rotor{animation:foxair-fan-rotate 3s linear infinite;transform-origin:50% 50%}
 @keyframes foxair-fan-rotate{to{transform:rotate(360deg)}}
 .is-stale{opacity:.62}
 .is-stale .register-measure{color:#ad7b3d}
@@ -293,7 +293,7 @@ a{color:inherit}
  .main-register-row{gap:7px}
  .main-register-row>strong{font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis}
 }
-@media(prefers-reduced-motion:reduce){.fan-ring.fan-running svg{animation:none}}
+@media(prefers-reduced-motion:reduce){.fan-ring.fan-running .fan-rotor{animation:none}}
 
 /* Issue #6: responsive, read-only specialist configuration dialogs. */
 .special-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(16,21,30,.56);padding:18px}
@@ -367,3 +367,16 @@ a{color:inherit}
 .illustrated-unit .fan-ring svg{width:30px;height:30px}.illustrated-unit .compressor-hz{left:12px;top:12px;bottom:auto;background:#fffdf4;color:#34423c;box-shadow:0 2px 8px #0001}
 @media(max-width:600px){.connection-dialog{width:calc(100vw - 16px);max-height:94dvh;border-radius:18px}.connection-dialog-content{padding:0 16px 20px}.connection-dialog-header{padding-top:16px}.connection-dialog-header h2{font-size:20px}.unit.illustrated-unit{width:min(100%,340px)}}
 @media(max-width:600px){.connection-dialog-header{flex-wrap:wrap}.connection-dialog-header>div{flex-basis:100%;min-width:0}.connection-dialog-header>.outlined-action{margin-left:auto}.connection-dialog-content{min-width:0}.connection-section{min-width:0;overflow-wrap:anywhere}.connection-section input{min-width:0;max-width:100%}.connection-section .outlined-action{max-width:100%;white-space:normal}}
+
+.unit.illustrated-unit{aspect-ratio:3/2;background:transparent;box-shadow:none;overflow:visible;border-radius:0;filter:drop-shadow(0 14px 12px #0003)}
+.illustrated-unit .fan-ring.integrated-fan{left:10.6%;top:18.2%;right:auto;bottom:auto;width:42.4%;height:auto;aspect-ratio:1;border:0;background:radial-gradient(circle,#161c20,#000);box-shadow:none;border-radius:50%;overflow:hidden}
+.illustrated-unit .integrated-fan .fan-rotor{display:block;width:100%;height:100%;opacity:.88}
+.integrated-fan:after{content:'';position:absolute;inset:2%;border-radius:50%;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 7px,#11171cbb 7px 9px);border:2px solid #3a3e41}
+.illustrated-unit .compressor-hz{top:auto;bottom:-22px;left:40%;background:#ffffffd9}.unit-ground{display:none}
+.operation-button{border:0;background:transparent;color:inherit;text-align:left;border-radius:12px;cursor:pointer}.operation-button:hover{background:#fff4e8}.operation-button:focus-visible{outline:2px solid #ef8a37;outline-offset:4px}
+.operation-dialog{width:min(480px,calc(100vw - 28px));border:0;border-radius:22px;padding:24px;max-height:90dvh;overflow:auto}.operation-dialog::backdrop{background:#10151e99;backdrop-filter:blur(4px)}.operation-dialog .settings-input{margin:10px 0 18px}
+.timer-editor{overflow:auto;min-height:0;padding:4px 4px 12px}.timer-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.timer-tabs button{border:1px solid #e4e7eb;background:#fff;border-radius:10px;padding:10px 14px;color:#4d5561}.timer-tabs button.selected{background:#fff0df;border-color:#f7a65a;color:#a84d0a;font-weight:700}.timer-fields{border:0;padding:0;margin:16px 0}.timer-time-card{padding:16px;background:#f7f8fa;border:1px solid #edf0f2;border-radius:14px;margin:10px 0;display:grid;gap:12px}.timer-days{display:flex;flex-wrap:wrap;gap:12px}.timer-days label{display:flex;align-items:center;gap:4px}.timer-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}.timer-form-grid label,.timer-time-card>label{display:grid;gap:8px}.timer-form-grid input,.timer-form-grid select{min-width:0;width:100%}@media(max-width:600px){.timer-form-grid{grid-template-columns:1fr}.operation-row{gap:8px}.operation-button{padding:8px}.operation-dialog{padding:18px}}
+
+.timer-time-card>label:has(input[type=checkbox]){display:flex;align-items:center;gap:10px}.timer-time-card input[type=checkbox]{width:18px;height:18px;flex:0 0 18px}
+
+.native-special{margin:auto;border:0;color:#292c32;box-shadow:0 24px 90px #0004}.native-special:not([open]){display:none}.native-special::backdrop{background:#10151e99;backdrop-filter:blur(4px)}.special-dialog-content{display:flex;flex-direction:column;min-height:0;overflow:hidden}.special-dialog-content>.special-top{flex-shrink:0}.special-dialog-content>.special-rows{min-height:0}.operation-dialog:not([open]){display:none}

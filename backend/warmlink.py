@@ -2,7 +2,7 @@
 
 There is no physical multi-master arbitration on RS485. We wait for quiet,
 drain existing traffic, serialize our requests, reject competing FC03 reads,
-and close on every timeout/ambiguity. Never retry a write. FC16 unsolicited
+drain orphan tails only after 800 ms quiet, and close on timeout/ambiguity. Never retry a write. FC16 unsolicited
 blocks and local echoes are distinguished from responses by the stream parser.
 """
 from contextlib import contextmanager
@@ -11,7 +11,7 @@ import threading
 import time
 
 from backend.rtu import with_crc, _bus_guard, _bus_locks
-from backend.warmlink_frames import find_frames
+from backend.warmlink_frames import find_frames, next_frame_pos
 from backend.cloud_state import log_event
 
 _last_write = {}
@@ -54,11 +54,15 @@ class WarmlinkSession:
                     foreign_read = True
                 elif f[0] == self.endpoint.slave and f[9] == "read-response":
                     foreign_read = False
-            if time.monotonic() - quiet_since >= .3:
+            if time.monotonic() - quiet_since >= .8:
                 if foreign_read:
                     raise ValueError("Fremde LTE-Leseabfrage noch unbeantwortet")
+                if self.buffer and next_frame_pos(self.buffer, -1) >= 0:
+                    # Preserve a real incomplete candidate through the full
+                    # deadline. TCP can split a complete RTU frame arbitrarily.
+                    continue
                 if self.buffer:
-                    raise ValueError("Unvollständiger LTE-Verkehr; kein Telegramm gesendet")
+                    log_event("lte", "LTE-Restbytes ohne Frameanfang nach Ruhephase verworfen")
                 self.buffer.clear()
                 return
         raise TimeoutError("LTE-Bus belegt; kein Telegramm gesendet")
@@ -129,7 +133,7 @@ def write_control(code, requested, expected):
     if endpoint is None:
         raise WriteValidationError("LTE-Anschluss nicht aktiviert")
     desired, _ = _format_value(code, requested)
-    register = {"Mode": 1012, "R02": 1158}[code]
+    register = {"Power": 1011, "Mode": 1012, "H22": 1030, "R02": 1158}[code]
     scale = 10 if code == "R02" else 1
     with open_warmlink(endpoint) as client:
         key = (endpoint.host, endpoint.port)

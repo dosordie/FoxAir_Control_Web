@@ -20,7 +20,7 @@ class CloudDialogTests(unittest.TestCase):
             dialogs = cloud_dialogs.definitions()
         self.assertEqual({row["id"] for row in dialogs},
                          {"wp", "at", "sg", "silent", "timer", "fault"})
-        self.assertTrue(all(row["read_only"] for row in dialogs))
+        self.assertEqual({row["id"] for row in dialogs if row["read_only"]}, {"sg", "at", "fault"})
         sg = next(row for row in dialogs if row["id"] == "sg")
         self.assertEqual(sg["codes"], ["SG01", "SG Status"])
 

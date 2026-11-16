@@ -116,6 +116,22 @@ class SessionPermissionsTests(unittest.TestCase):
                 self.assertEqual(self.client.post(path, json=payload, headers={"x-foxair-admin": "1"}).status_code, 200)
                 action.assert_called_once()
 
+    def test_timer_write_requires_admin_and_rejects_noninteger_words(self):
+        values = {str(reg):0 for reg in range(1244,1250)}
+        payload = {"transport":"warmlink_raw","values":values,"expected":values}
+        with patch("backend.timers.write",return_value={"confirmed":True}) as write:
+            self.assertEqual(self.client.post("/api/timers/silent",json=payload,headers={"x-foxair-admin":"1"}).status_code,403)
+            self.client.post("/api/admin/login",json={"admin_password":"secure-password-for-tests"})
+            self.assertEqual(self.client.post("/api/timers/silent",json=payload).status_code,403)
+            self.assertEqual(self.client.post("/api/timers/silent",json=payload,headers={"x-foxair-admin":"1","origin":"https://other.invalid"}).status_code,403)
+            write.assert_not_called()
+            for invalid in (True,1.5):
+                result=self.client.post("/api/timers/silent",json={**payload,"values":{**values,"1244":invalid}},headers={"x-foxair-admin":"1"})
+                self.assertEqual(result.status_code,422)
+            write.assert_not_called()
+            self.assertEqual(self.client.post("/api/timers/silent",json=payload,headers={"x-foxair-admin":"1"}).status_code,200)
+            write.assert_called_once()
+
     def test_arbitrary_code_rejected_before_control(self):
         self.client.post("/api/admin/login", json={"admin_password": "secure-password-for-tests"})
         with patch("backend.main.write_control") as write:

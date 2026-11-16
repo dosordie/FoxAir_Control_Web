@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
-  ChevronRight, Clock3, Cloud, Fan, Gauge, HeartPulse, House,
+  ChevronRight, Clock3, Cloud, Gauge, HeartPulse, House,
   Power, RadioTower, RefreshCw, Search,
   Settings2, ShieldCheck, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
+import TimerEditor from './TimerEditor.vue'
 import { api, writeValueText } from './api'
 import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId, UpdateStatus } from './api'
 
@@ -29,6 +30,13 @@ const cloudOverview = ref<CloudValues | null>(null)
 const cloudLogs = ref<CloudLog[]>([])
 const specialDialogs = ref<SpecialDialog[]>([])
 const specialDialog = ref<string | null>(null)
+const specialDialogElement = ref<HTMLDialogElement|null>(null)
+watch(specialDialog, async id => {
+  await nextTick()
+  const dialog=specialDialogElement.value
+  if(id && dialog && !dialog.open) dialog.showModal()
+  else if(!id && dialog?.open) dialog.close()
+})
 const specialLoading = ref(false)
 const specialError = ref('')
 const specialMessage = ref('')
@@ -64,11 +72,38 @@ const adminBusy = ref(false)
 const loginOpen = ref(false)
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const adminLoginError = ref('')
-type FirstWriteCode = 'Mode' | 'R02'
-const writeDrafts = ref<Record<FirstWriteCode,string>>({ Mode: '', R02: '' })
+type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
+const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
 const writeBusy = ref(false)
 const writeReading = ref(false)
 const lteWriteSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
+const operationCode = ref<'Power'|'Mode'|'H22'|null>(null)
+const operationDialogElement = ref<HTMLDialogElement|null>(null)
+const operationSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
+const operationLabels = {Power:'Ein / Aus',Mode:'Betriebsart',H22:'Ruhemodus',R02:'Heizungs-Basissollwert'}
+watch(operationCode, code => {
+  const dialog=operationDialogElement.value
+  if(code && dialog && !dialog.open) dialog.showModal()
+  else if(!code){if(dialog?.open) dialog.close();operationSources.value={}}
+})
+async function refreshOperation(){
+  const code=operationCode.value
+  if(!code)return
+  const transport=selectedTransport.value
+  writeReading.value=true;writeError.value=''
+  try {
+    const row=await api.read({Power:1011,Mode:1012,H22:1030}[code],transport)
+    if(transport!==selectedTransport.value || code!==operationCode.value)return
+    const value=transport==='cloud'?row.value:row.raw??row.value
+    operationSources.value[code]={...row,value}
+    writeDrafts.value[code]=String(value)
+  } catch(e){writeError.value=e instanceof Error?e.message:'Lesen fehlgeschlagen'}
+  finally{writeReading.value=false}
+}
+async function openOperation(code:'Power'|'Mode'|'H22'){
+  writeFeedback.value='';writeError.value='';operationSources.value={};operationCode.value=code
+  await refreshOperation()
+}
 const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99})
 const connectionSettingsOpen = ref(false)
 const connectionDialogElement = ref<HTMLDialogElement | null>(null)
@@ -100,10 +135,12 @@ async function refreshWriteSources() {
   writeReading.value = true; writeError.value = ''
   const transport = selectedTransport.value
   try {
-    for (const [code, reg] of [['Mode',1012],['R02',1158]] as const) {
+    const codes:FirstWriteCode[]=page.value==='parameters'&&writableRegisterCode.value?[writableRegisterCode.value]:['Mode','R02']
+    for (const code of codes) {
+      const reg={Power:1011,Mode:1012,H22:1030,R02:1158}[code]
       const row = await api.read(reg, transport)
       if (transport !== selectedTransport.value) return
-      const value = transport === 'warmlink_raw' && code === 'Mode' ? row.raw ?? row.value : row.value
+      const value = transport === 'warmlink_raw' && code !== 'R02' ? row.raw ?? row.value : row.value
       if (transport === 'warmlink_raw') lteWriteSources.value[code] = {...row, value}
       writeDrafts.value[code] = String(value)
     }
@@ -114,13 +151,21 @@ async function refreshWriteSources() {
 const writeFeedback = ref('')
 const writeError = ref('')
 const writableRegisterCode = computed<FirstWriteCode | null>(() => {
+  if (selectedRegister.value?.register === 1011) return 'Power'
+  if (selectedRegister.value?.register === 1030) return 'H22'
   if (selectedRegister.value?.register === 1012) return 'Mode'
   if (selectedRegister.value?.register === 1158) return 'R02'
   return null
 })
 function writeSource(code: FirstWriteCode): CloudRow | RegisterValue | null {
+  if(operationSources.value[code]) return operationSources.value[code] || null
   if (selectedTransport.value === 'warmlink_raw') return lteWriteSources.value[code] || null
   return cloudRows.value.find(row => row.code === code) || null
+}
+function operationValueLabel(code:FirstWriteCode){
+  const value=String(writeSource(code)?.value ?? '—')
+  if(code==='Mode')return ({'0':'Warmwasser','1':'Heizen','2':'Kühlen','3':'Warmwasser + Heizen','4':'Warmwasser + Kühlen'} as Record<string,string>)[value] || value
+  return value==='0'?'Aus':value==='1'?'Ein':value
 }
 function canWrite(code: FirstWriteCode): boolean {
   const source = writeSource(code)
@@ -131,7 +176,7 @@ async function submitCloudWrite(code: FirstWriteCode) {
   const source = writeSource(code)
   const desired = writeValueText(writeDrafts.value[code])
   if (!canWrite(code) || !source || source.value === null || !desired) return
-  const description = code === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert'
+  const description = operationLabels[code]
   const isLte = selectedTransport.value === 'warmlink_raw'
   writeBusy.value = true
   writeFeedback.value = ''
@@ -145,7 +190,8 @@ async function submitCloudWrite(code: FirstWriteCode) {
     } else {
       writeError.value = result.message || 'Schreiben nicht bestätigt; bitte Wert kontrollieren.'
     }
-    if (isLte) {
+    if(operationCode.value) await refreshOperation()
+    else if (isLte) {
       lteWriteSources.value = {}
       await refreshWriteSources()
     } else await loadCloudValues()
@@ -398,6 +444,7 @@ async function openSpecialDialog(dialog: string) {
   if (!specialDialogs.value.some(x => x.id === dialog)) return
   specialLocalRows.value = []
   specialDialog.value = dialog
+  if(dialog==='timer'||dialog==='silent')return
   await loadCloudValues()
   void refreshSelectedSpecial()
 }
@@ -615,7 +662,7 @@ async function readRegister() {
     currentValue.value = await api.read(selectedRegister.value.register, selectedTransport.value)
     if (selectedTransport.value === 'cloud') await loadCloudValues()
     if (selectedTransport.value === 'warmlink_raw' && writableRegisterCode.value) {
-      const value = writableRegisterCode.value === 'Mode' ? currentValue.value.raw ?? currentValue.value.value : currentValue.value.value
+      const value = writableRegisterCode.value !== 'R02' ? currentValue.value.raw ?? currentValue.value.value : currentValue.value.value
       lteWriteSources.value[writableRegisterCode.value] = {...currentValue.value, value}
       writeDrafts.value[writableRegisterCode.value] = String(value)
     }
@@ -630,6 +677,8 @@ watch(selectedTransport, (value) => {
   currentValue.value = null
   lteWriteSources.value = {}
   specialLocalRows.value = []
+  operationSources.value = {}
+  operationCode.value = null
   if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
   void loadRegisters()
   clearTimeout(refreshTimer)
@@ -730,8 +779,10 @@ onBeforeUnmount(() => {
             <div class="hero-main">
               <div class="unit-container" aria-label="Illustration einer Wärmepumpe">
                 <div class="unit illustrated-unit">
-                  <img class="heatpump-art" src="/foxair-heatpump.png" alt="FoxAir-Wärmepumpe mit Fuchsmotiv" />
-                  <div class="fan-ring" :class="{ 'fan-running': fanRunning }"><Fan :size="94" :stroke-width="1.3" /></div>
+                  <img class="heatpump-art" src="/foxair-heatpump-transparent.png" alt="FoxAir-Wärmepumpe mit Fuchsmotiv" />
+                  <div class="fan-ring integrated-fan" :class="{ 'fan-running': fanRunning }" :aria-label="fanRunning?'Lüfter dreht':'Lüfter steht'">
+                    <svg class="fan-rotor" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="rotor-metal" x2="1" y2="1"><stop stop-color="#a6a9ac"/><stop offset=".5" stop-color="#343b40"/><stop offset="1" stop-color="#717a80"/></linearGradient></defs><g fill="url(#rotor-metal)" stroke="#1b2024" stroke-width=".6"><path v-for="rotation in [0,90,180,270]" :key="rotation" :transform="'rotate('+rotation+' 50 50)'" d="M49 48 C27 46 14 34 21 18 C35 8 52 19 56 37 L54 48Z"/></g><circle cx="50" cy="50" r="10" fill="#50585e" stroke="#828a90"/><circle cx="50" cy="50" r="3" fill="#252b30"/></svg>
+                  </div>
                   <span class="compressor-hz" :class="{ 'is-stale': snapshot?.metrics.compressor_frequency?.quality === 'stale' }" aria-label="Kompressor-Istfrequenz">{{ metric('compressor_frequency') }} Hz</span>
 
                 </div>
@@ -807,11 +858,11 @@ onBeforeUnmount(() => {
             </section>
 
             <section class="panel operating-panel">
-              <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div><span class="soft-tag">Nur Anzeige</span></div>
+              <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div><span class="soft-tag">Antippen zum Einstellen</span></div>
               <div class="operation-row">
-                <div class="operation"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></div>
-                <div class="operation"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></div>
-                <div class="operation"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>—</strong></div>
+                <button type="button" class="operation operation-button" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
+                <button type="button" class="operation operation-button" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
+                <button type="button" class="operation operation-button" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
               </div>
               <button class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
               <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreiben erfordert die Admin-Anmeldung.</p>
@@ -934,7 +985,7 @@ onBeforeUnmount(() => {
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
               <section v-if="writableRegisterCode && ['cloud','warmlink_raw'].includes(selectedTransport)" class="cloud-write-panel">
-                <strong>Steuerung: {{ writableRegisterCode === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert' }}</strong>
+                <strong>Steuerung: {{ operationLabels[writableRegisterCode] }}</strong>
                 <p class="section-hint">Nur für angemeldete Administratoren. Der vorhandene Wert wird vor dem Schreiben erneut geprüft; ohne Readback keine Bestätigung.</p>
                 <button type="button" class="outlined-action" :disabled="writeReading || writeBusy" @click="refreshWriteSources">Ausgangswerte neu lesen</button>
                 <label class="field-label" for="register-write-value">Neuer Wert</label>
@@ -943,6 +994,7 @@ onBeforeUnmount(() => {
                   <option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option>
                   <option value="4">Warmwasser + Kühlen</option>
                 </select>
+                <select v-else-if="writableRegisterCode!=='R02'" id="register-write-value" class="settings-input" v-model="writeDrafts[writableRegisterCode]"><option value="0">Aus</option><option value="1">Ein</option></select>
                 <input v-else id="register-write-value" class="settings-input" type="number" min="5" max="70" step="0.1" v-model="writeDrafts.R02" />
                 <button type="button" class="main-action" :disabled="!canWrite(writableRegisterCode)"
                   @click="submitCloudWrite(writableRegisterCode)">
@@ -1135,15 +1187,33 @@ onBeforeUnmount(() => {
       </div>
     </dialog>
 
-    <div v-if="specialDialog" class="special-overlay" @click.self="specialDialog = null">
-      <section class="special-modal panel" role="dialog" aria-modal="true" aria-labelledby="special-modal-title">
+    <dialog ref="operationDialogElement" class="operation-dialog panel" aria-labelledby="operation-title" @close="operationCode=null" @cancel="operationCode=null">
+      <div class="special-top"><h2 id="operation-title">{{ operationCode?operationLabels[operationCode]:'' }}</h2><button class="outlined-action" aria-label="Betriebsdialog schließen" @click="operationCode=null">Schließen</button></div>
+      <template v-if="operationCode">
+        <p class="section-hint">{{ transportLabel }} · Aktueller Wert: {{ operationValueLabel(operationCode) }}</p>
+        <button class="outlined-action" :disabled="writeReading||writeBusy" @click="refreshOperation">Wert aktualisieren</button>
+        <label class="field-label" for="operation-value">Neuer Wert</label>
+        <select id="operation-value" class="settings-input" v-model="writeDrafts[operationCode]" :disabled="writeBusy||writeReading">
+          <template v-if="operationCode==='Mode'"><option value="0">Warmwasser</option><option value="1">Heizen</option><option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option><option value="4">Warmwasser + Kühlen</option></template>
+          <template v-else><option value="0">Aus</option><option value="1">Ein</option></template>
+        </select>
+        <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p><p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
+        <p v-if="!adminAuthenticated" class="section-hint">Zum Ändern oben rechts als Administrator anmelden.</p>
+        <button class="main-action" :disabled="!canWrite(operationCode)" @click="submitCloudWrite(operationCode)">{{ writeBusy?'Prüfe und schreibe …':'Wert mit Readback senden' }}</button>
+      </template>
+    </dialog>
+
+    <dialog ref="specialDialogElement" class="special-modal panel native-special" aria-labelledby="special-modal-title" @close="specialDialog=null" @cancel="specialDialog=null" @click.self="specialDialog=null">
+      <div v-if="specialDialog" class="special-dialog-content">
         <div class="special-top">
           <div><span class="section-caption">FOX AIR / {{ transportLabel }}</span>
             <h2 id="special-modal-title">{{ selectedSpecial?.title || 'Spezialdialog' }}</h2>
             <p>{{ selectedSpecial?.description }}</p></div>
           <button type="button" class="outlined-action" aria-label="Dialog schließen" @click="specialDialog = null">Schließen</button>
         </div>
-        <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Nur die WP-Betriebsart und R02 sind für Admins schreibbar. Andere Spezialfunktionen bleiben lesend.</p>
+        <TimerEditor v-if="specialDialog==='timer'||specialDialog==='silent'" :key="specialDialog" :transport="selectedTransport" :admin="adminAuthenticated&&secureAdminContext" :silent="specialDialog==='silent'" />
+        <template v-else>
+        <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Nur die WP-Betriebsart und R02 sind für Admins schreibbar. SG-/AT- und Störungsfunktionen bleiben lesend.</p>
         <div class="special-toolbar">
           <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
@@ -1188,8 +1258,9 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="!specialRows.length" class="empty-state">Noch keine Werte aus dieser Verbindung vorhanden.</p>
         </div>
-      </section>
-    </div>
+        </template>
+      </div>
+    </dialog>
 
     <nav class="mobile-bottom" aria-label="Mobilnavigation">
       <button :class="{ active: page === 'home' }" @click="navigate('home')"><House :size="21" /><span>Übersicht</span></button>

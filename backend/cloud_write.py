@@ -1,4 +1,4 @@
-"""Strict first-stage PHNIX writes: Mode and R02 only.
+"""Source-backed PHNIX controls: Power, Mode, H22 and R02.
 
 Requires admin session at the API boundary. All mutations use one reviewed
 control endpoint and exactly one attempt, never generic register writes.
@@ -42,6 +42,10 @@ def _number(value: Any) -> Decimal:
 
 def _format_value(code: str, requested: Any) -> tuple[Decimal, str]:
     number = _number(requested)
+    if code in ("Power", "H22"):
+        if number not in (0, 1):
+            raise WriteValidationError("Nur Ein (1) oder Aus (0) zulässig")
+        return number, str(int(number))
     if code == "Mode":
         if number != number.to_integral_value() or not 0 <= number <= 4:
             raise WriteValidationError("Mode: nur 0–4 nach bestätigtem Katalog")
