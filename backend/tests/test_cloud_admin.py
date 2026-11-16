@@ -48,6 +48,21 @@ class CloudAdminTests(unittest.TestCase):
         })
         self.assertEqual(result.status_code, 403)
 
+    def test_cloud_insights_require_admin_and_same_origin_before_querying(self):
+        requests = [('/api/cloud/history', {'address':'2046','start':'2026-11-15 00:00:00','end':'2026-11-16 00:00:00'}),
+                    ('/api/cloud/insights/ota', {}), ('/api/cloud/insights/metadata', {}),
+                    ('/api/cloud/insights/ai', {}), ('/api/cloud/service-enum', {'key':'opaque-reference'})]
+        with patch('backend.cloud_insights.request', return_value={'cached':False}) as query:
+            for path, body in requests:
+                with self.subTest(path=path):
+                    self.assertEqual(self.https.post(path,json=body).status_code,403)
+                    self.assertEqual(self.http.post(path,json=body).status_code,403)
+                    self.assertEqual(self.https.post(path,json={**body,'admin_password':'A-strong-admin-password!'},headers={'origin':'https://other-site'}).status_code,403)
+            query.assert_not_called()
+            for path, body in requests:
+                self.assertEqual(self.https.post(path,json={**body,'admin_password':'A-strong-admin-password!'}).status_code,200)
+            self.assertEqual(query.call_count,len(requests))
+
     def test_wrong_password_rejected(self):
         result = self.https.post("/api/cloud/config", json={
             "admin_password": "incorrect",

@@ -108,6 +108,13 @@ class CloudInsightTests(unittest.TestCase):
         result=cloud.request('history',{'address':'2046'})
         self.assertEqual(result['points'][0]['time'],'2026-11-16T23:00:00+01:00')
 
+    def test_history_missing_points_stay_missing_and_empty_is_valid(self):
+        self.reader._request_auth.return_value={'objectResult':{'valueList':[{'dateTime':'2026-11-16 02','addressValue':'35.1'},{'dateTime':'2026-11-16 03'}, {'dateTime':'2026-11-16 04','addressValue':'NaN'}]}}
+        self.assertEqual(len(cloud.request('history',{'address':'2046'})['points']),1)
+        self.reader._request_auth.return_value={'objectResult':{'valueList':[]}}
+        with patch.object(cloud.time,'monotonic',return_value=cloud.time.monotonic()+11):
+            self.assertEqual(cloud.request('history',{'address':'2045'})['points'],[])
+
     def test_metadata_does_not_expose_identifiers_or_create_grants(self):
         self.reader._request_auth.return_value={'objectResult':{'total':1,'dataList':[{'address':'2157','content':'PV_Power','deviceCode':'private','token':'secret','write_allowed':True}]}}
         result=cloud.request('metadata')
