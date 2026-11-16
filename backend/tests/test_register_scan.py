@@ -12,6 +12,32 @@ from backend.warmlink import WarmlinkSession
 
 
 class BlockReadTests(unittest.TestCase):
+    def test_correlated_foreign_fc03_is_observed_but_not_a_readback(self):
+        endpoint=Endpoint('private',2001)
+        request=with_crc(bytes.fromhex('63 03 07 fe 00 01'))  # MAIN2046
+        response=with_crc(bytes.fromhex('63 03 02 01 7d'))
+        sock=Mock();sock.recv.side_effect=[request,response]
+        client=WarmlinkSession(sock,endpoint)
+        with patch.object(bus,'_words',{}),patch.object(bus,'_state',{'connected':True}):
+            client.receive(.1)
+            self.assertEqual(client.foreign_pending,(2046,1))
+            client.receive(.1)
+            self.assertIsNone(client.foreign_pending)
+            self.assertEqual(bus.register_values(endpoint)['2046']['value'],38.1)
+            self.assertEqual(bus.register_values(endpoint)['2046']['quality'],'observed')
+        sock.sendall.assert_not_called()
+
+    def test_overlapping_foreign_reads_cannot_become_measurements(self):
+        endpoint=Endpoint('private',2001)
+        request=with_crc(bytes.fromhex('63 03 07 fe 00 01'))
+        other=with_crc(bytes.fromhex('63 03 07 fd 00 01'))
+        response=with_crc(bytes.fromhex('63 03 02 01 7d'))
+        sock=Mock();sock.recv.return_value=request+other+response
+        client=WarmlinkSession(sock,endpoint)
+        with patch.object(bus,'_words',{}):
+            client.receive(.1)
+            self.assertTrue(client.foreign_ambiguous)
+            self.assertEqual(bus.observed_words(),{})
     def test_wire_read_uses_fc03_and_ninety_words(self):
         words=list(range(90))
         response=with_crc(b'\x63\x03\xb4'+b''.join(word.to_bytes(2,'big') for word in words))

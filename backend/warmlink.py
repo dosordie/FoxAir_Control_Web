@@ -26,6 +26,9 @@ class WarmlinkSession:
         self.poisoned = False
         self.last_received = 0.0
         self.foreign_pending = None
+        self.foreign_since = 0.0
+        self.foreign_ambiguous = False
+        self.inflight_request = None
 
     def receive(self, timeout):
         self.sock.settimeout(max(.001, timeout))
@@ -45,8 +48,18 @@ class WarmlinkSession:
         observe(frames,self.endpoint)
         for f in frames:
             if f[0] != self.endpoint.slave:continue
-            if f[9] == 'read-request':self.foreign_pending=(f[2],f[3])
-            elif f[9]=='read-response' and self.foreign_pending and f[3]==self.foreign_pending[1]*2:self.foreign_pending=None
+            if f[9] == 'read-request' and f[6]!=self.inflight_request:
+                self.foreign_ambiguous=self.foreign_pending is not None
+                self.foreign_pending=(f[2],f[3])
+                self.foreign_since=time.monotonic()
+                log_event('lte-observed',f'Beobachtete FC3-Anfrage: MAIN {f[2]}, Anzahl {f[3]}')
+            elif f[9]=='read-response' and self.foreign_pending and f[3]==self.foreign_pending[1]*2:
+                if not self.foreign_ambiguous:
+                    if time.monotonic()-self.foreign_since<=self.endpoint.timeout:
+                        from backend.bus_connection import observe_read
+                        words=[int.from_bytes(f[4][i:i+2],'big') for i in range(0,f[3],2)]
+                        observe_read(self.endpoint,self.foreign_pending[0],words)
+                    self.foreign_pending=None
         return frames
 
     def quiet(self):
@@ -74,6 +87,7 @@ class WarmlinkSession:
 
     def exchange(self, request, mode, register, count):
         self.quiet()
+        self.inflight_request=request
         log_event("lte", f"LTE TX: {mode}, MAIN {register}, Anzahl {count}")
         self.sock.sendall(request)
         deadline = time.monotonic() + self.endpoint.timeout
@@ -100,6 +114,7 @@ class WarmlinkSession:
             log_event("lte-error", "LTE-Antwort unklar oder Timeout; Verbindung gesperrt")
             self.poisoned = True
             raise
+        finally:self.inflight_request=None
 
     def read_holding(self, register, count=1):
         if not 0 <= register <= 65535 or not 1 <= count <= 125:

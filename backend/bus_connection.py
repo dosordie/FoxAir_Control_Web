@@ -80,7 +80,20 @@ def lease():
 
 
 def status():
-    with _guard:return {**_state,'lease_seconds':max(0,round(_lease_until-time.monotonic()))}
+    entry=_entry
+    client=entry[1] if entry else None
+    pending=client.foreign_pending if client else None
+    with _guard:return {**_state,'lease_seconds':max(0,round(_lease_until-time.monotonic())),
+        'pending_read':({'register':pending[0],'count':pending[1],
+                         'age_seconds':round(time.monotonic()-client.foreign_since,1),
+                         'ambiguous':client.foreign_ambiguous} if pending else None)}
+
+
+def observe_read(endpoint,start,words):
+    with _guard:
+        if _source != endpoint:return
+        now=time.time()
+        for i,word in enumerate(words):_words[start+i]=(word,now)
 
 
 def observe(frames, endpoint=None):
@@ -150,6 +163,8 @@ def operation(endpoint):
         client=connect(endpoint)
         try:yield client
         except (OSError,ValueError):
+            from backend.cloud_state import log_event
+            log_event('lte-error','LTE-Abfrage auf gemeinsamer Verbindung abgebrochen; kein automatischer Retry')
             close()
             raise
         finally:

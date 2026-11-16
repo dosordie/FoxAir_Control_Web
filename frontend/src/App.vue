@@ -401,6 +401,11 @@ const lastUpdated = computed(() => {
     return last?.timestamp ? 'Verbindung unterbrochen · letzter Messwert ' +
       new Date(last.timestamp).toLocaleString('de-DE') : 'Verbindung unterbrochen'
   }
+  if(snapshot.value.transport==='warmlink_raw'){
+    const latest=Object.values(snapshot.value.metrics).filter(v=>v&&v.quality!=='stale')
+      .sort((a,b)=>Date.parse(b!.timestamp)-Date.parse(a!.timestamp))[0]
+    if(latest)return (latest.quality==='observed'?'Letzter Buswert ':'Letzter Messwert ')+new Date(latest.timestamp).toLocaleTimeString('de-DE')
+  }
   const observed=Object.values(snapshot.value.metrics).filter(v=>v?.quality==='observed')
     .map(v=>Date.parse(v!.timestamp)).sort((a,b)=>b-a)[0]
   if(observed)return 'Letzter Buswert ' + new Date(observed).toLocaleTimeString('de-DE')
