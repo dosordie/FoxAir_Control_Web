@@ -27,6 +27,22 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(data["status"], "unavailable")
         self.assertTrue(all(value is None for value in data["metrics"].values()))
 
+    def test_cloud_outage_retains_last_value_but_never_reports_online(self):
+        from unittest.mock import patch
+        from backend.cloud_read import CloudError
+        timestamp = "2026-11-15T08:15:00+00:00"
+        stale = {"return": {"value": 37.5, "unit": "°C", "raw": None,
+                            "quality": "stale", "timestamp": timestamp}}
+        with patch("backend.main.cloud_dashboard", side_effect=CloudError("Cloud timeout")), \
+                patch("backend.main.cached_dashboard", return_value=stale):
+            result = self.client.get("/api/dashboard?transport=cloud")
+        self.assertEqual(result.status_code, 200)
+        data = result.json()
+        self.assertEqual(data["status"], "unavailable")
+        self.assertEqual(data["metrics"]["return"]["value"], 37.5)
+        self.assertEqual(data["metrics"]["return"]["quality"], "stale")
+        self.assertEqual(data["metrics"]["return"]["timestamp"], timestamp)
+
     def test_search(self):
         response = self.client.get("/api/registers?query=D14")
         self.assertEqual(response.status_code, 200)
