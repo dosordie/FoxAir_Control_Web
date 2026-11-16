@@ -62,7 +62,10 @@ class FullCatalogScanTests(unittest.TestCase):
                     cloud_state._ROWS.clear()
                 restored = cloud_state.cached_raw_values()
                 self.assertEqual(restored["T01"]["value"], 39.4)
-                self.assertEqual(restored["T01"]["quality"], "stale")
+                self.assertEqual(restored["T01"]["quality"], "cached")
+                with cloud_state._LOCK:
+                    cloud_state._ROWS["T01"]["timestamp"] = "2026-01-01T00:00:00+00:00"
+                self.assertEqual(cloud_state.cached_raw_values()["T01"]["quality"], "stale")
                 with cloud_state._LOCK:
                     cloud_state._SOURCE = None
                     cloud_state._ROWS.clear()
