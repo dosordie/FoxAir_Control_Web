@@ -251,7 +251,7 @@ onBeforeUnmount(() => {
   <div class="app-shell">
     <header class="shell-header">
       <button class="brand" type="button" @click="navigate('home')" aria-label="Zur Übersicht">
-        <span class="brand-mark"><Fan :size="20" stroke-width="2.5" /></span>
+        <span class="brand-mark official-brand"><img src="/foxye-logo.png" alt="FoxAir-Logo" /></span>
         <span><strong>FoxAir</strong><small>CONTROL WEB</small></span>
       </button>
       <nav class="desktop-nav" aria-label="Hauptnavigation">
@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
                   <button class="round-adjust" type="button" disabled title="Sollwertschreiben folgt in einer späteren Version" aria-label="Solltemperatur erhöhen"><Plus :size="25" /></button>
                 </div>
                 <span class="hero-footnote">{{ modeText === '—' ? 'Zieltemperatur · noch kein Messwert' : 'Aktueller Modus: ' + modeText }}</span>
-                <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard">
+                <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>
               </div>
@@ -327,6 +327,10 @@ onBeforeUnmount(() => {
                 <option value="display_modbus">Display-Modbus</option>
                 <option value="warmlink_raw">LTE-/Warmlink-Modbus</option>
               </select>
+              <div class="live-inline" v-if="selectedTransport === 'cloud'">
+                <label class="live-switch"><input type="checkbox" v-model="liveEnabled" /> Automatische Cloud-Abfrage</label>
+                <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
+              </div>
             </div>
           </section>
 
@@ -351,7 +355,7 @@ onBeforeUnmount(() => {
                 <div class="operation"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>—</strong></div>
               </div>
               <button class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
-              <p class="section-hint">Schreibfunktionen und kontinuierlicher Live-Modus werden nach der sicheren Anbindung ergänzt.</p>
+              <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreibfunktionen bleiben deaktiviert.</p>
             </section>
           </div>
         </div>
@@ -362,7 +366,13 @@ onBeforeUnmount(() => {
         <div class="work-layout">
           <section class="panel register-list">
             <label class="search-box"><Search :size="19" /><input v-model="search" placeholder="Code, Name oder Register suchen" aria-label="Parameter suchen" /></label>
-            <div class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' von ' + catalogSize + ' Registern' }}</span><span>{{ transportLabel }}</span></div>
+            <div class="parameter-groups" aria-label="Parametergruppen">
+              <button type="button" class="group-chip" :class="{ active: selectedGroup === '' }" @click="selectedGroup = ''">Alle</button>
+              <button v-for="group in registerGroups" :key="group.group" type="button"
+                class="group-chip" :class="{ active: selectedGroup === group.group }"
+                @click="selectedGroup = group.group">{{ group.group }} <small>{{ group.count }}</small></button>
+            </div>
+            <div class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
             <div class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
@@ -377,7 +387,7 @@ onBeforeUnmount(() => {
               <span class="section-caption">PARAMETERDETAILS</span>
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><Star :size="23" class="star-muted" /></div>
               <div class="detail-value"><span>Aktueller Wert</span><strong>{{ currentValue ? displayMetric({ value: currentValue.value, unit: currentValue.unit, raw: currentValue.raw, timestamp: currentValue.timestamp, quality: currentValue.quality }) : '—' }} <small>{{ currentValue?.unit || '' }}</small></strong><p>{{ currentValue ? 'Ausgelesen: ' + new Date(currentValue.timestamp).toLocaleString('de-DE') : 'Noch nicht ausgelesen' }}</p></div>
-              <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span></div>
+              <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span></div>
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
@@ -406,7 +416,7 @@ onBeforeUnmount(() => {
               <span class="choice-mark"></span>
             </label>
           </div>
-          <div class="settings-note"><Activity :size="18" /><p>Standard-Modbus arbeitet derzeit nur bei Anforderung: TCP verbinden, lesen und direkt wieder schließen. Ein dauerhafter Live-Modus folgt mit dem Lease-Manager. Display/LTE bleiben bis zur Busarbitrierungsprüfung passiv.</p></div>
+          <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-/Display-Anbindung folgt separat.</p></div>
           <button class="outlined-action" @click="loadDashboard"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
       </template>
