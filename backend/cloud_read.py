@@ -236,7 +236,12 @@ def read_dashboard() -> dict[str, Any]:
             continue
         definition = definitions.get(str(register), {})
         unit = definition.get("unit") or ("°C" if definition.get("type") == "TEMP1" else "")
-        output[key] = {"value": row["value"], "raw": None, "unit": unit, "quality": "fresh"}
+        value = row["value"]
+        # Translate explicit enum states, not already scaled physical measurements.
+        mapping = definition.get("value_map")
+        if isinstance(mapping, dict):
+            value = mapping.get(str(value), value)
+        output[key] = {"value": value, "raw": None, "unit": unit, "quality": "fresh"}
     return output
 
 
