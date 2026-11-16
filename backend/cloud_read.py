@@ -10,6 +10,10 @@ import hashlib
 import json
 import os
 import threading
+import time
+from pathlib import Path
+
+from backend.cloud_config import credentials
 import urllib.error
 import urllib.request
 from typing import Any
@@ -52,21 +56,14 @@ class CloudError(RuntimeError):
 
 
 def cloud_configured() -> bool:
-    return all(os.environ.get(key, "").strip() for key in (
-        "FOXAIR_CLOUD_USER",
-        "FOXAIR_CLOUD_PASSWORD",
-        "FOXAIR_CLOUD_DEVICE_CODE",
-    ))
+    return all(credentials())
 
 
 def cloud_settings() -> tuple[str, str, str]:
-    if not cloud_configured():
+    result = credentials()
+    if not all(result):
         raise CloudError("PHNIX-Cloud noch nicht eingerichtet")
-    return (
-        os.environ["FOXAIR_CLOUD_USER"].strip(),
-        os.environ["FOXAIR_CLOUD_PASSWORD"],
-        os.environ["FOXAIR_CLOUD_DEVICE_CODE"].strip(),
-    )
+    return result
 
 
 class CloudReader:
@@ -76,9 +73,11 @@ class CloudReader:
         self.device_code = device_code
         self.token: str | None = None
         self.login_method: str | None = None
+        self.last_heartbeat: float = 0.0
 
     def _post(self, endpoint: str, body: dict[str, Any], *, token: str | None = None) -> dict[str, Any]:
-        if endpoint not in ("app/user/login", "app/device/getDataByCode"):
+        if endpoint not in ("app/user/login", "app/device/getDataByCode",
+                            "app/device/deviceList", "app/device/control"):
             raise CloudError("Cloud-Endpunkt nicht zugelassen")
         content = json.dumps(body, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(
@@ -153,6 +152,86 @@ class CloudReader:
                     return
         raise CloudError("Cloud-Anmeldung fehlgeschlagen (Zugangsdaten prüfen)")
 
+    def _request_auth(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Post one known cloud request, with one authentication renewal."""
+        if not self.token:
+            self.login()
+        try:
+            response = self._post(endpoint, payload, token=self.token)
+        except CloudError as exc:
+            if str(exc) != "Cloud-Zugriff abgelehnt":
+                raise
+            self.token = None
+            self.login()
+            response = self._post(endpoint, payload, token=self.token)
+        if self._expired(response):
+            self.token = None
+            self.login()
+            response = self._post(endpoint, payload, token=self.token)
+        return response
+
+    def app_heartbeat(self) -> bool:
+        """Known operational freshness trigger (not a general control endpoint).
+
+        From FoxAir_Control live polling RE: app_heartbeat=23205, no appId,
+        settle 1s before reading live codes. Never used for a static read or
+        during initial UI visit. Throttled across concurrent web clients.
+        """
+        now = time.monotonic()
+        if now - self.last_heartbeat < 25:
+            return False
+        self.last_heartbeat = now   # Even a failed call must be rate limited.
+        try:
+            response = self._request_auth("app/device/control", {
+                "param": [{
+                    "deviceCode": self.device_code,
+                    "protocolCode": "app_heartbeat",
+                    "value": "23205",
+                }],
+            })
+            if self._ok(response):
+                time.sleep(1.0)
+                return True
+        except CloudError:
+            # Do not make an incidental telemetry refresh fail because the
+            # cloud rejects a nonessential heartbeat.
+            pass
+        return False
+
+    def devices(self) -> list[dict[str, Any]]:
+        """Cloud deviceList: allowlisted, secret-free metadata for admin UI."""
+        path = Path(__file__).resolve().parents[1] / "data" / "warmlink_product_ids.json"
+        product_ids = json.loads(path.read_text(encoding="utf-8"))["product_ids"]
+        response = self._request_auth("app/device/deviceList", {
+            "productIds": product_ids,
+            "pageIndex": "1",
+            "pageSize": "999",
+        })
+        if not self._ok(response):
+            raise CloudError("Cloud-Geräteliste konnte nicht geladen werden")
+        obj = response.get("objectResult")
+        if isinstance(obj, list):
+            items = obj
+        elif isinstance(obj, dict):
+            items = next((obj[k] for k in ("records", "list", "rows", "data")
+                          if isinstance(obj.get(k), list)), [])
+            if not items and obj.get("deviceCode"):
+                items = [obj]
+        else:
+            items = []
+        allowed = (
+            "deviceCode", "deviceNickName", "deviceName", "model", "custModel",
+            "deviceStatus", "isFault", "dtuSoftwareVer", "dtuSignalIntensity",
+            "isShared", "houseName", "houseRoleType", "discoverySource",
+        )
+        result = []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("deviceCode"):
+                continue
+            result.append({key: item[key] for key in allowed
+                           if key in item and isinstance(item[key], (str, int, float, bool))})
+        return result
+
     def read_codes(self, codes: list[str]) -> dict[str, dict[str, Any]]:
         allowlist = set(CLOUD_REGISTERS.values())
         codes = list(dict.fromkeys(codes))
@@ -222,9 +301,11 @@ def _reader() -> CloudReader:
     return _client
 
 
-def read_dashboard() -> dict[str, Any]:
+def read_dashboard(*, live: bool = False) -> dict[str, Any]:
     with _cloud_lock:
         client = _reader()
+        if live:
+            client.app_heartbeat()
         values = client.read_codes([CLOUD_REGISTERS[r] for r in DASHBOARD_MAPPING.values()])
     definitions = load_registers()
     output: dict[str, dict[str, Any] | None] = {}
@@ -259,3 +340,8 @@ def read_register(register: int) -> dict[str, Any]:
         "raw": None,
         "unit": definition.get("unit") or ("°C" if definition.get("type") == "TEMP1" else ""),
     }
+
+
+def discover_devices() -> list[dict[str, Any]]:
+    with _cloud_lock:
+        return _reader().devices()
