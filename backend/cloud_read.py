@@ -436,18 +436,30 @@ def read_dashboard(*, live: bool = False) -> dict[str, Any]:
 
 
 def read_register(register: int) -> dict[str, Any]:
+    from backend.cloud_state import catalog, merge
     code = CLOUD_REGISTERS.get(register)
     if not code:
-        raise CloudError("Register über Cloud noch nicht freigegeben")
+        # Only confirmed register mappings may be requested this way.
+        matches = [c for c in catalog() if c.get("register") == register
+                   and c.get("confidence") == "confirmed"]
+        if matches:
+            # Prefer the matching local code where multiple Cloud aliases exist.
+            local_code = str(load_registers().get(str(register), {}).get("code") or "")
+            chosen = next((c for c in matches if c["code"] == local_code), matches[0])
+            code = chosen["code"]
+    if not code:
+        raise CloudError("Keine bestätigte Cloud-Zuordnung für dieses Register")
     with _cloud_lock:
         row = _reader().read_codes([code]).get(code)
     if not row:
         raise CloudError("Cloud liefert für dieses Register keinen Wert")
+    merge({code: row})
     definition = load_registers().get(str(register), {})
     return {
         "value": row["value"],
         "raw": None,
-        "unit": definition.get("unit") or ("°C" if definition.get("type") == "TEMP1" else ""),
+        "unit": row.get("unit") or definition.get("unit") or
+                ("°C" if definition.get("type") == "TEMP1" else ""),
     }
 
 
