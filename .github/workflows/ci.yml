@@ -34,6 +34,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout pinned FoxAir_Control catalog
+        uses: actions/checkout@v4
+        with:
+          repository: dosordie/FoxAir_Control
+          ref: 34ce0ed5b1152456af3c7b33bf47e6d31e76a965
+          path: upstream
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Export source-backed cloud catalog
+        run: python scripts/export_cloud_catalog.py upstream frontend/public/cloud_catalog.json
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
