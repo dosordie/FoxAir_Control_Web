@@ -339,3 +339,13 @@ a{color:inherit}
 .admin-session p{font-size:13px;color:#525b67}
 .admin-login-form{display:grid;gap:10px;max-width:550px}
 .admin-login-form .outlined-action{justify-content:center}
+
+/* #6 first-stage authorized Cloud control with explicit user confirmation. */
+.cloud-write-panel{margin:18px 0 7px;padding:15px;border:1px solid #efcfad;background:#fffaf4;border-radius:13px}
+.cloud-write-panel>strong,.cloud-write-panel h3{display:block;color:#354052;font-size:14px;margin:0 0 7px}
+.cloud-write-panel .main-action{margin-top:13px}
+.cloud-write-panel .settings-input{background:#fff}
+.cloud-write-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.cloud-write-grid>div{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cloud-write-grid .outlined-action{justify-content:center;margin-top:5px}
+@media(max-width:600px){.cloud-write-grid{grid-template-columns:minmax(0,1fr)}}
