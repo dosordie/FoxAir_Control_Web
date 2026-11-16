@@ -5,7 +5,7 @@ export type Dashboard = {
   status: 'online' | 'partial' | 'unavailable'
   timestamp: string
   error: string | null
-  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target', Metric>
+  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target', Metric>
   live_supported: boolean
 }
 export type Transport = { id: TransportId; name: string; configured: boolean; read_supported: boolean; reason: string }
