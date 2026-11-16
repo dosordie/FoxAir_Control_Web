@@ -733,7 +733,7 @@ onBeforeUnmount(() => {
                   <img class="heatpump-art" src="/foxair-heatpump.png" alt="FoxAir-Wärmepumpe mit Fuchsmotiv" />
                   <div class="fan-ring" :class="{ 'fan-running': fanRunning }"><Fan :size="94" :stroke-width="1.3" /></div>
                   <span class="compressor-hz" :class="{ 'is-stale': snapshot?.metrics.compressor_frequency?.quality === 'stale' }" aria-label="Kompressor-Istfrequenz">{{ metric('compressor_frequency') }} Hz</span>
-                  
+
                 </div>
                 <span class="unit-ground"></span>
               </div>
@@ -981,7 +981,7 @@ onBeforeUnmount(() => {
           <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-Anschluss unter Verbindungseinstellungen konfigurieren; Display-Anbindung folgt separat.</p></div>
           <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
-        
+
 
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">LIVEABFRAGE</span><h2>Cloud-Aktualisierung</h2></div><RefreshCw :size="22" /></div>
@@ -990,7 +990,7 @@ onBeforeUnmount(() => {
           <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
         </section>
-        
+
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
             <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
