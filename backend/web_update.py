@@ -41,6 +41,17 @@ def _current_sha() -> str | None:
     return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
 
 
+def _deployed_sha() -> str | None:
+    """Compiled UI revision, which may lag the working tree after a CI delay."""
+    try:
+        sha = (ROOT / "frontend" / "dist" / ".build-source-sha").read_text(
+            encoding="utf-8"
+        ).strip()
+    except OSError:
+        return None
+    return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
+
+
 def _remote_sha() -> str | None:
     global _last_remote_attempt, _last_remote_sha
     now = time.monotonic()
@@ -72,6 +83,7 @@ def _status_unit(unit: str) -> dict[str, str]:
 def status() -> dict[str, Any]:
     current = _current_sha()
     remote = _remote_sha()
+    deployed = _deployed_sha()
     watcher = _status_unit(PATH_UNIT)
     service = _status_unit(SERVICE)
     installed = watcher.get("LoadState") == "loaded" and watcher.get("ActiveState") == "active"
@@ -79,8 +91,10 @@ def status() -> dict[str, Any]:
     return {
         "installed": installed,
         "current": current,
+        "deployed": deployed,
         "remote": remote,
-        "update_available": bool(current and remote and current != remote),
+        "update_available": bool(current and remote and current != remote) or
+                            bool(current and deployed and current != deployed),
         "pending": TRIGGER.exists(),
         "running": running,
         "last_result": service.get("Result") if service.get("LoadState") == "loaded" else None,
