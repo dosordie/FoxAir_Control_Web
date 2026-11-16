@@ -178,7 +178,7 @@ class CloudReader:
         during initial UI visit. Throttled across concurrent web clients.
         """
         now = time.monotonic()
-        if now - self.last_heartbeat < 25:
+        if self.last_heartbeat and now - self.last_heartbeat < 25:
             return False
         self.last_heartbeat = now   # Even a failed call must be rate limited.
         try:
