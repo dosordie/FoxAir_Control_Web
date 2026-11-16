@@ -82,6 +82,8 @@ export const api = {
     post<CloudConfigStatus>('/api/cloud/config', { admin_password, username, password, device_code }),
   cloudDevices: (admin_password: string) =>
     post<{ items: CloudDevice[]; count: number }>('/api/cloud/devices', { admin_password }),
+  cloudDeviceStatus: (admin_password: string) =>
+    post<{ status: Record<string, string | number | boolean | null> }>('/api/cloud/device-status', { admin_password }),
   read: (register: number, transport: TransportId) =>
     get<RegisterValue>('/api/registers/' + register + '/read?transport=' + encodeURIComponent(transport)),
 }
