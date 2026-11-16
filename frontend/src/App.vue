@@ -100,7 +100,9 @@ function navigate(target: Page, term = '') {
 function scheduleRefresh() {
   clearTimeout(refreshTimer)
   if (unmounted || !liveActive.value) return
-  refreshTimer = setTimeout(() => { void loadDashboard(true) }, liveInterval.value * 1000)
+  const seconds = Number.isFinite(liveInterval.value)
+    ? Math.max(10, Math.min(3600, liveInterval.value)) : 30
+  refreshTimer = setTimeout(() => { void loadDashboard(true) }, seconds * 1000)
 }
 
 async function loadDashboard(live = false) {
