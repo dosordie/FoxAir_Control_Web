@@ -48,16 +48,30 @@ Browser: \`http://127.0.0.1:5173/\`. Vite leitet \`/api\` lokal an \`127.0.0.1:8
 
 **Für den Live-Displaytest ohne Geräteverbindung:** Alle dynamischen Werte bleiben \`—\` und die App erklärt, warum. Der Registerbrowser funktioniert ohne Hardware.
 
-## Ohne Node.js im Zielsystem testen
+## Git-basierte Installation ohne manuelles ZIP
 
-Die GitHub-Actions-Pipeline baut bei jedem Push auf `main` die Weboberfläche und veröffentlicht ein Artefakt namens **`foxair-frontend-dist`**. Die ZIP-Datei unter [Actions](https://github.com/dosordie/FoxAir_Control_Web/actions/workflows/ci.yml) enthält die fertigen statischen Dateien aus `frontend/dist/`.
+Die GitHub-Actions-Pipeline führt Python-Tests und den Vue/Vite-Build aus. Nach erfolgreicher Prüfung veröffentlicht sie die fertig gebaute PWA automatisch in den **Git-Branch `web-dist`**. Dessen Datei `.build-source-sha` dokumentiert den passenden `main`-Commit.
 
-1. Erfolgreichen `main`-Build öffnen und Artefakt `foxair-frontend-dist` herunterladen.
-2. Das Artefakt auf das gewünschte Linux-Testsystem übertragen.
-3. In den Repo-Checkout nach `frontend/dist/` entpacken, sodass `frontend/dist/index.html` existiert.
-4. FastAPI mit der Python-venv aus `backend/requirements.txt` starten. Das Backend liefert die statische PWA und die API unter **demselben HTTP-Port** aus.
+Auf dem Zielsystem genügt danach:
 
-Das Zielsystem benötigt dafür **kein Node.js und keinen Vue-Build**. Sicherheitsgrenze: Der MVP enthält noch keine Anmeldung; für den ersten Test nur lokal gebunden oder in einem geschützten Entwicklungsnetz betreiben.
+~~~bash
+cd /opt/foxair-web/app
+sudo bash scripts/update.sh
+~~~
+
+Das Skript macht `git pull --ff-only origin main`, lädt den generierten Git-Branch, prüft dass Build und Quellcode **exakt denselben Commit** verwenden, packt die statischen Dateien ohne Node.js/ZIP in `frontend/dist` aus und aktualisiert Python-Pakete **nur bei geänderter requirements-Datei** in der eigenen FoxAir-venv. Wenn ein FoxAir-Dienst bereits läuft, startet es **ausschließlich diesen** neu.
+
+Ein passender Build kann direkt nach einem Push noch fehlen. Dann beendet sich das Skript ohne Frontend-Austausch oder Dienstneustart mit einem Hinweis auf die noch laufende CI. Den Befehl nach erfolgreichem [Main-Build](https://github.com/dosordie/FoxAir_Control_Web/actions/workflows/ci.yml) erneut ausführen.
+
+Erstinstallation des eigenen Beispieldienstes (nur bei der dokumentierten Beispiel-Pfadstruktur):
+
+~~~bash
+sudo bash scripts/install_service.sh
+~~~
+
+Der Dienst wird zunächst **nur lokal** auf `127.0.0.1:8081` gebunden. Für einen Windows-Browser kann man einen SSH-Tunnel zum lokalen Port einrichten. HTTP-Endpunkte dieser MVP-Version haben noch keine eigene Benutzer-Authentifizierung; kein offener LAN-/Internet-Port ohne zusätzlichen Zugriffsschutz.
+
+Es ist nicht nötig, eine GitHub-Actions-ZIP-Datei manuell herunterzuladen oder Node/npm im produktiven Container zu installieren. Bestehende Dienste werden nicht verändert.
 
 ## Optionaler erster Standard-Modbus-Test
 

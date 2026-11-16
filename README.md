@@ -16,6 +16,17 @@ Responsive Web-App / PWA für FoxAir-/PHNIX-Wärmepumpen. Ein **eigenständiges 
 
 **Sicherheit:** Die erste Implementierung hat noch **keine eigene Authentifizierung**. Nicht ohne Nginx-Zugriffsschutz/MFA, Firewallbegrenzung und Abschluss der Sicherheitsprüfung ins Internet stellen.
 
+### Installation und Updates über Git (kein Node.js auf dem Server)
+
+GitHub Actions baut die Weboberfläche automatisch in einen separaten Branch `web-dist`. Die Aktualisierung aus einem bestehenden Checkout auf `main` erfolgt mit **einem Kommando**:
+
+```bash
+cd /opt/foxair-web/app
+sudo bash scripts/update.sh
+```
+
+Beim ersten Mal zusätzlich `sudo bash scripts/install_service.sh` (Beispiel für diesen Installationspfad). Beide Anwendungen werden separat verwaltet; der Beispiel-Dienst bindet zunächst nur an `127.0.0.1:8081`. **Keinen ungeschützten Zugriff ins Internet erlauben.** Ausführlich: [RUN_MVP.md](docs/RUN_MVP.md).
+
 ### Schnellstart zum lokalen Test
 
 ```bash
