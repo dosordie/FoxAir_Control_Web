@@ -294,3 +294,23 @@ a{color:inherit}
  .main-register-row>strong{font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis}
 }
 @media(prefers-reduced-motion:reduce){.fan-ring.fan-running svg{animation:none}}
+
+/* Issue #6: responsive, read-only specialist configuration dialogs. */
+.special-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(16,21,30,.56);padding:18px}
+.special-modal{max-width:920px;width:100%;max-height:min(88vh,820px);overflow:hidden;display:flex;flex-direction:column}
+.special-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.special-top h2{font-size:22px;margin:5px 0}
+.special-top p{margin:8px 0;color:#7e8490;font-size:12px}
+.special-top>.outlined-action{flex-shrink:0}
+.special-toolbar{display:flex;gap:15px;justify-content:space-between;align-items:center;padding:9px 0 15px}
+.special-toolbar>span{font-size:12px;color:#737a85}
+.special-rows{flex:1;min-height:0;overflow-y:auto;border-top:1px solid #eef0f3}
+.special-rows .main-register-row{min-width:0}
+@media(max-width:600px){
+  .special-overlay{align-items:end;padding:0}
+  .special-modal{width:100%;max-height:92vh;border-radius:22px 22px 0 0;padding:16px 15px calc(20px + env(safe-area-inset-bottom))}
+  .special-top h2{font-size:19px}
+  .special-top>.outlined-action{padding:10px 11px}
+  .special-toolbar{flex-wrap:wrap}
+  .special-rows{margin-bottom:10px}
+}
