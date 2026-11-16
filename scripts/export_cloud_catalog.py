@@ -23,8 +23,9 @@ if not (upstream / "cloud" / "warmlink_codes.py").exists():
 sys.path.insert(0, str(upstream))
 from cloud.warmlink_codes import (
     WARMLINK_644_DISCOVERY_CODES, merged_cloud_metadata,
-    code_name, WARMLINK_IOS308_CODE_SET,
+    code_name,
 )
+from cloud.warmlink_ios308_catalog import WARMLINK_IOS308_CODE_SET
 from cloud.register_resolver import resolve_cloud_projection_register
 
 registers_path = upstream / "data" / "foxair_phnix_registers.json"
