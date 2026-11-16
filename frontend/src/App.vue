@@ -10,7 +10,7 @@ import {
 import TimerEditor from './TimerEditor.vue'
 import CloudInsights from './CloudInsights.vue'
 import { api, writeValueText } from './api'
-import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId, UpdateStatus } from './api'
+import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, LteSnapshot, LteScan, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId, UpdateStatus } from './api'
 
 type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -124,27 +124,69 @@ watch(connectionSettingsOpen, opened => {
   else if (!opened && dialog.open) dialog.close()
 })
 const busState=ref<Awaited<ReturnType<typeof api.busConnection>>|null>(null)
+const localValues=ref<Record<string,RegisterValue>>({})
+const lteScan=ref<LteScan>({status:'idle',completed:0,total:8,error:null})
+const pushConnected=ref(false)
+const scanStarting=ref(false)
+let localEvents:EventSource|undefined
 let busTimer:ReturnType<typeof setTimeout>|undefined
+function applyLteSnapshot(incoming:LteSnapshot){
+  if(selectedTransport.value!=='warmlink_raw')return
+  busState.value={...incoming.connection,observed:busState.value?.observed||{}}
+  if(incoming.removed?.length || (incoming.reset&&!Object.keys(incoming.values).length)){
+    currentValue.value=null
+    lteWriteSources.value={}
+    if(snapshot.value?.transport==='warmlink_raw'){
+      for(const key of Object.keys(snapshot.value.metrics) as (keyof Dashboard['metrics'])[])snapshot.value.metrics[key]=null
+    }
+  }
+  if(incoming.reset)localValues.value={}
+  for(const key of incoming.removed||[])delete localValues.value[key]
+  for(const [key,next] of Object.entries(incoming.values)){
+    const previous=localValues.value[key]
+    if(!previous || Date.parse(next.timestamp)>=Date.parse(previous.timestamp))localValues.value[key]=next
+  }
+  lteScan.value=incoming.scan
+  if(snapshot.value?.transport==='warmlink_raw'){
+    for(const key of Object.keys(incoming.metrics) as (keyof Dashboard['metrics'])[]){
+      const next=incoming.metrics[key], previous=snapshot.value.metrics[key]
+      if(next && (!previous || Date.parse(next.timestamp)>=Date.parse(previous.timestamp)))snapshot.value.metrics[key]=next
+      const shown=snapshot.value.metrics[key]
+      if(shown && ((!incoming.connection.connected && shown.quality==='observed') || Date.now()-Date.parse(shown.timestamp)>300000))shown.quality='stale'
+    }
+    const fresh=Object.values(snapshot.value.metrics).filter(item=>item && item.quality!=='stale').length
+    snapshot.value.status=fresh===Object.keys(snapshot.value.metrics).length?'online':fresh?'partial':'unavailable'
+    snapshot.value.error=incoming.connection.error
+  }
+}
+function connectLocalEvents(){
+  localEvents?.close();localEvents=undefined;pushConnected.value=false
+  if(selectedTransport.value!=='warmlink_raw' || unmounted)return
+  const events=new EventSource('/api/warmlink/events')
+  localEvents=events
+  events.onmessage=event=>{
+    if(localEvents!==events)return
+    try{applyLteSnapshot(JSON.parse(event.data) as LteSnapshot);pushConnected.value=true}catch{pushConnected.value=false}
+  }
+  events.onerror=()=>{if(localEvents===events)pushConnected.value=false}
+}
+async function startLteScan(){
+  if(scanStarting.value || lteScan.value.status==='running' || selectedTransport.value!=='warmlink_raw')return
+  scanStarting.value=true
+  try{
+    lteScan.value=await api.lteScan()
+    applyLteSnapshot({...await api.lteSnapshot(),reset:true})
+  }catch(e){lteScan.value={...lteScan.value,status:'error',error:e instanceof Error?e.message:'LTE-Lesen fehlgeschlagen'}}
+  finally{scanStarting.value=false}
+}
 async function updateBusLease(){
   if(unmounted)return
   try {
-    if(selectedTransport.value==='warmlink_raw')await api.busLease()
-    busState.value=await api.busConnection()
-    if(selectedTransport.value==='warmlink_raw' && !document.hidden && snapshot.value?.transport==='warmlink_raw'){
-      const incoming=await api.passiveDashboard()
-      if(selectedTransport.value==='warmlink_raw' && snapshot.value?.transport==='warmlink_raw'){
-        for(const key of Object.keys(incoming.metrics) as (keyof Dashboard['metrics'])[]){
-          const next=incoming.metrics[key], previous=snapshot.value.metrics[key]
-          if(next && (!previous || Date.parse(next.timestamp)>=Date.parse(previous.timestamp)))snapshot.value.metrics[key]=next
-          const shown=snapshot.value.metrics[key]
-          if(shown && ((!busState.value.connected && shown.quality==='observed') || Date.now()-Date.parse(shown.timestamp)>300000))shown.quality='stale'
-        }
-        const fresh=Object.values(snapshot.value.metrics).filter(item=>item && item.quality!=='stale').length
-        snapshot.value.status=fresh===Object.keys(snapshot.value.metrics).length?'online':fresh?'partial':'unavailable'
-        snapshot.value.error=incoming.error
-      }
-    }
-  }catch{/* The connection panel shows the last confirmed state. */}
+    if(selectedTransport.value==='warmlink_raw'){
+      await api.busLease()
+      if(!pushConnected.value)applyLteSnapshot({...await api.lteSnapshot(),reset:true})
+    }else busState.value=await api.busConnection()
+  }catch{/* SSE reconnects automatically; keep confirmed timestamps. */}
   if(!unmounted)busTimer=setTimeout(updateBusLease,15000)
 }
 const lteBusy = ref(false)
@@ -302,7 +344,8 @@ const mainRegisterGroup = ref('T')
 const mainRegisterSearch = ref('')
 const mainRegisterRows = computed(() => {
   const query = mainRegisterSearch.value.trim().toLowerCase()
-  return cloudRows.value.filter(row =>
+  const rows=selectedTransport.value==='warmlink_raw'?Object.values(localValues.value).map(row=>({...row,code:row.code||'',name:row.name||'Register '+row.register,group:row.group||''})):cloudRows.value
+  return rows.filter(row =>
     (!mainRegisterGroup.value || row.group === mainRegisterGroup.value) &&
     (!query || [row.name, row.code, String(row.register ?? '')]
       .some(text => text.toLowerCase().includes(query)))
@@ -333,7 +376,12 @@ const cloudByRegister = computed(() => {
   }
   return result
 })
-function currentCloudRegisterValue(register: number) {
+function currentRegisterValue(register: number) {
+  if(selectedTransport.value==='warmlink_raw'){
+    const cached=localValues.value[String(register)]
+    const read=currentValue.value
+    return read?.register===register && (!cached||Date.parse(read.timestamp)>Date.parse(cached.timestamp))?read:cached||null
+  }
   if (selectedTransport.value !== 'cloud') return null
   return cloudByRegister.value.get(register) || null
 }
@@ -435,6 +483,10 @@ async function loadDashboard(live = false) {
 }
 
 function onVisibilityChange() {
+  if(selectedTransport.value==='warmlink_raw'){
+    if(!document.hidden && !pushConnected.value)void api.lteSnapshot().then(data=>applyLteSnapshot({...data,reset:true})).catch(()=>{})
+    return
+  }
   clearTimeout(refreshTimer)
   if (!document.hidden && page.value === 'home') {
     void loadDashboard(false)
@@ -712,6 +764,9 @@ async function readRegister() {
 watch(selectedTransport, (value) => {
   window.localStorage.setItem('foxair.lastTransport', value)
   currentValue.value = null
+  localValues.value={}
+  lteScan.value={status:'idle',completed:0,total:8,error:null}
+  connectLocalEvents()
   lteWriteSources.value = {}
   specialLocalRows.value = []
   operationSources.value = {}
@@ -721,6 +776,9 @@ watch(selectedTransport, (value) => {
   clearTimeout(refreshTimer)
   snapshot.value = null
   void loadDashboard()
+})
+watch([page,selectedTransport],([current,transport],[previous,previousTransport])=>{
+  if(current==='parameters' && transport==='warmlink_raw' && (current!==previous || transport!==previousTransport))void startLteScan()
 })
 watch([liveEnabled, liveInterval], () => {
   window.localStorage.setItem('foxair.cloudLiveEnabled', String(liveEnabled.value))
@@ -736,6 +794,7 @@ watch(search, () => {
   searchTimer = setTimeout(() => { if (page.value === 'parameters') void loadRegisters() }, 240)
 })
 onMounted(async () => {
+  connectLocalEvents()
   void updateBusLease()
   syncRoute()
   window.addEventListener('hashchange', syncRoute)
@@ -757,6 +816,7 @@ onMounted(async () => {
   scheduleValueRefresh()
 })
 onBeforeUnmount(() => {
+  localEvents?.close()
   clearTimeout(busTimer)
   unmounted = true
   window.removeEventListener('hashchange', syncRoute)
@@ -880,7 +940,7 @@ onBeforeUnmount(() => {
                 <label class="live-switch"><input type="checkbox" v-model="liveEnabled" /> Automatische Cloud-Abfrage</label>
                 <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
               </div>
-              <small v-if="selectedTransport==='warmlink_raw' && busState?.mode!=='on_demand'">{{ busState?.connected ? 'Bus verbunden · empfangene Werte werden übernommen' : 'Busverbindung wird geprüft' }} · keine automatischen Leseabfragen</small>
+              <small v-if="selectedTransport==='warmlink_raw'">{{ pushConnected?'Live-Übertragung aktiv':'Live-Übertragung verbindet …' }}<template v-if="busState?.mode!=='on_demand'"> · {{ busState?.connected?'Bus verbunden':'Busverbindung wird geprüft' }}</template> · empfangene Werte erscheinen automatisch</small>
             </div>
           </section>
 
@@ -968,16 +1028,25 @@ onBeforeUnmount(() => {
               <button type="button" class="group-chip" :class="{ active: selectedGroup === '' }" @click="selectedGroup = ''">Alle</button>
             </div>
             <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
+            <div v-if="!cloudView&&selectedTransport==='warmlink_raw'" class="scan-info" role="status">
+              <strong>LTE-Parameter · {{ lteScan.completed }} / {{ lteScan.total }} Blöcke gelesen</strong>
+              <progress v-if="lteScan.status==='running'" :value="lteScan.completed" :max="lteScan.total" aria-label="Fortschritt der LTE-Blockabfrage" />
+              <span>{{ Object.keys(localValues).length }} bekannte Register mit Wert · {{ pushConnected?'Live-Übertragung aktiv':'Live-Übertragung verbindet …' }}</span>
+              <span v-if="lteScan.error" class="read-error">{{ lteScan.error }}</span>
+              <span v-else-if="lteScan.status==='complete'">Einmalige FC3-Abfrage abgeschlossen. Weitere Buswerte werden automatisch übernommen.</span>
+              <span v-else>Einmalig beim Öffnen: acht Blöcke mit je 90 Registern. Andere Browser teilen dieselbe Abfrage.</span>
+              <button class="outlined-action" :disabled="scanStarting||lteScan.status==='running'" @click="startLteScan">Alle LTE-Register erneut lesen</button>
+            </div>
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
                 <span class="register-title">{{ entry.name }}<small>MAIN {{ entry.register }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
-                <span class="register-measure" :class="{ unknown: currentCloudRegisterValue(entry.register)?.value == null,
-                    'is-stale': currentCloudRegisterValue(entry.register)?.quality === 'stale' }"
-                  :title="relativeTimestamp(currentCloudRegisterValue(entry.register)?.timestamp)">
-                  {{ currentCloudRegisterValue(entry.register)?.display_value ?? entry.cloud?.display_value ?? textValue(currentCloudRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
-                  <small>{{ currentCloudRegisterValue(entry.register)?.unit || entry.cloud?.unit || '' }}</small>
-                  <small v-if="currentCloudRegisterValue(entry.register)?.quality === 'stale'">veraltet</small>
+                <span class="register-measure" :class="{ unknown: currentRegisterValue(entry.register)?.value == null,
+                    'is-stale': currentRegisterValue(entry.register)?.quality === 'stale' }"
+                  :title="relativeTimestamp(currentRegisterValue(entry.register)?.timestamp)">
+                  {{ currentRegisterValue(entry.register)?.display_value ?? entry.cloud?.display_value ?? textValue(currentRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
+                  <small>{{ currentRegisterValue(entry.register)?.unit || entry.cloud?.unit || '' }}</small>
+                  <small v-if="currentRegisterValue(entry.register)?.quality === 'stale'">veraltet</small>
                 </span>
                 <ChevronRight :size="16" />
               </button>
@@ -1020,9 +1089,9 @@ onBeforeUnmount(() => {
               <span class="section-caption">PARAMETERDETAILS</span>
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><Star :size="23" class="star-muted" /></div>
               <div class="detail-value"><span>Aktueller Wert</span>
-                <strong>{{ currentCloudRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentValue?.value ?? currentCloudRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
-                  <small>{{ currentValue?.unit || currentCloudRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
-                <p>{{ relativeTimestamp(currentValue?.timestamp ?? currentCloudRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
+                <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentValue?.value ?? currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
+                  <small>{{ currentValue?.unit || currentRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
+                <p>{{ relativeTimestamp(currentValue?.timestamp ?? currentRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
               </div>
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span></div>
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>

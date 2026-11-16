@@ -16,7 +16,56 @@ _lease_until=0.0
 _thread=None
 _state={'connected':False,'mode':'on_demand','error':None,'last_rx':None}
 _words={}
+_readings={}
 _source=None
+
+
+def select_source(endpoint):
+    global _source
+    with _guard:
+        if _source != endpoint:
+            _words.clear()
+            _readings.clear()
+            _state['last_rx']=None
+            _source=endpoint
+
+
+def record_read(endpoint, start, words):
+    with _guard:
+        if _source != endpoint:return
+        now=time.time()
+        for i,raw in enumerate(words):_readings[start+i]=(raw,now)
+
+
+def public_value(reg):
+    # Each 90-word packet starts with private identification/header words.
+    from backend.catalog import load_registers
+    starts=(1001,1091,1181,1271,1361,1451,2001,2091)
+    if not any(start+10 <= reg < start+90 for start in starts):return False
+    entry=load_registers().get(str(reg))
+    return entry is not None and str(entry.get('type','')).upper() not in ('ASCII','BLOCK')
+
+
+def register_values(endpoint):
+    from backend.catalog import load_registers,format_raw,register_group
+    with _guard:
+        if endpoint is None or _source != endpoint:return {}
+        observed=dict(_words);active=dict(_readings);connected=_state['connected']
+    definitions=load_registers()
+    result={}
+    for reg in observed.keys()|active.keys():
+        if not public_value(reg):continue
+        raw,stamp=observed.get(reg,(None,0));quality='observed'
+        if reg in active and active[reg][1]>=stamp:
+            raw,stamp=active[reg];quality='fresh'
+        if time.time()-stamp>300 or (quality=='observed' and not connected):quality='stale'
+        value,unit=format_raw(raw,definitions[str(reg)])
+        result[str(reg)]={'register':reg,'raw':raw,'value':value,'unit':unit,'quality':quality,
+                          'timestamp':datetime.fromtimestamp(stamp,timezone.utc).isoformat(),'transport':'warmlink_raw',
+                          'code':definitions[str(reg)].get('code') or '',
+                          'name':definitions[str(reg)].get('name') or f'Register {reg}',
+                          'group':register_group(definitions[str(reg)],str(reg))}
+    return result
 
 
 def wanted(mode,now=None):
@@ -34,8 +83,9 @@ def status():
     with _guard:return {**_state,'lease_seconds':max(0,round(_lease_until-time.monotonic()))}
 
 
-def observe(frames):
+def observe(frames, endpoint=None):
     with _guard:
+        if endpoint is not None and endpoint != _source:return
         for frame in frames:
             slave,func,start,count,payload,*_=frame
             if func==16 and frame[9] == 'word-frame' and slave in (0,99):
@@ -47,7 +97,7 @@ def observe(frames):
 
 
 def observed_words():
-    with _guard:return {str(reg):{'raw':raw,'age_seconds':round(time.time()-stamp,1),'quality':'observed'} for reg,(raw,stamp) in _words.items() if reg >= 2011 or 1011 <= reg < 2000}
+    with _guard:return {str(reg):{'raw':raw,'age_seconds':round(time.time()-stamp,1),'quality':'observed'} for reg,(raw,stamp) in _words.items() if public_value(reg)}
 
 
 def observed_metrics(fields, endpoint):
@@ -56,24 +106,13 @@ def observed_metrics(fields, endpoint):
     A broadcast is an observation, never a write acknowledgement. Preserve its
     arrival timestamp so HTTP refreshes cannot make old bus data fresh again.
     """
-    from backend.catalog import load_registers, format_raw
-    with _guard:
-        if endpoint is None or _source != endpoint:
-            return {}
-        words = dict(_words)
-        connected = _state['connected']
-    definitions = load_registers()
+    values=register_values(endpoint)
     def metric(reg):
-        if reg not in words or str(reg) not in definitions:
-            return None
-        raw, stamp = words[reg]
-        value, unit = format_raw(raw, definitions[str(reg)])
-        return {'value': value, 'unit': unit, 'raw': raw,
-                'timestamp': datetime.fromtimestamp(stamp, timezone.utc).isoformat(),
-                'quality': 'observed' if connected and time.time()-stamp <= 300 else 'stale'}
+        row=values.get(str(reg))
+        return {k:row[k] for k in ('value','unit','raw','timestamp','quality')} if row else None
     result = {name: item for name, reg in fields.items() if (item := metric(reg)) is not None}
     selected = metric(2014)
-    if selected and selected['quality'] == 'observed' and isinstance(selected['value'], (float, int)) and 5 <= selected['value'] <= 80:
+    if selected and selected['quality'] != 'stale' and isinstance(selected['value'], (float, int)) and 5 <= selected['value'] <= 80:
         result['target'] = {**selected, 'source_code': '2014', 'label': 'Aktueller Wassersollwert'}
     elif 'target' in result:
         result['target'].update(source_code='R02', label='Heizungs-Basissollwert')
@@ -94,12 +133,10 @@ def close():
 
 
 def connect(endpoint):
-    global _entry,_source
+    global _entry
     from backend.warmlink import WarmlinkSession
     if _entry and _entry[0]!=endpoint:close()
-    if _source != endpoint:
-        with _guard:_words.clear();_state["last_rx"]=None
-        _source=endpoint
+    select_source(endpoint)
     if _entry is None:
         sock=socket.create_connection((endpoint.host,endpoint.port),timeout=endpoint.timeout)
         _entry=(endpoint,WarmlinkSession(sock,endpoint))

@@ -9,7 +9,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, StrictInt, StrictFloat
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.catalog import format_raw, load_registers, search_registers, group_counts
@@ -43,6 +43,7 @@ DASHBOARD_FIELDS = {
 }
 # FC03 ranges reduce requests; avoid active probing on the Display/LTE bus.
 READ_BLOCKS = ((1011, 1), (1030, 1), (1158, 1), (2012, 3), (2035, 14), (2072, 1), (2077, 1))
+LTE_READ_BLOCKS = ((1011,20),(1158,1),(2012,66))
 VALID_TRANSPORTS = set(TRANSPORTS)
 
 
@@ -108,6 +109,53 @@ def start_bus_manager():
 def bus_connection_state():
     from backend.bus_connection import status, observed_words
     return {**status(),"observed":observed_words()}
+
+
+def lte_snapshot():
+    from backend.bus_connection import register_values,observed_metrics,status
+    from backend.register_scan import status as scan_status
+    endpoint=warmlink_endpoint()
+    return {'connection':status(),'values':register_values(endpoint),
+            'metrics':observed_metrics(DASHBOARD_FIELDS,endpoint),'scan':scan_status()}
+
+
+@app.get('/api/warmlink/state')
+def lte_state():
+    return lte_snapshot()
+
+
+@app.post('/api/warmlink/scan')
+def lte_scan(request: Request):
+    ensure_secure_origin(request)
+    if request.headers.get('x-foxair-admin')!='1':
+        raise HTTPException(status_code=403,detail='Anwendungs-Header fehlt')
+    from backend.register_scan import start
+    try:return start()
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
+
+
+@app.get('/api/warmlink/events')
+async def lte_events(request: Request):
+    import asyncio
+    import json
+    async def events():
+        previous={};previous_state=None;first=True;ticks=0
+        while not await request.is_disconnected():
+            # Reading this cache never connects to the DTU or sends telegrams.
+            snapshot=lte_snapshot()
+            values=snapshot.pop('values')
+            changed={key:value for key,value in values.items() if previous.get(key)!=value}
+            removed=[key for key in previous if key not in values]
+            if first or changed or removed or snapshot!=previous_state:
+                yield 'data: '+json.dumps({**snapshot,'values':changed,'removed':removed,'reset':first},ensure_ascii=False)+'\n\n'
+                previous=values;previous_state=snapshot;first=False;ticks=0
+            elif ticks>=30:
+                yield ': keepalive\n\n'
+                ticks=0
+            ticks+=1
+            await asyncio.sleep(.5)
+    return StreamingResponse(events(),media_type='text/event-stream',
+        headers={'Cache-Control':'no-cache, no-store','X-Accel-Buffering':'no'})
 
 
 @app.post("/api/warmlink/lease")
@@ -482,7 +530,7 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
     errors: list[str] = []
     try:
         with (open_warmlink(endpoint) if transport == "warmlink_raw" else open_rtu(endpoint)) as session:
-            for start, count in READ_BLOCKS:
+            for start, count in (LTE_READ_BLOCKS if transport=='warmlink_raw' else READ_BLOCKS):
                 try:
                     values = session.read_holding(start, count)
                     words.update({start + i: raw for i, raw in enumerate(values)})

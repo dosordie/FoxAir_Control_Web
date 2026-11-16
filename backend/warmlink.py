@@ -20,6 +20,8 @@ _last_write = {}
 class WarmlinkSession:
     def __init__(self, sock, endpoint):
         self.sock, self.endpoint = sock, endpoint
+        from backend.bus_connection import select_source
+        select_source(endpoint)
         self.buffer = bytearray()
         self.poisoned = False
         self.last_received = 0.0
@@ -40,7 +42,7 @@ class WarmlinkSession:
             raise ValueError("LTE-Stream nicht synchronisiert")
         log_event("lte-rx", f"LTE RX: {len(data)} Bytes, {len(frames)} gültige Frames, {len(self.buffer)} Restbytes")
         from backend.bus_connection import observe
-        observe(frames)
+        observe(frames,self.endpoint)
         for f in frames:
             if f[0] != self.endpoint.slave:continue
             if f[9] == 'read-request':self.foreign_pending=(f[2],f[3])
@@ -103,7 +105,10 @@ class WarmlinkSession:
         if not 0 <= register <= 65535 or not 1 <= count <= 125:
             raise ValueError("Ungültiger LTE-Registerbereich")
         body = bytes((self.endpoint.slave, 3)) + register.to_bytes(2, "big") + count.to_bytes(2, "big")
-        return self.exchange(with_crc(body), "read", register, count)
+        words=self.exchange(with_crc(body), "read", register, count)
+        from backend.bus_connection import record_read
+        record_read(self.endpoint,register,words)
+        return words
 
     def write_one(self, register, raw):
         # Same FC16 single-word format as Desktop build_write_frame.

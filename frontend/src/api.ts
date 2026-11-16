@@ -23,7 +23,9 @@ export type Register = {
   value_map: Record<string,string>
   cloud?: {code:string;value:string|number;unit:string;timestamp:string;quality:string;display_value?:string|null}|null
 }
-export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string }
+export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string;display_value?:string|null;code?:string;name?:string;group?:string }
+export type LteScan = {status:'idle'|'running'|'complete'|'partial'|'error';completed:number;total:number;error:string|null}
+export type LteSnapshot = {values:Record<string,RegisterValue>;metrics:Partial<Dashboard['metrics']>;connection:{connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number};scan:LteScan;removed?:string[];reset?:boolean}
 
 export type CloudConfigStatus = {
   configured: boolean
@@ -152,6 +154,8 @@ async function get<T>(path: string): Promise<T> {
 export type WarmlinkConfig = {connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
 export const api = {
+  lteSnapshot:()=>get<LteSnapshot>('/api/warmlink/state'),
+  lteScan:()=>post<LteScan>('/api/warmlink/scan',{}),
   cloudEnum: (key:string)=>post<{items:Record<string,string>[]}>('/api/cloud/service-enum',{key}),
   cloudInsight: (kind:'ota'|'metadata'|'ai')=>post<{checked_at:string;cached:boolean;available?:boolean;count?:number;items?:Record<string,string>[];source?:string;frequency_supported?:boolean|null;ai_enabled?:boolean|null;sg_supported?:boolean|null;sg_mode?:number|null}>('/api/cloud/insights/'+kind,{}),
   cloudHistory: (address:string,start:string,end:string,frequency:string)=>post<{checked_at:string;cached:boolean;unit:string;points:{time:string;value:number;incomplete:boolean}[]}>('/api/cloud/history',{address,start,end,frequency,time_zone:1}),
