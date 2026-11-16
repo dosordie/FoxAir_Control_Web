@@ -48,3 +48,37 @@ jobs:
           path: frontend/dist/
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    name: Publish prebuilt frontend to git branch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: foxair-frontend-dist-branch
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: foxair-frontend-dist
+          path: prebuilt
+      - name: Publish clean assets + exact source revision to web-dist branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f prebuilt/index.html
+          build_dir="$(mktemp -d)"
+          cp -a prebuilt/. "$build_dir/"
+          printf '%s\n' "$GITHUB_SHA" > "$build_dir/.build-source-sha"
+          git -C "$build_dir" init -q --initial-branch=web-dist
+          git -C "$build_dir" config user.name "github-actions[bot]"
+          git -C "$build_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$build_dir" add -A
+          git -C "$build_dir" commit -qm "build: frontend from $GITHUB_SHA"
+          git -C "$build_dir" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git -C "$build_dir" -c "http.https://github.com/.extraheader=$auth_header" \
+            push -q --force origin HEAD:refs/heads/web-dist
