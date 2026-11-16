@@ -166,17 +166,20 @@ class CloudReader:
         if not self.token:
             self.login()
         try:
-            response = self._post(endpoint, payload, token=self.token, method=method)
+            response = self._post(endpoint, payload, token=self.token) if method == "POST" else self._post(
+                endpoint, payload, token=self.token, method="GET")
         except CloudError as exc:
             if str(exc) != "Cloud-Zugriff abgelehnt":
                 raise
             self.token = None
             self.login()
-            response = self._post(endpoint, payload, token=self.token, method=method)
+            response = self._post(endpoint, payload, token=self.token) if method == "POST" else self._post(
+                endpoint, payload, token=self.token, method="GET")
         if self._expired(response):
             self.token = None
             self.login()
-            response = self._post(endpoint, payload, token=self.token, method=method)
+            response = self._post(endpoint, payload, token=self.token) if method == "POST" else self._post(
+                endpoint, payload, token=self.token, method="GET")
         return response
 
     def app_heartbeat(self) -> bool:
