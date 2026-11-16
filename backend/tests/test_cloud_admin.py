@@ -75,6 +75,23 @@ class CloudAdminTests(unittest.TestCase):
             self.assertEqual(cloud_config.credentials(),
                              ("test-user", "test-password", "device-456"))
 
+    def test_web_update_requires_https_and_admin_password(self):
+        with patch("backend.main.web_request_update", return_value={"requested": True}) as update:
+            insecure = self.http.post("/api/update/request", json={
+                "admin_password": "A-strong-admin-password!"
+            })
+            self.assertEqual(insecure.status_code, 403)
+            unauthorized = self.https.post("/api/update/request", json={
+                "admin_password": "incorrect"
+            })
+            self.assertEqual(unauthorized.status_code, 403)
+            update.assert_not_called()
+            authorized = self.https.post("/api/update/request", json={
+                "admin_password": "A-strong-admin-password!"
+            })
+            self.assertEqual(authorized.status_code, 200)
+            update.assert_called_once_with()
+
     def test_account_disclosure_requires_admin_password(self):
         with patch.dict("os.environ", {"FOXAIR_CLOUD_USER": "", "FOXAIR_CLOUD_PASSWORD": "",
                                        "FOXAIR_CLOUD_DEVICE_CODE": ""}):
