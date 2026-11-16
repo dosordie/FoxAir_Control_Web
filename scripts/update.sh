@@ -86,6 +86,7 @@ stage=""
 
 if (( NO_RESTART == 0 )); then
   if systemctl list-unit-files foxair-web.service --no-legend 2>/dev/null | grep -q '^foxair-web.service'; then
+    bash "$ROOT/scripts/install_stream_shutdown.sh"
     if systemctl is-active --quiet foxair-web.service; then
       echo "==> Nur foxair-web.service neu starten"
       systemctl restart foxair-web.service

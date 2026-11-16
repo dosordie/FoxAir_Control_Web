@@ -47,6 +47,7 @@ EOF
   chmod 0644 "$UNIT"
   echo "FoxAir-Dienst neu angelegt."
 fi
+bash "$ROOT/scripts/install_stream_shutdown.sh"
 systemctl daemon-reload
 systemctl start foxair-web.service
 echo "Nur FoxAir gestartet. Automatisch beim Boot starten mit:"

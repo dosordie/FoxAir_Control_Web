@@ -17,7 +17,7 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q backend scripts
       - name: Check shell deployment scripts
-        run: bash -n scripts/update.sh scripts/install_service.sh scripts/install_web_update.sh scripts/set_trusted_proxy.sh scripts/set_listen_address.sh
+        run: bash -n scripts/update.sh scripts/install_service.sh scripts/install_web_update.sh scripts/set_trusted_proxy.sh scripts/set_listen_address.sh scripts/install_stream_shutdown.sh
       - name: Run backend tests
         run: python -m unittest discover -s backend/tests -v
       - name: Verify register catalogue snapshot
