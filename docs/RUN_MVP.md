@@ -126,6 +126,45 @@ sudo bash scripts/set_listen_address.sh --local
 
 **Achtung:** Der MVP hat noch **keine eigene Anmeldung** und enthält Parameter- und Messwertinformationen. Ohne weitere Authentifizierung darf der Port nur aus einem vertrauenswürdigen, ausdrücklich freigegebenen Netzwerksegment erreichbar sein. Eine IP-Bindung ist **keine Firewall**. Zugriff durch Router/Firewall auf das benötigte LAN bzw. Administrationsnetz begrenzen; **keine WAN-Portfreigabe** einrichten.
 
+## Cloud-Vollscan, aktuelle Parameterwerte und Logs
+
+Die Web-App enthält einen **aus FoxAir_Control generierten Cloud-Katalog** mit aktuell 535 bekannten Cloud-Abfragecodes. Die Quellen werden im GitHub-Build von einem festgelegten Upstream-Commit übernommen, nicht auf dem Produktivserver live ausgeführt. `frontend/dist/cloud_catalog.json` wird zusammen mit der gebauten PWA installiert. Bei Änderungen an FoxAir_Control muss der gepinnte Quellcommit bewusst angepasst und geprüft werden.
+
+- Nach dem ersten erfolgreichen Cloud-Dashboardabruf beginnt einmalig ein **asynchroner Vollscan**. Er liest in Batches von bis zu 50 Codes; explizit unzulässige/unsupported Codes werden eingegrenzt, echte HTTP-/Loginfehler stoppen den Scan ohne massenhaftes Wiederholen.
+- Der Scan speichert nur Werte mit gültiger Antwort in einem pro Cloud-Konto getrennten **RAM-Cache**, keine Werte oder Gerätekennungen im Git. Nicht unterstützte Codes werden als ohne Wert gekennzeichnet.
+- Spätere Dashboard-Livepolls lesen nur den bekannten, unterstützten Liveanteil und die Kernanzeigen. Statik-/Konfigurationscodes werden nicht im 30-Sekunden-Rhythmus erneut gelesen.
+- Unter **Parameter → Modbus-Register** werden bestätigte Cloudwerte direkt in der Parameterliste mit Zeitstempel angezeigt; unter **Alle Cloud-Codes** stehen zusätzlich Cloud-only-Codes ohne behauptete Modbus-Zuordnung.
+- Unter **App-Einstellungen → Cloud-Protokoll** erscheinen maximal 150 jüngste Prozessereignisse mit Zeitpunkt, Kategorie und Ergebnismengen. Keine Zugangsdaten, IDs, Tokens oder Cloud-Rohfehlermeldungen.
+- Der Cache und das Log werden durch Neustart des FoxAir-Dienstes zurückgesetzt; dies ist noch **kein historisches Datenarchiv**.
+
+### Vorhandene Cloud-E-Mail und Gerätekennung anzeigen
+
+Die gespeicherte E-Mail und `deviceCode` werden **nicht** durch ungeschützte GET-Endpunkte ausgeliefert. In den App-Einstellungen zuerst das separate Administrationspasswort eingeben und **Aktuelle E-Mail und Gerätekennung anzeigen** auswählen. Danach werden beide Werte in den Bearbeitungsfeldern angezeigt, während das Cloud-Passwort verborgen bleibt. Die aktuelle Geräteübersicht kombiniert `deviceList` mit House-/Room-Ergebnissen analog zu FoxAir_Control.
+
+### HTTPS-Reverse-Proxy für die Admin-Funktionen freigeben
+
+Die Admin-API hat im Reverse-Proxy-Betrieb einen anderen TLS-Kontext als der Browser. Sie akzeptiert `X-Forwarded-Proto: https` **nur von einem explizit erlaubten Proxy-Endpunkt**. Andernfalls ist das Bearbeiten über einen HTTPS-Reverse-Proxy korrekt aus Sicherheitsgründen gesperrt.
+
+Den internen **privaten IPv4-Absender des Reverse-Proxys** einmalig *nur auf dem Zielsystem* konfigurieren:
+
+~~~bash
+cd /opt/foxair-web/app
+sudo bash scripts/set_trusted_proxy.sh <PRIVATER_PROXY_IPV4>
+~~~
+
+Die IP wird in einer **lokalen FoxAir-systemd-Drop-in-Datei** gespeichert und nicht in GitHub übertragen. Das Skript startet ausschließlich `foxair-web.service` neu.
+
+Der Reverse Proxy muss mindestens den tatsächlichen Host und das externe Schema weitergeben:
+
+~~~nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+~~~
+
+Bei nicht-standardmäßigen HTTPS-Ports auch die richtige Host-/Port-Kombination weitergeben. Nicht sämtliche Absender vertrauen (`--forwarded-allow-ips='*'` vermeiden). HTTP-LAN-Clients dürfen die Header nicht fälschen und dadurch Admin-Zugriff erhalten.
+
+**Hinweis:** Die Anwendung besitzt weiterhin keine vollständige Web-Benutzer-Authentifizierung. Der Adminschutz gilt nur für Kontokonfiguration und Geräteübersicht; reine Cloud-Telemetrie ist im freigegebenen Netz lesbar. Vor Zugriff aus dem Internet zusätzlichen Authentifizierungs-/Firewall-Schutz einrichten.
+
 ## PHNIX-Cloud als erste Live-Datenquelle
 
 Die Web-App übernimmt für die erste Cloud-Lesestufe das bestätigte Protokoll aus FoxAir_Control: Login über `app/user/login`, anschließend `app/device/getDataByCode`. Es werden **ausschließlich** die bestätigten Dashboard-Codes `Power`, `ModeState`, `T04`, `T08`, `T39`, `T40`, `T41` und `R02` angefordert. Keine Cloud-Schreibbefehle.
