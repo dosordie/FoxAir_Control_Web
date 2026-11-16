@@ -10,7 +10,10 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timezone
 import json
+import hashlib
+import os
 from pathlib import Path
+import tempfile
 import threading
 import time
 from typing import Any
@@ -27,6 +30,10 @@ _PROGRESS = 0
 _LAST_SCAN = 0.0
 _LAST_ERROR: str | None = None
 _CATALOG_CACHE: list[dict[str, Any]] | None = None
+_CACHE_FILE = Path(os.environ.get("FOXAIR_STATE_DIR", "/var/lib/foxair-web")) / "cloud-last-values.json"
+_LAST_SAVED = 0.0
+STALE_AFTER_SECONDS = 300  # five minutes; timeout never changes live availability
+
 
 
 def _ts() -> str:
@@ -72,13 +79,75 @@ def _account() -> tuple[str, str, str]:
     return credentials()
 
 
+def _identity(account: tuple[str, str, str]) -> str:
+    # Hash an entire account identity; no plaintext account identifiers in cache.
+    return hashlib.sha256("\\0".join(account).encode("utf-8")).hexdigest()
+
+
+def _load_cache(account: tuple[str, str, str]) -> dict[str, dict[str, Any]]:
+    try:
+        payload = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        if payload.get("account") != _identity(account):
+            return {}
+        rows = payload.get("rows", {})
+        if not isinstance(rows, dict):
+            return {}
+        result: dict[str, dict[str, Any]] = {}
+        for code, data in list(rows.items())[:850]:
+            if (not isinstance(code, str) or not isinstance(data, dict)
+                    or not isinstance(data.get("timestamp"), str)):
+                continue
+            value = data.get("value")
+            if value is None or isinstance(value, (str, int, float, bool)):
+                result[code] = {
+                    "value": value, "unit": str(data.get("unit") or "")[:24],
+                    "timestamp": data["timestamp"], "quality": "stale", "supported": True,
+                }
+        return result
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def _save_cache(account: tuple[str, str, str], rows: dict[str, dict[str, Any]]) -> None:
+    # No cloud password, deviceCode, tokens or raw responses on disk.
+    # Atomically replace a *single* private snapshot, limited to 850 scalar rows.
+    values = {}
+    for code, row in list(rows.items())[:850]:
+        value = row.get("value")
+        if not isinstance(value, (str, int, float, bool)):
+            continue
+        values[code] = {"value": value, "unit": row.get("unit") or "",
+                        "timestamp": row.get("timestamp")}
+    payload = {"version": 1, "account": _identity(account), "rows": values}
+    fd = -1
+    filename = ""
+    try:
+        _CACHE_FILE.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd, filename = tempfile.mkstemp(prefix=".cloud-values-", dir=_CACHE_FILE.parent)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            json.dump(payload, handle, ensure_ascii=False)
+        os.chmod(filename, 0o600)
+        os.replace(filename, _CACHE_FILE)
+    except OSError:
+        # Read-only systemd service or disk-full must not break live telemetry.
+        pass
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if filename and os.path.exists(filename):
+            os.unlink(filename)
+
+
 def _reset_if_changed() -> tuple[str, str, str]:
-    global _SOURCE, _STATUS, _PROGRESS, _LAST_SCAN, _LAST_ERROR
+    global _SOURCE, _STATUS, _PROGRESS, _LAST_SCAN, _LAST_ERROR, _LAST_SAVED
     account = _account()
     with _LOCK:
         if _SOURCE != account:
             _SOURCE = account
             _ROWS.clear()
+            _ROWS.update(_load_cache(account))
+            _LAST_SAVED = 0.0
             _STATUS = "idle"
             _PROGRESS = 0
             _LAST_SCAN = 0
@@ -87,6 +156,7 @@ def _reset_if_changed() -> tuple[str, str, str]:
 
 
 def merge(rows: dict[str, dict[str, Any]], *, source: tuple[str, str, str] | None = None) -> None:
+    global _LAST_SAVED
     account = _reset_if_changed()
     if source is not None and source != account:
         return
@@ -96,6 +166,22 @@ def merge(rows: dict[str, dict[str, Any]], *, source: tuple[str, str, str] | Non
             if "value" not in item:
                 continue
             _ROWS[code] = {**item, "timestamp": stamp, "quality": "fresh", "supported": True}
+        if rows and (not _LAST_SAVED or time.monotonic() - _LAST_SAVED >= 60):
+            _save_cache(account, _ROWS)
+            _LAST_SAVED = time.monotonic()
+
+
+def cached_raw_values() -> dict[str, dict[str, Any]]:
+    """Last good cloud values including original timestamps, never marked fresh."""
+    _reset_if_changed()
+    with _LOCK:
+        result = dict(_ROWS)
+    return {
+        code: {**row, "quality": "stale"}
+        for code, row in result.items()
+        if isinstance(row.get("timestamp"), str) and
+        isinstance(row.get("value"), (str, int, float, bool))
+    }
 
 
 def value_rows() -> dict[str, Any]:
@@ -115,7 +201,7 @@ def value_rows() -> dict[str, Any]:
         if current and current.get("timestamp"):
             try:
                 age = (now - datetime.fromisoformat(current["timestamp"])).total_seconds()
-                if age > (150 if row.get("kind") == "live" else 86400):
+                if age > (STALE_AFTER_SECONDS if row.get("kind") == "live" else 86400):
                     quality = "stale"
             except (ValueError, TypeError):
                 quality = "unknown"
