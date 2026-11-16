@@ -131,11 +131,45 @@ class CloudReadTests(unittest.TestCase):
                 with self.assertRaises(CloudError):
                     reader.read_codes(["T200"])
 
+    def test_main_water_is_t01_t02_and_selected_target_is_2014(self):
+        from backend.cloud_read import project_dashboard
+        data = project_dashboard({
+            "T01": {"value": 39.3}, "T02": {"value": 43.2},
+            "T40": {"value": 0.0}, "T41": {"value": 0.0},
+            "R02": {"value": 35.0}, "2014": {"value": 42.1},
+        })
+        self.assertEqual(data["return"]["value"], 39.3)
+        self.assertEqual(data["supply"]["value"], 43.2)
+        self.assertEqual(data["target"]["value"], 42.1)
+        self.assertEqual(data["target"]["source_code"], "2014")
+        self.assertEqual(data["base_target"]["value"], 35.0)
+
+    def test_baseline_is_labeled_if_selected_setpoint_unavailable(self):
+        from backend.cloud_read import project_dashboard
+        for selected in (None, {"value": 0.0}, {"value": "not-a-number"}):
+            data = project_dashboard({"R02": {"value": 35}, **({
+                "2014": selected
+            } if selected else {})})
+            self.assertEqual(data["target"]["value"], 35)
+            self.assertEqual(data["target"]["source_code"], "R02")
+            self.assertIn("Basis", data["target"]["label"])
+
+    def test_cached_values_are_never_called_fresh(self):
+        from backend.cloud_read import project_dashboard
+        cached = project_dashboard({
+            "T01": {"value": 35.1, "timestamp": "2026-11-10T00:00:00+00:00"},
+        }, stale=True)
+        self.assertEqual(cached["return"]["quality"], "stale")
+        self.assertEqual(cached["return"]["timestamp"], "2026-11-10T00:00:00+00:00")
+
     def test_known_mapping_includes_verified_dashboard_codes(self):
         self.assertEqual(CLOUD_REGISTERS[2048], "T04")
         self.assertEqual(CLOUD_REGISTERS[2047], "T08")
         self.assertEqual(CLOUD_REGISTERS[2035], "T40")
         self.assertEqual(CLOUD_REGISTERS[2036], "T41")
+        self.assertEqual(CLOUD_REGISTERS[2045], "T01")
+        self.assertEqual(CLOUD_REGISTERS[2046], "T02")
+        self.assertEqual(CLOUD_REGISTERS[2014], "2014")
 
 
 if __name__ == "__main__":
