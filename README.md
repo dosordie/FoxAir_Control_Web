@@ -5,6 +5,10 @@ Responsive Web-App / PWA für FoxAir-/PHNIX-Wärmepumpen. Ein **eigenständiges 
 ## MVP 0.1
 
 - WarmLink-inspirierte **Übersichtsseite** für iPhone und Desktop mit Wärmepumpenillustration, Betriebszustand, Temperaturen, Durchfluss und Sollwertanzeige.
+- **Cloud-Autorefresh** standardmäßig alle 30 Sekunden, ausschließlich bei sichtbarer Startseite. Bestätigter `app_heartbeat=23205` vor Liveabruf, ca. 1 Sekunde Settle, kein automatischer Heartbeat bei Einzelreads.
+- **Cloud-Kontoverwaltung über die Weboberfläche**: Benutzer, Passwort und Geräteauswahl mit eigenem Admin-Passwort geschützt. Nur über HTTPS/Loopback. Cloud-Geräteliste und Statusinformationen.
+- Registergruppen wie H/P/T/D/E/R aus der FoxAir_Control-JSON-Datenbank, ohne separate manuelle Pflege.
+- Original-Logo und Favicon aus der FoxAir_Control-FAQ übernommen.
 - **Parameter / Einstellungen** per Button erreichbar: Suchfunktion nach Code/Registernummer/Name, Details, einzelne Reads.
 - Letzter Transport pro Browser gespeichert.
 - FoxAir_Control-Registerdatenbank als überprüfter Snapshot ohne parallele manuelle Pflege.
@@ -14,7 +18,7 @@ Responsive Web-App / PWA für FoxAir-/PHNIX-Wärmepumpen. Ein **eigenständiges 
 - FastAPI + Vue 3/TypeScript/Vite und PWA-Manifest.
 - GitHub Actions prüfen Python-Backend und Frontend-Build.
 
-**Grenze:** Cloud-Lesezugriff ist implementiert, aber noch nicht gegen deine reale Cloud-Verbindung getestet. LTE-/Display-Modbus, Live-Leases, Sollwertschreiben und alle schreibenden Parameterfunktionen sind noch nicht implementiert. Die angezeigten `—` sind echte *fehlende* Werte, keine Simulationen.
+**Grenze:** Cloud-Lesezugriff und Live-Herzschlag sind implementiert, der neue Live-Ablauf muss noch am realen Gerät verifiziert werden. LTE-/Display-Modbus, Live-Leases, Sollwertschreiben und alle schreibenden Parameterfunktionen sind noch nicht implementiert. Die angezeigten `—` sind echte *fehlende* Werte, keine Simulationen.
 
 **Sicherheit:** Die erste Implementierung hat noch **keine eigene Authentifizierung**. Nicht ohne Nginx-Zugriffsschutz/MFA, Firewallbegrenzung und Abschluss der Sicherheitsprüfung ins Internet stellen.
 
@@ -30,6 +34,10 @@ sudo bash scripts/update.sh
 Beim ersten Mal zusätzlich `sudo bash scripts/install_service.sh` (Beispiel für diesen Installationspfad). Beide Anwendungen werden separat verwaltet; der Beispiel-Dienst bindet zunächst nur an `127.0.0.1:8081`. **Keinen ungeschützten Zugriff ins Internet erlauben.** Ausführlich: [RUN_MVP.md](docs/RUN_MVP.md).
 
 ### PHNIX Cloud konfigurieren (read-only)
+
+Die ursprüngliche CLI-Konfiguration wird weiterhin unterstützt. Für die **Web-Konfiguration** zuerst einmalig lokal als root `python3 scripts/setup_web_admin.py` aufrufen und ein separates Admin-Passwort festlegen. Anschließend über HTTPS oder einen SSH-Tunnel zur App → **App-Einstellungen** → **Cloud-Zugang & Geräte**. Im gewöhnlichen unverschlüsselten LAN bleibt das Speichern absichtlich gesperrt. Der neue Webspeicher liegt außerhalb von Git und besitzt restriktive Dateiberechtigungen.
+
+
 
 Auf dem Zielsystem mit interaktiver Konsole einmalig `sudo python3 scripts/configure_cloud.py` ausführen. Das Skript fragt Benutzername, Passwort und Gerätecode ab, speichert sie **nur lokal** in einer rootgeschützten systemd-EnvironmentFile und startet ausschließlich den FoxAir-Dienst neu. **Keine Geheimnisse im Repository hinterlegen.**
 

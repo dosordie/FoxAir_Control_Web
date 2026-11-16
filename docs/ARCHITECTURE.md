@@ -144,3 +144,12 @@ Antworten enthalten `source`, `timestamp`, `quality` (`fresh`/`stale`/`unavailab
 ## Nicht Teil des ersten Releases
 
 Firmwareupdate, Raw-Capture, permanenter Logger, vollständige Replik des Windows-Diagnosetools, öffentlicher Multi-Tenant-Betrieb.
+
+## Ergänzung: Cloud-Live-Web-App
+
+- Default Cloud-Livepoll **30 s** bei sichtbarer Übersichtsseite; 10–3600 s konfigurierbar, gespeicherter Wert im jeweiligen Browser.
+- Heartbeat-Auslösung ausschließlich beim Livepoll, nicht beim ersten Abruf oder einem einzelnen Registerread. Payload `app_heartbeat=23205` ohne `appId`, nach bestätigtem Erfolg ca. 1 s Ruhezeit; serverseitig auf min. 25 s begrenzt.
+- Ohne sichtbare Webseite **keine zyklischen Polls**. Source-Transportwechsel verwirft die laufende Timerplanung.
+- Web-Konfiguration mit eigenem Admin-Passwort, Transport nur über HTTPS/Loopback, nur selektierte Geräteinformationen. Backend-Passwörter nie über GET oder im Frontend abfragen.
+- Parametergruppen aus dem Hauptregisterkatalog `block`, bei fehlendem Block aus einem überprüfbaren Code-Präfix. Status-/Diagnosegruppen bleiben eigenständig.
+- Logo und Favicon aus der FoxAir_Control-FAQ als lokale statische Assets eingebunden.

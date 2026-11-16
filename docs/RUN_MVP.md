@@ -49,6 +49,38 @@ Browser: \`http://127.0.0.1:5173/\`. Vite leitet \`/api\` lokal an \`127.0.0.1:8
 
 **Für den Live-Displaytest ohne Geräteverbindung:** Alle dynamischen Werte bleiben \`—\` und die App erklärt, warum. Der Registerbrowser funktioniert ohne Hardware.
 
+## Cloud-Livewerte, Gruppen und geschützte Web-Einstellungen
+
+Die Anzeige aktualisiert bei ausgewählter Cloudverbindung automatisch alle **30 Sekunden**, aber nur solange die Übersichtsseite sichtbar ist. Beim Livepoll wird gemäß [FoxAir_Control Reverse-Engineering](https://github.com/dosordie/FoxAir_Control/blob/main/docs/warmlink_polling_and_readback.md) einmal `app_heartbeat=23205` über `app/device/control` ausgelöst, nach Erfolg ca. 1 Sekunde gewartet und anschließend `getDataByCode` für die Dashboard-Codes abgefragt. Beim ersten Snapshot und Einzelread wird **kein Heartbeat** ausgelöst. Der Server begrenzt Heartbeats zusätzlich auf mindestens 25 Sekunden Abstand. Das Intervall ist in **App-Einstellungen** zwischen 10 und 3600 Sekunden einstellbar. Keine automatischen Standard-Modbus-Abfragen.
+
+**Wichtig:** Das neue Cloud-Liveverhalten ist aus FoxAir_Control abgeleitet und per Unit-Tests zu prüfen; es wurde für diese Web-App noch nicht an der realen Hardware verifiziert. Ein Heartbeat ist ein definiertes Cloud-Steuerkommando, das einen Telemetrie-Snapshot auslösen soll, kein allgemeiner Register-Schreibzugriff.
+
+Die Parameterauswahl gruppiert Hauptregister aus `data/foxair_phnix_registers.json` nach `block` und gegebenenfalls bestätigtem Code-Präfix (H/P/T/D/E/R …). Für unzugeordnete Register bleiben getrennte Gruppen STATUS/DIAG/OTHER. Die Gruppennamen werden **nicht** frei aus Cloud-T-Codes erschlossen.
+
+### Erstmalige Admin-Freigabe für Cloud-Webeinstellungen
+
+Die bisherigen Cloud-Zugangsdaten können aus dem systemd-EnvironmentFile weiterverwendet werden. Um zusätzliche Einstellungen über die Weboberfläche zu verwalten, muss einmalig ein separates Admin-Passwort auf dem Server eingerichtet werden:
+
+~~~bash
+cd /opt/foxair-web/app
+sudo python3 scripts/setup_web_admin.py
+~~~
+
+Das Skript fragt interaktiv nach einem **neuen, mindestens 12-stelligen Admin-Passwort**. Es legt nur für FoxAir eine lokale, zugriffsgeschützte Passwort-Hash-Datei an. Bereits konfigurierte Cloud-Zugangsdaten werden dadurch nicht geändert.
+
+**Administration nur bei HTTPS oder Loopback:** Im Web-UI werden Benutzername, neues Passwort und die Gerätekennung nur über HTTPS oder einen per SSH auf localhost getunnelten Zugriff gespeichert. Ein unverschlüsselter LAN-Aufruf kann die Dashboardwerte lesen, aber weder Cloud-Einstellungen ändern noch die komplette Geräteliste abrufen. Für die spätere Verwendung des Reverse-Proxys müssen dessen HTTPS-Forwarded-Header **nur von der vertrauenswürdigen Proxy-Adresse** akzeptiert werden. Nicht unkontrolliert `--forwarded-allow-ips=*` verwenden.
+
+- `GET /api/cloud/config` zeigt nur Boolean-Statusfelder, keine Zugangsdaten.
+- `POST /api/cloud/config` ist mit Admin-Passwort gesichert; leere Felder behalten vorhandene Werte. Cloud-Passwort bleibt serverseitig.
+- `POST /api/cloud/devices` fragt die Geräteliste des Accounts ab und liefert nach Administratorprüfung ausgewählte Geräte-/DTU-Metadaten. Gerätedaten inklusive Kennungen nur in dieser Admin-Antwort.
+- `POST /api/cloud/device-status` fragt den Status des gespeicherten Geräts ab und gibt nur bekannte, nicht geheime Statusfelder zurück.
+
+Die Webdaten werden im privaten Dienst-State als `cloud.json` (0600, Besitzer FoxAir-Dienstbenutzer) gespeichert, **nicht** im Git-Checkout. Ein Neustart ist beim Speichern nicht nötig; die nächste Cloud-Abfrage verwendet die neue Konfiguration.
+
+### Branding
+
+`frontend/public/foxye-logo.png` und `frontend/public/favicon.png` stammen unverändert aus `dosordie/FoxAir_Control/docs/FAQ/assets` (der offiziellen FoxAir_Control-FAQ-Seite).
+
 ## Git-basierte Installation ohne manuelles ZIP
 
 Die GitHub-Actions-Pipeline führt Python-Tests und den Vue/Vite-Build aus. Nach erfolgreicher Prüfung veröffentlicht sie die fertig gebaute PWA automatisch in den **Git-Branch `web-dist`**. Dessen Datei `.build-source-sha` dokumentiert den passenden `main`-Commit.
