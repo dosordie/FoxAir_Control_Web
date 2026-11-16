@@ -145,31 +145,54 @@ def _admin_attempt_result(peer: str, success: bool) -> None:
                 _failed_admin_attempts.setdefault(peer, []).append(time.monotonic())
 
 
-def require_admin(request: "Request", password: str) -> None:
-    # Imported lazily, so admin bootstrap works with system Python (no FastAPI).
+def ensure_secure_origin(request: "Request") -> bool:
+    """Validate TLS/loopback and same-origin; return browser-visible HTTPS."""
     from fastapi import HTTPException
-    # Refuse transmitting the admin password over plain HTTP on the LAN.
     peer = request.client.host if request.client else ""
     trusted = {x.strip() for x in os.environ.get("FOXAIR_TRUSTED_PROXY_IPS", "").split(",") if x.strip()}
     via_proxy_https = (peer in trusted and
                        request.headers.get("x-forwarded-proto", "").lower() == "https")
-    secure = (request.url.scheme == "https" or
-              peer in ("127.0.0.1", "::1") or via_proxy_https)
+    secure = (request.url.scheme == "https" or peer in ("127.0.0.1", "::1") or via_proxy_https)
     if not secure:
         raise HTTPException(status_code=403, detail="Administration nur über HTTPS oder SSH-Tunnel (Loopback)")
-    # Same-origin check against browser-facing host. X-Forwarded-Host is only
-    # accepted from an explicit trusted reverse proxy.
     host = request.headers.get("host", "")
     if via_proxy_https and request.headers.get("x-forwarded-host"):
         host = request.headers["x-forwarded-host"]
     external_scheme = "https" if via_proxy_https else request.url.scheme
     origin = request.headers.get("origin")
-    expected = f"{external_scheme}://{host}".rstrip("/")
-    if origin and origin.rstrip("/") != expected:
+    if origin and origin.rstrip("/") != f"{external_scheme}://{host}".rstrip("/"):
         raise HTTPException(status_code=403, detail="Unzulässiger Origin")
+    return external_scheme == "https"
+
+
+def check_admin_password(request: "Request", password: str) -> None:
+    from fastapi import HTTPException
+    ensure_secure_origin(request)
+    peer = request.client.host if request.client else ""
     if not _check_admin_rate_limit(peer):
         raise HTTPException(status_code=429, detail="Zu viele fehlgeschlagene Anmeldeversuche")
     valid = verify_admin(password)
     _admin_attempt_result(peer, valid)
     if not valid:
         raise HTTPException(status_code=403, detail="Administrationspasswort fehlt oder ist ungültig")
+
+
+def is_admin_session(request: "Request") -> bool:
+    from backend.admin_session import authenticated, session_cookie_name
+    try:
+        ensure_secure_origin(request)
+    except Exception:
+        return False
+    return authenticated(request.cookies.get(session_cookie_name()))
+
+
+def require_admin(request: "Request", password: str = "") -> None:
+    """Permit existing explicit-password calls or protected session cookies."""
+    from fastapi import HTTPException
+    ensure_secure_origin(request)
+    if password:
+        check_admin_password(request, password)
+        return
+    # Custom header plus same-origin check prevents CSRF on cookie authorization.
+    if request.headers.get("x-foxair-admin") != "1" or not is_admin_session(request):
+        raise HTTPException(status_code=403, detail="Admin-Anmeldung erforderlich")
