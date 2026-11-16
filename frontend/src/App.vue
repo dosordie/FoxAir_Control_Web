@@ -8,7 +8,7 @@ import {
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import { api } from './api'
-import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, Transport, TransportId } from './api'
+import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
 type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -27,6 +27,18 @@ const cloudDevices = ref<CloudDevice[]>([])
 const cloudRows = ref<CloudRow[]>([])
 const cloudOverview = ref<CloudValues | null>(null)
 const cloudLogs = ref<CloudLog[]>([])
+const specialDialogs = ref<SpecialDialog[]>([])
+const specialDialog = ref<string | null>(null)
+const specialLoading = ref(false)
+const specialError = ref('')
+const specialMessage = ref('')
+const selectedSpecial = computed(() => specialDialogs.value.find(x => x.id === specialDialog.value) || null)
+const specialRows = computed(() => {
+  const selected = selectedSpecial.value
+  if (!selected) return []
+  const byCode = new Map(cloudRows.value.map(row => [row.code, row]))
+  return selected.codes.map(code => byCode.get(code)).filter((row): row is CloudRow => !!row)
+})
 const cloudView = ref(false)
 const cloudKind = ref('')
 const cloudCodeSelected = ref<CloudRow | null>(null)
@@ -123,9 +135,12 @@ const lastUpdated = computed(() => {
   return 'Abfrage ' + new Date(snapshot.value.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 const actionButtons = [
-  { label: 'Timer', hint: 'Zeitprogramme', icon: Clock3, color: 'apricot', search: 'Timer' },
-  { label: 'SG-Ready', hint: 'PV-Steuerung', icon: Zap, color: 'mint', search: 'SG' },
-  { label: 'Ruhemodus', hint: 'Leise Betriebsart', icon: VolumeX, color: 'lilac', search: 'Silent' },
+  { label: 'Timer', hint: 'Zeitprogramme', icon: Clock3, color: 'apricot', dialog: 'timer' },
+  { label: 'SG-Ready', hint: 'PV-Steuerung', icon: Zap, color: 'mint', dialog: 'sg' },
+  { label: 'AT-Kurve', hint: 'Heizkennlinie', icon: Sun, color: 'lilac', dialog: 'at' },
+  { label: 'Wärmepumpe', hint: 'Sollwerte', icon: Thermometer, color: 'mint', dialog: 'wp' },
+  { label: 'Ruhemodus', hint: 'Silent-Timer', icon: VolumeX, color: 'apricot', dialog: 'silent' },
+  { label: 'Störungen', hint: 'Fehlerstatus', icon: Bell, color: 'lilac', dialog: 'fault' },
 ]
 const readings = computed(() => [
   { key: 'flow', label: 'Durchfluss', icon: Waves, unit: 'm³/h' },
@@ -225,6 +240,42 @@ async function loadCloudValues() {
     // Preserve the last known values until the next refresh.
   }
 }
+async function openSpecialDialog(dialog: string) {
+  specialError.value = ''
+  specialMessage.value = ''
+  if (!specialDialogs.value.length) {
+    try { specialDialogs.value = (await api.specialDialogs()).items }
+    catch { specialError.value = 'Spezialdialoge derzeit nicht verfügbar'; return }
+  }
+  if (!specialDialogs.value.some(x => x.id === dialog)) return
+  specialDialog.value = dialog
+  await loadCloudValues()
+  void refreshSelectedSpecial()
+}
+async function refreshSelectedSpecial() {
+  const id = specialDialog.value
+  if (!id || specialLoading.value) return
+  specialLoading.value = true
+  specialError.value = ''
+  specialMessage.value = ''
+  try {
+    const result = await api.refreshSpecialDialog(id)
+    specialMessage.value = result.updated
+      ? result.count + ' aktuelle Cloudwerte gelesen'
+      : result.reason === 'rate_limit'
+        ? 'Bereits kürzlich abgefragt, bitte den Cache verwenden.'
+        : 'Noch keine bestätigten Codes für diesen Dialog.'
+    await loadCloudValues()
+  } catch (e) {
+    specialError.value = e instanceof Error ? e.message : 'Cloud-Abfrage fehlgeschlagen'
+  } finally {
+    specialLoading.value = false
+  }
+}
+function closeSpecialOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') specialDialog.value = null
+}
+
 async function loadCloudLogs() {
   try { cloudLogs.value = (await api.cloudLogs()).items }
   catch { /* Logs are optional and must not block operation */ }
@@ -368,6 +419,7 @@ onMounted(async () => {
   syncRoute()
   window.addEventListener('hashchange', syncRoute)
   document.addEventListener('visibilitychange', onVisibilityChange)
+  document.addEventListener('keydown', closeSpecialOnEscape)
   try {
     const response = await api.transports()
     transports.value = response.items
@@ -375,6 +427,7 @@ onMounted(async () => {
     // Backend not reachable; show unavailable values, never demo values.
   }
   await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues()])
+  try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
   if (page.value === 'settings') await loadCloudLogs()
@@ -385,6 +438,7 @@ onBeforeUnmount(() => {
   unmounted = true
   window.removeEventListener('hashchange', syncRoute)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  document.removeEventListener('keydown', closeSpecialOnEscape)
   clearTimeout(searchTimer)
   clearTimeout(refreshTimer)
   clearTimeout(valuesTimer)
@@ -494,7 +548,7 @@ onBeforeUnmount(() => {
             <section class="shortcuts panel">
               <div class="section-head"><div><span class="section-caption">SCHNELLZUGRIFF</span><h2>Funktionen</h2></div><span class="muted-text">Parameter auswählen</span></div>
               <div class="shortcut-grid">
-                <button v-for="button in actionButtons" :key="button.label" class="shortcut" @click="navigate('parameters', button.search)">
+                <button v-for="button in actionButtons" :key="button.label" class="shortcut" @click="openSpecialDialog(button.dialog)">
                   <span class="shortcut-symbol" :class="button.color"><component :is="button.icon" :size="28" /></span>
                   <strong>{{ button.label }}</strong>
                   <small>{{ button.hint }}</small>
@@ -732,6 +786,38 @@ onBeforeUnmount(() => {
         </section>
       </template>
     </main>
+
+    <div v-if="specialDialog" class="special-overlay" @click.self="specialDialog = null">
+      <section class="special-modal panel" role="dialog" aria-modal="true" aria-labelledby="special-modal-title">
+        <div class="special-top">
+          <div><span class="section-caption">FOX AIR / CLOUD</span>
+            <h2 id="special-modal-title">{{ selectedSpecial?.title || 'Spezialdialog' }}</h2>
+            <p>{{ selectedSpecial?.description }}</p></div>
+          <button type="button" class="outlined-action" aria-label="Dialog schließen" @click="specialDialog = null">Schließen</button>
+        </div>
+        <p class="section-hint">Anzeige der bekannten Cloud-Werte wie in FoxAir_Control. Schreiben ist in dieser Entwicklungsstufe absichtlich deaktiviert.</p>
+        <div class="special-toolbar">
+          <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
+            <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
+            {{ specialLoading ? 'Frage Cloudwerte ab …' : 'Cloudwerte neu abfragen' }}
+          </button>
+          <span>{{ specialRows.filter(row => row.value !== null).length }} / {{ specialRows.length }} mit Wert</span>
+        </div>
+        <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
+        <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
+        <div class="special-rows">
+          <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
+            :class="{ 'is-stale': entry.quality === 'stale' }">
+            <span class="register-code">{{ entry.code }}</span>
+            <span class="register-title">{{ entry.name }}
+              <small>{{ entry.register != null ? 'MAIN ' + entry.register : 'Nur Cloud' }}</small>
+            </span>
+            <strong :title="relativeTimestamp(entry.timestamp)">{{ textValue(entry.value) }} {{ entry.unit }}</strong>
+          </div>
+          <p v-if="!specialRows.length" class="empty-state">Keine passenden Cloud-Codes im Katalog.</p>
+        </div>
+      </section>
+    </div>
 
     <nav class="mobile-bottom" aria-label="Mobilnavigation">
       <button :class="{ active: page === 'home' }" @click="navigate('home')"><House :size="21" /><span>Übersicht</span></button>
