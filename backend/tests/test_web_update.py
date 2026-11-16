@@ -39,6 +39,7 @@ class WebUpdateTests(unittest.TestCase):
         with patch.object(web_update, "_current_sha", return_value=head), \
                 patch.object(web_update, "_remote_sha", return_value=head), \
                 patch.object(web_update, "_deployed_sha", return_value=older), \
+                patch.object(web_update, "_remote_build_sha", return_value=head), \
                 patch.object(web_update, "_status_unit", return_value={
                     "LoadState": "loaded", "ActiveState": "inactive", "Result": "success"
                 }):
