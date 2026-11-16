@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.catalog import format_raw, load_registers, search_registers, group_counts
 from backend.cloud_config import cloud_status, credentials, save_cloud, require_admin
+from backend.cloud_state import (catalog as full_cloud_catalog, value_rows as cloud_values,
+    scan_start as cloud_scan_start, logs as cloud_logs, log_event as cloud_log_event)
 from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
@@ -89,6 +91,34 @@ def cloud_config_update(payload: CloudConfigUpdate, request: Request):
     return cloud_status()
 
 
+@app.post("/api/cloud/account")
+def cloud_account(payload: CloudAdminAction, request: Request):
+    require_admin(request, payload.admin_password)
+    username, _, code = credentials()
+    # Only disclose these identifying values after checking the admin password.
+    cloud_log_event("admin", "Cloud-Kontodaten im Adminbereich geöffnet")
+    return {"username": username, "device_code": code}
+
+
+@app.get("/api/cloud/logs")
+def get_cloud_logs():
+    return {"items": cloud_logs()}
+
+
+@app.get("/api/cloud/values")
+def get_cloud_values():
+    return cloud_values()
+
+
+@app.post("/api/cloud/scan")
+def scan_cloud_catalog(payload: CloudAdminAction, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        return cloud_scan_start(force=True)
+    except CloudError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
 @app.post("/api/cloud/devices")
 def cloud_devices(payload: CloudAdminAction, request: Request):
     require_admin(request, payload.admin_password)
@@ -112,7 +142,30 @@ def cloud_device_status(payload: CloudAdminAction, request: Request):
 @app.get("/api/registers")
 def registers(query: str = "", group: str = Query("", max_length=18),
               limit: int = Query(80, ge=1, le=200)):
-    return {"items": search_registers(query, limit, group=group), "catalog_size": len(load_registers())}
+    items = search_registers(query, limit, group=group)
+    if group.upper() == "CLOUD":
+        # Cloud-only entries are queried via /api/cloud/values instead.
+        return {"items": [], "catalog_size": len(load_registers())}
+    if items:
+        cloud_snapshot = cloud_values()
+        by_reg: dict[int, dict] = {}
+        for cloud_row in cloud_snapshot.get("items", []):
+            reg = cloud_row.get("register")
+            if not isinstance(reg, int) or cloud_row.get("value") is None:
+                continue
+            old = by_reg.get(reg)
+            if old is None or (cloud_row.get("confidence") == "confirmed"
+                               and old.get("confidence") != "confirmed"):
+                by_reg[reg] = cloud_row
+        for row in items:
+            match = by_reg.get(row["register"])
+            row["cloud"] = {
+                "code": match["code"], "value": match["value"],
+                "unit": match.get("unit") or row.get("unit") or "",
+                "timestamp": match["timestamp"],
+                "quality": match["quality"],
+            } if match else None
+    return {"items": items, "catalog_size": len(load_registers())}
 
 
 @app.get("/api/registers/{register}/read")
@@ -166,7 +219,15 @@ def dashboard(transport: str = "cloud", live: bool = False):
             snapshot["status"] = "online" if count == len(DASHBOARD_FIELDS) else ("partial" if count else "unavailable")
             if not count:
                 snapshot["error"] = "Keine unterstützten Cloud-Werte zurückgegeben"
+            # First successful dashboard read starts a background full catalog
+            # scan; subsequent page loads use the same in-memory cache.
+            try:
+                cloud_scan_start()
+            except CloudError:
+                pass  # Dashboard remains useful without an optional full scan.
         except CloudError as exc:
+            cloud_log_event("error", "Cloud-Übersicht konnte nicht gelesen werden")
+
             snapshot["error"] = str(exc)
         return snapshot
     if transport != "standard_modbus":
