@@ -8,7 +8,7 @@ import {
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import { api } from './api'
-import type { CloudConfigStatus, CloudDevice, Dashboard, Metric, Register, RegisterValue, Transport, TransportId } from './api'
+import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, Transport, TransportId } from './api'
 
 type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -24,6 +24,16 @@ const selectedGroup = ref('')
 const registerGroups = ref<{ group: string; count: number }[]>([])
 const cloudStatus = ref<CloudConfigStatus | null>(null)
 const cloudDevices = ref<CloudDevice[]>([])
+const cloudRows = ref<CloudRow[]>([])
+const cloudOverview = ref<CloudValues | null>(null)
+const cloudLogs = ref<CloudLog[]>([])
+const cloudView = ref(false)
+const cloudKind = ref('')
+const cloudCodeSelected = ref<CloudRow | null>(null)
+const accountLoading = ref(false)
+const accountLoaded = ref(false)
+const cloudScanLoading = ref(false)
+let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
 const cloudStatusLoading = ref(false)
 const cloudUsername = ref('')
@@ -57,6 +67,28 @@ const transportLabel = computed(() => selectedTransportInfo.value?.name || 'PHNI
 const online = computed(() => snapshot.value?.status === 'online')
 const modeText = computed(() => displayMetric(snapshot.value?.metrics.mode || null, '—'))
 const powerText = computed(() => displayMetric(snapshot.value?.metrics.power || null, '—'))
+const filteredCloudRows = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  return cloudRows.value.filter(row => {
+    if (cloudKind.value && row.kind !== cloudKind.value) return false
+    return !term || [row.code, row.name, String(row.register ?? ''), row.group]
+      .some(part => part.toLowerCase().includes(term))
+  })
+})
+
+function currentCloudRegisterValue(register: number) {
+  const candidates = cloudRows.value.filter(x => x.register === register && x.value !== null)
+  const confirmed = candidates.find(x => x.confidence === 'confirmed')
+  return confirmed || candidates[0] || null
+}
+function textValue(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  return String(value)
+}
+function relativeTimestamp(value: string | null | undefined): string {
+  return value ? new Date(value).toLocaleString('de-DE') : 'Noch kein aktueller Cloud-Wert'
+}
+
 const lastUpdated = computed(() => {
   if (!snapshot.value?.timestamp || snapshot.value?.status === 'unavailable') return 'Noch keine aktuellen Messwerte'
   return 'Abfrage ' + new Date(snapshot.value.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -90,12 +122,20 @@ function routeFromHash(): Page {
 function syncRoute() {
   page.value = routeFromHash()
   scheduleRefresh()
+  scheduleValueRefresh()
+  if (page.value === 'settings') {
+    void loadCloudLogs()
+    void loadCloudStatus()
+  }
 }
 function navigate(target: Page, term = '') {
   if (target === 'parameters' && term) search.value = term
   window.location.hash = target === 'home' ? '#/' : '#/' + target
   syncRoute()
-  if (target === 'parameters') void loadRegisters()
+  if (target === 'parameters') {
+    void loadRegisters()
+    void loadCloudValues()
+  }
 }
 function scheduleRefresh() {
   clearTimeout(refreshTimer)
@@ -115,6 +155,7 @@ async function loadDashboard(live = false) {
     if (source !== selectedTransport.value) return
     snapshot.value = data
     if (data.error) error.value = data.error
+    if (source === 'cloud') void loadCloudValues()
   } catch (err) {
     if (source === selectedTransport.value)
       error.value = err instanceof Error ? err.message : 'Keine Verbindung zum Webserver'
@@ -128,6 +169,60 @@ function onVisibilityChange() {
   clearTimeout(refreshTimer)
   if (!document.hidden && page.value === 'home') {
     void loadDashboard(false)
+  }
+  if (!document.hidden && page.value === 'parameters') {
+    void loadCloudValues()
+    scheduleValueRefresh()
+  }
+}
+
+function scheduleValueRefresh() {
+  clearTimeout(valuesTimer)
+  if (unmounted || page.value !== 'parameters' || document.hidden) return
+  valuesTimer = setTimeout(async () => {
+    await loadCloudValues()
+    scheduleValueRefresh()
+  }, cloudOverview.value?.status === 'running' ? 5000 : 15000)
+}
+async function loadCloudValues() {
+  try {
+    cloudOverview.value = await api.cloudValues()
+    cloudRows.value = cloudOverview.value.items
+    // The register table can show current values directly from cloudRows.
+  } catch {
+    // Preserve the last known values until the next refresh.
+  }
+}
+async function loadCloudLogs() {
+  try { cloudLogs.value = (await api.cloudLogs()).items }
+  catch { /* Logs are optional and must not block operation */ }
+}
+async function loadStoredAccount() {
+  accountLoading.value = true
+  cloudError.value = ''
+  try {
+    const result = await api.cloudAccount(cloudAdminPassword.value)
+    cloudUsername.value = result.username
+    cloudDeviceCode.value = result.device_code
+    accountLoaded.value = true
+    cloudMessage.value = 'Aktuelle Cloud-E-Mail und Gerätekennung geladen.'
+  } catch (e) {
+    cloudError.value = e instanceof Error ? e.message : 'Kontodaten konnten nicht geladen werden.'
+  } finally {
+    accountLoading.value = false
+  }
+}
+async function rescanCloud() {
+  cloudScanLoading.value = true
+  cloudError.value = ''
+  try {
+    const result = await api.cloudScan(cloudAdminPassword.value)
+    cloudMessage.value = result.started ? 'Cloud-Vollscan gestartet.' : 'Cloud-Vollscan läuft bereits.'
+    await loadCloudValues()
+  } catch (e) {
+    cloudError.value = e instanceof Error ? e.message : 'Scan konnte nicht gestartet werden'
+  } finally {
+    cloudScanLoading.value = false
   }
 }
 
@@ -247,10 +342,12 @@ onMounted(async () => {
   } catch {
     // Backend not reachable; show unavailable values, never demo values.
   }
-  await Promise.all([loadDashboard(), loadCloudStatus()])
+  await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues()])
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
+  if (page.value === 'settings') await loadCloudLogs()
   scheduleRefresh()
+  scheduleValueRefresh()
 })
 onBeforeUnmount(() => {
   unmounted = true
@@ -258,6 +355,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   clearTimeout(searchTimer)
   clearTimeout(refreshTimer)
+  clearTimeout(valuesTimer)
   cloudAdminPassword.value = ''
   cloudPassword.value = ''
 })
