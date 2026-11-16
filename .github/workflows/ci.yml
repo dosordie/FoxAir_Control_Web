@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install API dependencies
-        run: python -m pip install -r backend/requirements.txt
+        run: python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
       - name: Compile Python sources
         run: python -m compileall -q backend scripts
       - name: Run backend tests
