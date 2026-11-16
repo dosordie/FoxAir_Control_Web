@@ -1186,7 +1186,7 @@ onBeforeUnmount(() => {
             </span>
             <strong :title="relativeTimestamp(entry.timestamp)">{{ textValue(entry.value) }} {{ entry.unit }}</strong>
           </div>
-          <p v-if="!specialRows.length" class="empty-state">Keine passenden Cloud-Codes im Katalog.</p>
+          <p v-if="!specialRows.length" class="empty-state">Noch keine Werte aus dieser Verbindung vorhanden.</p>
         </div>
       </section>
     </div>
