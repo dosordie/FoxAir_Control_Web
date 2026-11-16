@@ -269,3 +269,28 @@ a{color:inherit}
   .parameter-groups::-webkit-scrollbar{display:none}
   .register-item{min-width:0}
 }
+
+/* Issue #6: fan only animates while the compressor unit's on/off state is live. */
+.fan-ring.fan-running svg{animation:foxair-fan-rotate 3s linear infinite;transform-origin:50% 50%}
+@keyframes foxair-fan-rotate{to{transform:rotate(360deg)}}
+.is-stale{opacity:.62}
+.is-stale .register-measure{color:#ad7b3d}
+.main-register-preview{margin-top:24px}
+.register-preview-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;border:0;background:transparent;text-align:left;gap:12px;color:#3b424c;padding:0}
+.register-preview-toggle>span:first-child{display:flex;flex-direction:column;gap:5px}
+.register-preview-toggle strong{font-size:16px}
+.register-preview-toggle>span:last-child{display:flex;align-items:center;gap:6px;font-size:12px;color:#969ba3;white-space:nowrap}
+.register-preview-toggle svg{transition:transform .2s}
+.register-preview-toggle svg.is-open{transform:rotate(90deg)}
+.register-preview-controls{display:grid;gap:6px;margin-top:19px}
+.main-register-list{max-height:440px;overflow-y:auto;margin:8px 0 15px}
+.main-register-row{display:flex;align-items:center;gap:12px;padding:9px 3px;border-bottom:1px solid #edeff2;min-width:0}
+.main-register-row .register-title{flex:1;min-width:0}
+.main-register-row>strong{font-size:13px;color:#3d7854;font-variant-numeric:tabular-nums;white-space:nowrap}
+.main-register-row.is-stale>strong{color:#b18351}
+@media (max-width:600px){
+ .main-register-preview{margin-top:15px}
+ .main-register-row{gap:7px}
+ .main-register-row>strong{font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis}
+}
+@media(prefers-reduced-motion:reduce){.fan-ring.fan-running svg{animation:none}}

@@ -67,6 +67,21 @@ const transportLabel = computed(() => selectedTransportInfo.value?.name || 'PHNI
 const online = computed(() => snapshot.value?.status === 'online')
 const modeText = computed(() => displayMetric(snapshot.value?.metrics.mode || null, '—'))
 const powerText = computed(() => displayMetric(snapshot.value?.metrics.power || null, '—'))
+const fanRunning = computed(() =>
+  snapshot.value?.status !== 'unavailable' &&
+  snapshot.value?.metrics.power?.quality !== 'stale' &&
+  ['Ein', '1', 'ON'].includes(powerText.value))
+const mainRegisterOpen = ref(false)
+const mainRegisterGroup = ref('T')
+const mainRegisterSearch = ref('')
+const mainRegisterRows = computed(() => {
+  const query = mainRegisterSearch.value.trim().toLowerCase()
+  return cloudRows.value.filter(row =>
+    (!mainRegisterGroup.value || row.group === mainRegisterGroup.value) &&
+    (!query || [row.name, row.code, String(row.register ?? '')]
+      .some(text => text.toLowerCase().includes(query)))
+  ).slice(0, 60)
+})
 const filteredCloudRows = computed(() => {
   const term = search.value.trim().toLowerCase()
   return cloudRows.value.filter(row => {
@@ -99,7 +114,12 @@ function relativeTimestamp(value: string | null | undefined): string {
 }
 
 const lastUpdated = computed(() => {
-  if (!snapshot.value?.timestamp || snapshot.value?.status === 'unavailable') return 'Noch keine aktuellen Messwerte'
+  if (!snapshot.value?.timestamp) return 'Noch keine Messwerte'
+  if (snapshot.value.status === 'unavailable') {
+    const last = Object.values(snapshot.value.metrics).find(v => v?.quality === 'stale')
+    return last?.timestamp ? 'Verbindung unterbrochen · letzter Messwert ' +
+      new Date(last.timestamp).toLocaleString('de-DE') : 'Verbindung unterbrochen'
+  }
   return 'Abfrage ' + new Date(snapshot.value.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 const actionButtons = [
@@ -406,7 +426,7 @@ onBeforeUnmount(() => {
             <div class="hero-main">
               <div class="unit-container" aria-label="Illustration einer Wärmepumpe">
                 <div class="unit">
-                  <div class="fan-ring"><Fan :size="94" :stroke-width="1.3" /></div>
+                  <div class="fan-ring" :class="{ 'fan-running': fanRunning }"><Fan :size="94" :stroke-width="1.3" /></div>
                   <span class="unit-brand">FOX<span>AIR</span></span>
                 </div>
                 <span class="unit-ground"></span>
@@ -430,7 +450,9 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="hero-metrics">
-              <div v-for="item in readings" :key="item.key" class="hero-metric">
+              <div v-for="item in readings" :key="item.key" class="hero-metric"
+                :class="{ 'is-stale': snapshot?.metrics[item.key]?.quality === 'stale' }"
+                :title="snapshot?.metrics[item.key]?.quality === 'stale' ? 'Letzter bekannter Wert, Verbindung unterbrochen' : ''">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong>{{ metric(item.key) }}</strong>
                 <span class="metric-unit">{{ item.unit }}</span>
@@ -448,7 +470,10 @@ onBeforeUnmount(() => {
           <section class="status-strip">
             <div class="status-main">
               <div class="status-symbol"><HeartPulse :size="22" /></div>
-              <div><span class="section-caption">ANLAGENSTATUS</span><h2>{{ powerText === '—' ? 'Status nicht verfügbar' : powerText === 'Ein' ? 'Anlage eingeschaltet' : powerText === 'Aus' ? 'Anlage ausgeschaltet' : 'Betrieb: ' + powerText }}</h2><p>{{ lastUpdated }}</p></div>
+              <div><span class="section-caption">ANLAGENSTATUS</span>
+                <h2 v-if="snapshot?.status === 'unavailable'">Offline · letzter Zustand: {{ powerText }}</h2>
+                <h2 v-else>{{ powerText === '—' ? 'Status nicht verfügbar' : powerText === 'Ein' ? 'Anlage eingeschaltet' : powerText === 'Aus' ? 'Anlage ausgeschaltet' : 'Betrieb: ' + powerText }}</h2>
+                <p>{{ lastUpdated }}</p></div>
             </div>
             <div class="transport-inline">
               <label for="home-transport">Verbindung</label>
@@ -489,6 +514,32 @@ onBeforeUnmount(() => {
               <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreibfunktionen bleiben deaktiviert.</p>
             </section>
           </div>
+          <section class="panel main-register-preview">
+            <button class="register-preview-toggle" type="button" @click="mainRegisterOpen = !mainRegisterOpen"
+              :aria-expanded="mainRegisterOpen">
+              <span><span class="section-caption">REGISTER / FOXAIR_CONTROL</span><strong>Registerübersicht im Hauptfenster</strong></span>
+              <span>{{ mainRegisterOpen ? 'Schließen' : 'Anzeigen' }} <ChevronRight :size="17" :class="{ 'is-open': mainRegisterOpen }" /></span>
+            </button>
+            <template v-if="mainRegisterOpen">
+              <div class="register-preview-controls">
+                <label class="search-box"><Search :size="17" /><input v-model="mainRegisterSearch" placeholder="Register oder Code suchen" aria-label="Hauptfenster Register filtern" /></label>
+                <div class="parameter-groups">
+                  <button v-for="grp in ['', 'T', 'H', 'P', 'R', 'D', 'E', 'SG', 'CLOUD']" :key="grp" class="group-chip"
+                    :class="{ active: mainRegisterGroup === grp }" @click="mainRegisterGroup = grp">{{ grp || 'Alle' }}</button>
+                </div>
+              </div>
+              <div class="main-register-list">
+                <div v-for="entry in mainRegisterRows" :key="entry.code" class="main-register-row"
+                  :class="{ 'is-stale': entry.quality === 'stale' }">
+                  <span class="register-code">{{ entry.code }}</span>
+                  <span class="register-title">{{ entry.name }}<small>{{ entry.register ?? 'Nur Cloud' }}</small></span>
+                  <strong :title="relativeTimestamp(entry.timestamp)">{{ textValue(entry.value) }} {{ entry.unit }}</strong>
+                </div>
+                <p v-if="!mainRegisterRows.length" class="empty-state">Noch keine Registerwerte vorhanden.</p>
+              </div>
+              <button class="outlined-action" type="button" @click="navigate('parameters')">Alle Parameter öffnen <ArrowRight :size="16" /></button>
+            </template>
+          </section>
         </div>
       </template>
 
