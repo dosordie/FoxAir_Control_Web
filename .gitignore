@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+# Vite/Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+# Secrets/local configuration
+.env
+.env.*
+!.env.example
+config.local.json
+*.key
+*.pem
+# Editors
+.vscode/
+.idea/
+.DS_Store
