@@ -661,10 +661,12 @@ onBeforeUnmount(() => {
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
                 <span class="register-title">{{ entry.name }}<small>Register {{ entry.register }} <template v-if="entry.cloud?.code"> · Cloud {{ entry.cloud.code }}</template></small></span>
-                <span class="register-measure" :class="{ unknown: currentCloudRegisterValue(entry.register)?.value == null }"
+                <span class="register-measure" :class="{ unknown: currentCloudRegisterValue(entry.register)?.value == null,
+                    'is-stale': currentCloudRegisterValue(entry.register)?.quality === 'stale' }"
                   :title="relativeTimestamp(currentCloudRegisterValue(entry.register)?.timestamp)">
                   {{ textValue(currentCloudRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
                   <small>{{ currentCloudRegisterValue(entry.register)?.unit || entry.cloud?.unit || '' }}</small>
+                  <small v-if="currentCloudRegisterValue(entry.register)?.quality === 'stale'">veraltet</small>
                 </span>
                 <ChevronRight :size="16" />
               </button>
@@ -676,8 +678,9 @@ onBeforeUnmount(() => {
                 <span class="register-code">{{ entry.code }}</span>
                 <span class="register-title">{{ entry.name }}
                   <small>{{ entry.register ? 'MAIN ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
-                <span class="register-measure" :class="{ unknown: entry.value == null }" :title="relativeTimestamp(entry.timestamp)">
+                <span class="register-measure" :class="{ unknown: entry.value == null, 'is-stale': entry.quality === 'stale' }" :title="relativeTimestamp(entry.timestamp)">
                   {{ textValue(entry.value) }}<small>{{ entry.unit }}</small>
+                  <small v-if="entry.quality === 'stale'">veraltet</small>
                 </span>
                 <ChevronRight :size="16" />
               </button>

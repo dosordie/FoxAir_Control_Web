@@ -101,7 +101,7 @@ def _load_cache(account: tuple[str, str, str]) -> dict[str, dict[str, Any]]:
             if value is None or isinstance(value, (str, int, float, bool)):
                 result[code] = {
                     "value": value, "unit": str(data.get("unit") or "")[:24],
-                    "timestamp": data["timestamp"], "quality": "stale", "supported": True,
+                    "timestamp": data["timestamp"], "quality": "cached", "supported": True,
                 }
         return result
     except (OSError, ValueError, TypeError, AttributeError):
