@@ -5,6 +5,7 @@ display and LTE multi-master protocols are not enabled yet.
 """
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ from backend.cloud_state import (catalog as full_cloud_catalog, value_rows as cl
     scan_start as cloud_scan_start, logs as cloud_logs, log_event as cloud_log_event)
 from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, cached_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
 from backend.cloud_dialogs import definitions as cloud_dialog_definitions, refresh as refresh_cloud_dialog
+from backend.cloud_write import write_control, WriteValidationError, WriteConflictError
 from backend.web_update import status as web_update_status, request_update as web_request_update
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
@@ -202,6 +204,26 @@ def update_request(payload: CloudAdminAction, request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from None
     cloud_log_event("update", "FoxAir-Web-Update angefordert")
     return result
+
+
+class CloudFirstWrite(BaseModel):
+    code: Literal["Mode", "R02"]
+    value: str | int | float
+    expected: str | int | float
+    admin_password: str = Field(default="", max_length=256)
+
+
+@app.post("/api/cloud/write")
+def write_cloud_first(payload: CloudFirstWrite, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        return write_control(payload.code, payload.value, payload.expected)
+    except WriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except WriteValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except CloudError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
 
 
 @app.get("/api/registers")
