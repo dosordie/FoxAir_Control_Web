@@ -49,7 +49,7 @@ const readings = computed(() => [
   { key: 'outdoor', label: 'Außen', icon: Sun, unit: '°C' },
   { key: 'return', label: 'Rücklauf', icon: ArrowDownLeft, unit: '°C' },
   { key: 'supply', label: 'Vorlauf', icon: ArrowUpRight, unit: '°C' },
-] as const))
+] as const)
 
 function displayMetric(metric: Metric, fallback = '—'): string {
   if (metric?.value === null || metric?.value === undefined) return fallback
