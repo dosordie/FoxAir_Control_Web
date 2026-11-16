@@ -92,6 +92,45 @@ class CloudReadTests(unittest.TestCase):
             read_dashboard(live=True)
         self.assertEqual(order, ["heartbeat", "read"])
 
+    def test_discovery_merges_house_devices_if_main_list_empty(self):
+        reader = CloudReader("example", "not-a-real-password", "device-1")
+        def fake_request(endpoint, payload, *, method="POST"):
+            if endpoint == "app/device/deviceList":
+                return {"isReusltSuc": True, "objectResult": []}
+            if endpoint == "house/info/listOwnerHouses":
+                self.assertEqual(method, "GET")
+                return {"isReusltSuc": True, "objectResult": [{
+                    "id": "123", "houseName": "Testhaus",
+                }]}
+            if endpoint == "houseRelDevice/v4/selectHouseToDeviceData":
+                self.assertEqual(payload["houseId"], "123")
+                return {"isReusltSuc": True, "objectResult": {"data": [{
+                    "houseRelDeviceList": [{"deviceCode": "device-1",
+                                            "deviceNickName": "Wärmepumpe"}],
+                    "roomInfoResultList": [{"houseRelDeviceList": []}],
+                }]}}
+            raise AssertionError("unexpected endpoint " + endpoint)
+
+        with patch.object(reader, "_request_auth", side_effect=fake_request):
+            items = reader.devices()
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["deviceCode"], "device-1")
+        self.assertEqual(items[0]["houseName"], "Testhaus")
+
+    def test_all_source_cloud_codes_are_validated(self):
+        from backend.cloud_state import catalog
+        rows = [{"code": "T04"}, {"code": "H36"}]
+        with patch("backend.cloud_state.catalog", return_value=rows):
+            reader = CloudReader("fake", "fake", "fake")
+            reader.token = "fake-token"
+            with patch.object(reader, "_request_auth", return_value={
+                "isReusltSuc": True,
+                "objectResult": [{"code": "H36", "value": "2"}],
+            }):
+                self.assertEqual(reader.read_codes(["H36"])["H36"]["value"], "2")
+                with self.assertRaises(CloudError):
+                    reader.read_codes(["T200"])
+
     def test_known_mapping_includes_verified_dashboard_codes(self):
         self.assertEqual(CLOUD_REGISTERS[2048], "T04")
         self.assertEqual(CLOUD_REGISTERS[2047], "T08")
