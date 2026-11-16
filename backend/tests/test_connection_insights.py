@@ -8,6 +8,31 @@ from backend.cloud_read import CloudError
 
 
 class ConnectionTests(unittest.TestCase):
+    def test_passive_projection_keeps_age_source_and_selected_target(self):
+        endpoint=Endpoint('private',2001)
+        with patch.object(bus,'_source',endpoint),patch.object(bus,'_state',{'connected':True}), \
+             patch.object(bus,'_words',{2046:(380,1000),1158:(350,1000),2014:(365,1000)}),patch.object(bus.time,'time',return_value=1100):
+            values=bus.observed_metrics({'supply':2046,'target':1158},endpoint)
+            self.assertEqual(values['supply']['value'],38)
+            self.assertEqual(values['target']['value'],36.5)
+            self.assertEqual(values['target']['source_code'],'2014')
+            self.assertEqual(values['supply']['quality'],'observed')
+            timestamp=values['supply']['timestamp']
+            with patch.object(bus.time,'time',return_value=1400):
+                old=bus.observed_metrics({'supply':2046},endpoint)['supply']
+            self.assertEqual(old['quality'],'stale')
+            self.assertEqual(old['timestamp'],timestamp)
+            self.assertEqual(bus.observed_metrics({'supply':2046},Endpoint('other',2001)),{})
+
+    def test_passive_dashboard_never_opens_a_socket_or_reads_bus(self):
+        from fastapi.testclient import TestClient
+        from backend.main import app
+        with patch('backend.main.open_warmlink') as active,patch.object(bus,'observed_metrics',return_value={}):
+            response=TestClient(app).get('/api/dashboard?transport=warmlink_raw&passive=true')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json()['status'],'unavailable')
+        active.assert_not_called()
+
     def test_browser_lease_expires_and_permanent_does_not_depend_on_it(self):
         with patch.object(bus,'_lease_until',100):
             self.assertTrue(bus.wanted('browser',99))

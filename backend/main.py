@@ -410,7 +410,7 @@ def register_read(register: int, transport: str = "cloud"):
 
 
 @app.get("/api/dashboard")
-def dashboard(transport: str = "cloud", live: bool = False):
+def dashboard(transport: str = "cloud", live: bool = False, passive: bool = False):
     from backend.device_name import get_name
     require_transport(transport)
     snapshot = {
@@ -422,6 +422,16 @@ def dashboard(transport: str = "cloud", live: bool = False):
         "metrics": {name: None for name in DASHBOARD_FIELDS},
         "live_supported": transport == "cloud",
     }
+    if passive:
+        if transport != 'warmlink_raw':
+            raise HTTPException(status_code=422, detail='Passiver Empfang nur am LTE-Anschluss verfügbar')
+        from backend.bus_connection import observed_metrics, status as connection_status
+        metrics = observed_metrics(DASHBOARD_FIELDS, warmlink_endpoint())
+        snapshot['metrics'].update(metrics)
+        fresh = sum(item['quality'] == 'observed' for item in metrics.values())
+        snapshot['status'] = 'online' if fresh == len(DASHBOARD_FIELDS) else ('partial' if fresh else 'unavailable')
+        snapshot['error'] = connection_status()['error']
+        return snapshot  # No socket creation or active read in this path.
     if transport == "cloud":
         try:
             metrics = cloud_dashboard(live=live)

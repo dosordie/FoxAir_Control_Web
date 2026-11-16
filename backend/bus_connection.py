@@ -4,6 +4,7 @@ Browser ownership uses a 90 second renewable lease; permanent mode is driven
 by private server configuration. Background receiving never sends telegrams.
 """
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import socket
 import threading
 import time
@@ -47,6 +48,36 @@ def observe(frames):
 
 def observed_words():
     with _guard:return {str(reg):{'raw':raw,'age_seconds':round(time.time()-stamp,1),'quality':'observed'} for reg,(raw,stamp) in _words.items() if reg >= 2011 or 1011 <= reg < 2000}
+
+
+def observed_metrics(fields, endpoint):
+    """Decode only catalog-backed MAIN values from this configured source.
+
+    A broadcast is an observation, never a write acknowledgement. Preserve its
+    arrival timestamp so HTTP refreshes cannot make old bus data fresh again.
+    """
+    from backend.catalog import load_registers, format_raw
+    with _guard:
+        if endpoint is None or _source != endpoint:
+            return {}
+        words = dict(_words)
+        connected = _state['connected']
+    definitions = load_registers()
+    def metric(reg):
+        if reg not in words or str(reg) not in definitions:
+            return None
+        raw, stamp = words[reg]
+        value, unit = format_raw(raw, definitions[str(reg)])
+        return {'value': value, 'unit': unit, 'raw': raw,
+                'timestamp': datetime.fromtimestamp(stamp, timezone.utc).isoformat(),
+                'quality': 'observed' if connected and time.time()-stamp <= 300 else 'stale'}
+    result = {name: item for name, reg in fields.items() if (item := metric(reg)) is not None}
+    selected = metric(2014)
+    if selected and selected['quality'] == 'observed' and isinstance(selected['value'], (float, int)) and 5 <= selected['value'] <= 80:
+        result['target'] = {**selected, 'source_code': '2014', 'label': 'Aktueller Wassersollwert'}
+    elif 'target' in result:
+        result['target'].update(source_code='R02', label='Heizungs-Basissollwert')
+    return result
 
 
 def bus_lock(endpoint):

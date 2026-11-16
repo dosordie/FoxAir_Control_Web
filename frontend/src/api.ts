@@ -155,6 +155,7 @@ export const api = {
   cloudInsight: (kind:'ota'|'metadata')=>post<{checked_at:string;cached:boolean;available?:boolean;count?:number;items?:Record<string,string>[];source?:string}>('/api/cloud/insights/'+kind,{}),
   cloudHistory: (address:string,start:string,end:string,frequency:string)=>post<{checked_at:string;cached:boolean;unit:string;points:{time:string;value:number;incomplete:boolean}[]}>('/api/cloud/history',{address,start,end,frequency,time_zone:1}),
   busLease: () => post<object>('/api/warmlink/lease',{}),
+  passiveDashboard: () => get<Dashboard>('/api/dashboard?transport=warmlink_raw&passive=true'),
   busConnection: () => get<{connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number;observed:Record<string,{raw:number;age_seconds:number}>}>('/api/warmlink/connection'),
   timerRead: (kind:string,transport:TransportId) => get<TimerSnapshot>('/api/timers/'+kind+'?transport='+encodeURIComponent(transport)),
   timerWrite: (kind:string,transport:TransportId,values:Record<string,number>,expected:Record<string,number>) => post<{confirmed:boolean;status:string;values?:Record<string,number>;message?:string}>('/api/timers/'+kind,{transport,values,expected}),

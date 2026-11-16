@@ -122,6 +122,20 @@ async function updateBusLease(){
   try {
     if(selectedTransport.value==='warmlink_raw')await api.busLease()
     busState.value=await api.busConnection()
+    if(selectedTransport.value==='warmlink_raw' && !document.hidden && snapshot.value?.transport==='warmlink_raw'){
+      const incoming=await api.passiveDashboard()
+      if(selectedTransport.value==='warmlink_raw' && snapshot.value?.transport==='warmlink_raw'){
+        for(const key of Object.keys(incoming.metrics) as (keyof Dashboard['metrics'])[]){
+          const next=incoming.metrics[key], previous=snapshot.value.metrics[key]
+          if(next && (!previous || Date.parse(next.timestamp)>=Date.parse(previous.timestamp)))snapshot.value.metrics[key]=next
+          const shown=snapshot.value.metrics[key]
+          if(shown && ((!busState.value.connected && shown.quality==='observed') || Date.now()-Date.parse(shown.timestamp)>300000))shown.quality='stale'
+        }
+        const fresh=Object.values(snapshot.value.metrics).filter(item=>item && item.quality!=='stale').length
+        snapshot.value.status=fresh===Object.keys(snapshot.value.metrics).length?'online':fresh?'partial':'unavailable'
+        snapshot.value.error=incoming.error
+      }
+    }
   }catch{/* The connection panel shows the last confirmed state. */}
   if(!unmounted)busTimer=setTimeout(updateBusLease,15000)
 }
@@ -331,6 +345,9 @@ const lastUpdated = computed(() => {
     return last?.timestamp ? 'Verbindung unterbrochen · letzter Messwert ' +
       new Date(last.timestamp).toLocaleString('de-DE') : 'Verbindung unterbrochen'
   }
+  const observed=Object.values(snapshot.value.metrics).filter(v=>v?.quality==='observed')
+    .map(v=>Date.parse(v!.timestamp)).sort((a,b)=>b-a)[0]
+  if(observed)return 'Letzter Buswert ' + new Date(observed).toLocaleTimeString('de-DE')
   return 'Abfrage ' + new Date(snapshot.value.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 const actionButtons = [
@@ -855,6 +872,7 @@ onBeforeUnmount(() => {
                 <label class="live-switch"><input type="checkbox" v-model="liveEnabled" /> Automatische Cloud-Abfrage</label>
                 <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
               </div>
+              <small v-if="selectedTransport==='warmlink_raw' && busState?.mode!=='on_demand'">{{ busState?.connected ? 'Bus verbunden · empfangene Werte werden übernommen' : 'Busverbindung wird geprüft' }} · keine automatischen Leseabfragen</small>
             </div>
           </section>
 
@@ -1089,7 +1107,7 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
           <p v-if="updateError" class="read-error">{{ updateError }}</p>
-          <p class="section-hint">Für den Update-Knopf im Bereich „Cloud-Zugang & Geräte“ als Administrator anmelden. Die Anmeldung gilt für diese Browser-Sitzung. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
+          <p class="section-hint">Für Updates oben rechts als Administrator anmelden. Die Anmeldung bleibt bis zu 30 Tage erhalten, auch bei einem Serverneustart. Der Installationserfolg wird durch die nächste Statusprüfung bestätigt.</p>
         </section>
         <section class="settings-panel panel">
           <div class="section-head">
@@ -1131,7 +1149,7 @@ onBeforeUnmount(() => {
             <select id="connection-mode" class="settings-input" v-model="lteConfig.connection_mode"><option value="on_demand">Nur bei einer Abfrage</option><option value="browser">Solange ein Browser geöffnet ist</option><option value="permanent">Dauerhaft – auch ohne Browser</option></select>
             <p class="section-hint">Browser-Modus: Schließen spätestens 90 Sekunden nach dem letzten Lebenszeichen. Dauerhaftes Mithören sendet keine eigenen Lese- oder Schreibbefehle.</p>
             <p role="status">TCP: {{ busState?.connected?'Verbunden':'Geschlossen' }} · Modus: {{ {on_demand:'Bei Bedarf',browser:'Browser geöffnet',permanent:'Dauerhaft'}[busState?.mode as 'on_demand'|'browser'|'permanent'] || 'Bei Bedarf' }}<span v-if="busState?.error"> · {{ busState.error }}</span></p>
-            <label><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Lesen und Modus/R02-Schreiben aktivieren</label>
+            <label><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Verbindung mit Lesen und freigegebenen Schreibfunktionen aktivieren</label>
             <button class="main-action" :disabled="lteBusy">{{ lteBusy ? 'Speichert …' : 'LTE-Anschluss speichern' }}</button>
           </form>
           <p v-if="lteMessage" class="section-hint" role="status">{{ lteMessage }}</p>

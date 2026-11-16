@@ -78,3 +78,15 @@ LTE-Verbindungsmodus ist privat konfigurierbar: bei Bedarf, Browser-Lease (90 Se
 Issue 7: begrenzte Historienadressen (vier Temperaturen und Verbrauchs-Alias 2078+9), maximal 31 Tage, feste beobachtete Zeitzone UTC+1; Graph mit Zeitachse und Messpunkten, Cache und Abfragelimit. Aktueller Verbrauchstag ausdrücklich unvollständig. Lesende OTA-Verfügbarkeitsprüfung (kein Flash/Download/Start) und separater Hersteller-Servicekatalog ohne Mapping-/Schreibrechtsänderungen. Enum-Detailtabellen und AI-Supportanzeige sind noch offen; Issue 7 bleibt offen. Herstellerkatalog-Schema muss auf der Installation geprüft werden.
 
 Tests ergänzt für Lease-Ablauf, Socket-Wiederverwendung, vergiftete Sitzungen, passive Statusblöcke gegenüber Schreibabsichten, Historienvalidierung, OTA-Leerantwort, Cache, Fehler-Ratelimit, unvollständige Tageswerte und Metadaten-Filterung. Display-Modbus bleibt in diesem Schritt deaktiviert; kein blindes Freischalten als Standard-RTU und kein unbestätigter Displaybus-Init.
+
+## Nachprüfung: passiver Empfang, Historie und Snapshot-Prüfung
+
+Die Übersicht übernimmt nun alle 15 Sekunden verfügbare CRC-geprüfte LTE-Buswerte, ohne dafür eigene Registerabfragen auszulösen. Messzeitpunkte bleiben die tatsächlichen Empfangszeiten; nach fünf Minuten oder bei unterbrochener passiver Verbindung werden Beobachtungen als veraltet markiert. Neuere aktiv gelesene Werte werden nicht von älteren Beobachtungen überschrieben. Der aktuelle Sollwert 2014 hat bei plausibler frischer Beobachtung Vorrang vor R02. Beobachtungen ersetzen keinen Schreib-Readback. Parameterlisten und Displaybus sind weiterhin nicht vollständig passiv angebunden.
+
+Live vor diesem Schritt geprüft: permanenter Anschluss und Browser-Lease verbunden, gezielter R02-Read auf wiederverwendeter Sitzung erfolgreich, 180 beobachtete Rohwörter erfasst. Testweise geänderten Modus anschließend auf vorheriges „bei Bedarf“ zurückgesetzt. Keine Gerätewerte oder Zeitprogramme verändert.
+
+Cloud: Historie lieferte live 25 Temperaturpunkte; OTA-Prüfung erfolgreich ohne angebotenes Update. Stunden-Zeitstempel werden jetzt in vollständiges ISO mit dem beobachteten UTC+1 umgewandelt, damit auch Chrome die Kurve zeichnet. Der Servicekatalog scheitert live am bisher dokumentierten Request. Weitere Versuche mit geratenen Feldnamen unterbleiben; Nutzer liefert später die Mac-Mitschnitte. Enum-/AI-Erweiterungen bleiben offen.
+
+Issue 2: offline prüfbare Herkunft und SHA-256 je Registerdatei, Schema-/Referenzprüfung, Regressionstest für manipulierte Metadaten und reviewbare Änderungen sowie manuell auslösbarer Review-PR-Ablauf ergänzt. Der Build nutzt dieselbe Manifest-Revision statt eines zweiten festen SHAs. Details und offene Punkte in SNAPSHOT_SYNC.md. Der Workflow wurde bisher nicht mit einer tatsächlich neuen Upstream-Revision ausgeführt; keine vollständige Upstream-Synchronisierung oder Lizenzklärung behauptet.
+
+Stand dieses Schritts: 113 Backendtests, drei Frontendtests und Typecheck/Build erfolgreich. Live-Abnahme der geänderten passiven Anzeige folgt nach CI/Installation.
