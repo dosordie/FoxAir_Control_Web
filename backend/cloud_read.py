@@ -79,21 +79,25 @@ class CloudReader:
         self.login_method: str | None = None
         self.last_heartbeat: float = 0.0
 
-    def _post(self, endpoint: str, body: dict[str, Any], *, token: str | None = None) -> dict[str, Any]:
-        if endpoint not in ("app/user/login", "app/device/getDataByCode",
-                            "app/device/deviceList", "app/device/getDeviceStatus", "app/device/control"):
+    def _post(self, endpoint: str, body: dict[str, Any], *, token: str | None = None,
+              method: str = "POST") -> dict[str, Any]:
+        endpoints = ("app/user/login", "app/device/getDataByCode", "app/user/getUserInfo",
+                     "app/device/deviceList", "app/device/getDeviceStatus",
+                     "house/info/listOwnerHouses", "houseRelDevice/v4/selectHouseToDeviceData",
+                     "app/device/control")
+        if endpoint not in endpoints or method not in ("GET", "POST"):
             raise CloudError("Cloud-Endpunkt nicht zugelassen")
         content = json.dumps(body, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(
             f"{API_ROOT}/{endpoint}",
-            data=content,
+            data=content if method == "POST" else None,
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json;charset=utf-8",
                 "User-Agent": "FoxAir-Control-Web/0.1",
                 **({"x-token": token} if token else {}),
             },
-            method="POST",
+            method=method,
         )
         try:
             with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
@@ -156,22 +160,23 @@ class CloudReader:
                     return
         raise CloudError("Cloud-Anmeldung fehlgeschlagen (Zugangsdaten prüfen)")
 
-    def _request_auth(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _request_auth(self, endpoint: str, payload: dict[str, Any],
+                      *, method: str = "POST") -> dict[str, Any]:
         """Post one known cloud request, with one authentication renewal."""
         if not self.token:
             self.login()
         try:
-            response = self._post(endpoint, payload, token=self.token)
+            response = self._post(endpoint, payload, token=self.token, method=method)
         except CloudError as exc:
             if str(exc) != "Cloud-Zugriff abgelehnt":
                 raise
             self.token = None
             self.login()
-            response = self._post(endpoint, payload, token=self.token)
+            response = self._post(endpoint, payload, token=self.token, method=method)
         if self._expired(response):
             self.token = None
             self.login()
-            response = self._post(endpoint, payload, token=self.token)
+            response = self._post(endpoint, payload, token=self.token, method=method)
         return response
 
     def app_heartbeat(self) -> bool:
@@ -221,38 +226,104 @@ class CloudReader:
         return {k: obj[k] for k in fields if k in obj and
                 (obj[k] is None or isinstance(obj[k], (str, int, float, bool)))}
 
-    def devices(self) -> list[dict[str, Any]]:
-        """Cloud deviceList: allowlisted, secret-free metadata for admin UI."""
-        path = Path(__file__).resolve().parents[1] / "data" / "warmlink_product_ids.json"
-        product_ids = json.loads(path.read_text(encoding="utf-8"))["product_ids"]
-        response = self._request_auth("app/device/deviceList", {
-            "productIds": product_ids,
-            "pageIndex": "1",
-            "pageSize": "999",
-        })
-        if not self._ok(response):
-            raise CloudError("Cloud-Geräteliste konnte nicht geladen werden")
-        obj = response.get("objectResult")
-        if isinstance(obj, list):
-            items = obj
-        elif isinstance(obj, dict):
-            items = next((obj[k] for k in ("records", "list", "rows", "data")
-                          if isinstance(obj.get(k), list)), [])
-            if not items and obj.get("deviceCode"):
-                items = [obj]
-        else:
-            items = []
+    @staticmethod
+    def _device_fields(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
         allowed = (
             "deviceCode", "deviceNickName", "deviceName", "model", "custModel",
             "deviceStatus", "isFault", "dtuSoftwareVer", "dtuSignalIntensity",
             "isShared", "houseName", "houseRoleType", "discoverySource",
         )
-        result = []
-        for item in items:
-            if not isinstance(item, dict) or not item.get("deviceCode"):
+        rows: dict[str, dict[str, Any]] = {}
+        for raw in devices:
+            if not isinstance(raw, dict):
                 continue
-            result.append({key: item[key] for key in allowed
-                           if key in item and isinstance(item[key], (str, int, float, bool))})
+            code = str(raw.get("deviceCode") or "").strip()
+            if not code:
+                continue
+            row = rows.setdefault(code, {"deviceCode": code})
+            for key in allowed:
+                val = raw.get(key)
+                if isinstance(val, (str, int, float, bool)) and (key not in row or row[key] in ("", None)):
+                    row[key] = val
+        return list(rows.values())
+
+    def devices(self) -> list[dict[str, Any]]:
+        """Merge deviceList and house/room listings as in FoxAir_Control."""
+        from backend.cloud_state import log_event
+        path = Path(__file__).resolve().parents[1] / "data" / "warmlink_product_ids.json"
+        product_ids = json.loads(path.read_text(encoding="utf-8"))["product_ids"]
+        collected: list[dict[str, Any]] = []
+        errors = 0
+
+        def items_from(response: dict[str, Any]) -> list[dict[str, Any]]:
+            obj = response.get("objectResult")
+            if isinstance(obj, list):
+                return [v for v in obj if isinstance(v, dict)]
+            if isinstance(obj, dict):
+                for key in ("records", "list", "rows", "data"):
+                    val = obj.get(key)
+                    if isinstance(val, list):
+                        return [v for v in val if isinstance(v, dict)]
+                if obj.get("deviceCode"):
+                    return [obj]
+            return []
+
+        try:
+            response = self._request_auth("app/device/deviceList", {
+                "productIds": product_ids, "pageIndex": "1", "pageSize": "999",
+            })
+            if self._ok(response):
+                collected.extend(items_from(response))
+            else:
+                errors += 1
+                log_event("warn", "Cloud-Geräteliste hat keine gültige Antwort geliefert")
+        except CloudError:
+            errors += 1
+            log_event("warn", "Cloud-Geräteliste nicht erreichbar")
+
+        # Mirrors desktop's house discovery; deviceList alone is incomplete
+        # for shared devices. Owner/room metadata is stripped to a safe allowlist.
+        try:
+            houses = self._request_auth("house/info/listOwnerHouses", {}, method="GET")
+            if self._ok(houses):
+                for house in items_from(houses)[:30]:
+                    house_id = str(house.get("id") or house.get("houseId") or "").strip()
+                    if not house_id:
+                        continue
+                    try:
+                        data = self._request_auth("houseRelDevice/v4/selectHouseToDeviceData", {
+                            "appId": 16, "houseId": house_id, "level": 0,
+                        })
+                    except CloudError:
+                        errors += 1
+                        continue
+                    obj = data.get("objectResult")
+                    if not self._ok(data) or not isinstance(obj, dict):
+                        continue
+                    areas = obj.get("data")
+                    if not isinstance(areas, list):
+                        continue
+                    for area in areas:
+                        if not isinstance(area, dict):
+                            continue
+                        direct = area.get("houseRelDeviceList") or []
+                        for device in direct:
+                            if isinstance(device, dict):
+                                collected.append({**device, "houseName": house.get("houseName", "")})
+                        for room in area.get("roomInfoResultList") or []:
+                            if not isinstance(room, dict):
+                                continue
+                            for device in room.get("houseRelDeviceList") or []:
+                                if isinstance(device, dict):
+                                    collected.append({**device, "houseName": house.get("houseName", "")})
+        except CloudError:
+            errors += 1
+            log_event("warn", "Cloud-Hausliste nicht erreichbar")
+
+        result = self._device_fields(collected)
+        log_event("device", "Cloud-Geräteübersicht gelesen", count=len(result))
+        if not result and errors:
+            raise CloudError("Cloud-Geräteübersicht unvollständig: Geräteliste/Hausliste fehlgeschlagen")
         return result
 
     def read_codes(self, codes: list[str]) -> dict[str, dict[str, Any]]:
