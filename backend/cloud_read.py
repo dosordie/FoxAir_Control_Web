@@ -1,8 +1,8 @@
-"""Minimal read-only PHNIX / Linked-Go cloud adapter.
+"""PHNIX / Linked-Go cloud reader with source-validated full-catalog support.
 
 Protocol format is based on the existing FoxAir_Control cloud/warmlink_api.py.
-Only allowlisted codes are sent. The credential/token/device identifier never
-leaves the server. Writes and app_heartbeat are not implemented.
+Only source-catalog codes are sent. Credentials and access tokens never leave
+the server. The only control payload permitted is the reviewed app heartbeat.
 """
 from __future__ import annotations
 
@@ -53,6 +53,10 @@ DASHBOARD_MAPPING = {
 
 class CloudError(RuntimeError):
     """Fixed/sanitized error text only. Never embed credential or server body."""
+
+
+class UnsupportedCloudCode(CloudError):
+    """Only raised when provider explicitly rejects a code as unsupported."""
 
 
 def cloud_configured() -> bool:
@@ -252,36 +256,27 @@ class CloudReader:
         return result
 
     def read_codes(self, codes: list[str]) -> dict[str, dict[str, Any]]:
-        allowlist = set(CLOUD_REGISTERS.values())
+        from backend.cloud_state import catalog
+        allowlist = {r["code"] for r in catalog()} | set(CLOUD_REGISTERS.values())
         codes = list(dict.fromkeys(codes))
-        if not codes or len(codes) > 24 or any(code not in allowlist for code in codes):
-            raise CloudError("Cloud-Code nicht freigegeben")
-        if not self.token:
-            self.login()
-
-        def request() -> dict[str, Any]:
-            return self._post(
-                "app/device/getDataByCode",
-                {"deviceCode": self.device_code, "protocalCodes": codes},
-                token=self.token,
-            )
-
-        try:
-            response = request()
-        except CloudError as exc:
-            if str(exc) != "Cloud-Zugriff abgelehnt":
-                raise
-            self.token = None
-            self.login()
-            response = request()
-
-        if self._expired(response):
-            self.token = None
-            self.login()
-            response = request()
+        if not codes or len(codes) > 50 or any(code not in allowlist for code in codes):
+            raise CloudError("Cloud-Code nicht im geprüften Katalog")
+        response = self._request_auth(
+            "app/device/getDataByCode",
+            {"deviceCode": self.device_code, "protocalCodes": codes},
+        )
         if not self._ok(response):
+            # Only split batches on explicitly unsupported codes. Never bisect
+            # transient HTTP, auth, network or rate-limit errors.
+            message = str(response.get("error_msg") or response.get("message") or "").lower()
+            status = str(response.get("http_status") or response.get("status") or "")
+            markers = ("unsupported", "not support", "invalid code", "unknown code",
+                       "protocol code", "protocal code", "parameter code")
+            if status not in ("401", "429", "500", "502", "503", "504") and any(
+                item in message for item in markers
+            ):
+                raise UnsupportedCloudCode("Cloud-Code von API nicht unterstützt")
             raise CloudError("Cloud-Leseabfrage abgelehnt")
-
         raw = response.get("objectResult")
         if isinstance(raw, list):
             items = raw
@@ -307,7 +302,10 @@ class CloudReader:
                 continue
             # API usually supplies engineering values. Do not apply the local
             # Modbus raw /10 conversion to a Cloud value a second time.
-            output[code] = {"value": value}
+            meta = {key: item[key] for key in
+                    ("unit", "dataType", "rangeStart", "rangeEnd")
+                    if key in item and isinstance(item[key], (str, int, float))}
+            output[code] = {"value": value, **meta}
         return output
 
 
@@ -321,11 +319,29 @@ def _reader() -> CloudReader:
 
 
 def read_dashboard(*, live: bool = False) -> dict[str, Any]:
+    from backend.cloud_state import live_codes, merge, log_event
     with _cloud_lock:
         client = _reader()
         if live:
             client.app_heartbeat()
-        values = client.read_codes([CLOUD_REGISTERS[r] for r in DASHBOARD_MAPPING.values()])
+        codes = list(dict.fromkeys([CLOUD_REGISTERS[r] for r in DASHBOARD_MAPPING.values()]
+                                    + (live_codes() if live else [])))
+        values: dict[str, dict[str, Any]] = {}
+        for offset in range(0, len(codes), 50):
+            chunk = codes[offset:offset+50]
+            try:
+                values.update(client.read_codes(chunk))
+            except UnsupportedCloudCode:
+                # A previously confirmed live code may no longer be supported
+                # after a firmware change: keep dashboard readable.
+                for code in chunk:
+                    try:
+                        values.update(client.read_codes([code]))
+                    except CloudError:
+                        pass
+    merge(values)
+    log_event("live" if live else "read", "Cloud-Livewerte aktualisiert" if live
+              else "Cloud-Übersicht gelesen", count=len(values))
     definitions = load_registers()
     output: dict[str, dict[str, Any] | None] = {}
     for key, register in DASHBOARD_MAPPING.items():
