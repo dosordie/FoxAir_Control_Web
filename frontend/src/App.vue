@@ -60,6 +60,56 @@ const cloudAdminPassword = ref('')
 const adminAuthenticated = ref(false)
 const adminBusy = ref(false)
 const adminLoginError = ref('')
+type FirstWriteCode = 'Mode' | 'R02'
+const writeDrafts = ref<Record<FirstWriteCode,string>>({ Mode: '', R02: '' })
+const writeBusy = ref(false)
+const writeFeedback = ref('')
+const writeError = ref('')
+const writableRegisterCode = computed<FirstWriteCode | null>(() => {
+  if (selectedRegister.value?.register === 1012) return 'Mode'
+  if (selectedRegister.value?.register === 1158) return 'R02'
+  return null
+})
+function writeSource(code: FirstWriteCode): CloudRow | null {
+  return cloudRows.value.find(row => row.code === code) || null
+}
+function canWrite(code: FirstWriteCode): boolean {
+  const source = writeSource(code)
+  return secureAdminContext && adminAuthenticated.value && selectedTransport.value === 'cloud' &&
+    !writeBusy.value && !!source && source.value !== null && source.quality === 'fresh'
+}
+async function submitCloudWrite(code: FirstWriteCode) {
+  const source = writeSource(code)
+  const desired = writeDrafts.value[code].trim()
+  if (!canWrite(code) || !source || source.value === null || !desired) return
+  const description = code === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert'
+  const choice = code === 'Mode'
+    ? ({'0':'Warmwasser','1':'Heizen','2':'Kühlen','3':'Warmwasser + Heizen','4':'Warmwasser + Kühlen'} as Record<string,string>)[desired] || desired
+    : desired + ' °C'
+  if (!window.confirm(description + ' ändern?\\nAktuell: ' + source.value +
+    (code === 'R02' ? ' °C' : '') + '\\nNeu: ' + choice +
+    '\\n\\nEin Cloud-Steuerbefehl wird gesendet, danach der Wert kontrolliert.')) return
+  writeBusy.value = true
+  writeFeedback.value = ''
+  writeError.value = ''
+  try {
+    const result = await api.cloudWrite(code, desired, String(source.value))
+    if (result.confirmed) {
+      writeFeedback.value = result.status === 'unchanged' ? 'Wert ist bereits eingestellt.' :
+        description + ' wurde durch Cloud-Readback bestätigt.'
+      writeDrafts.value[code] = String(result.value ?? desired)
+    } else {
+      writeError.value = result.message || 'Cloud-Schreiben nicht bestätigt; bitte Wert kontrollieren.'
+    }
+    await loadCloudValues()
+    if (page.value === 'home') void loadDashboard(false)
+  } catch (e) {
+    writeError.value = e instanceof Error ? e.message : 'Schreiben fehlgeschlagen'
+    await loadCloudValues()
+  } finally {
+    writeBusy.value = false
+  }
+}
 const cloudSaving = ref(false)
 const cloudDiscovering = ref(false)
 const cloudMessage = ref('')
@@ -274,6 +324,12 @@ async function loadCloudValues() {
   try {
     cloudOverview.value = await api.cloudValues()
     cloudRows.value = cloudOverview.value.items
+    for (const code of ['Mode', 'R02'] as FirstWriteCode[]) {
+      const row = cloudRows.value.find(entry => entry.code === code)
+      if (row?.value != null && writeDrafts.value[code] === '') {
+        writeDrafts.value[code] = String(row.value)
+      }
+    }
     if (cloudCodeSelected.value) {
       cloudCodeSelected.value = cloudRows.value.find(row => row.code === cloudCodeSelected.value?.code) || null
     }
@@ -480,6 +536,8 @@ function selectRegister(item: Register) {
   selectedRegister.value = item
   currentValue.value = null
   readError.value = ''
+  writeFeedback.value = ''
+  writeError.value = ''
 }
 async function readRegister() {
   if (!selectedRegister.value) return
@@ -782,7 +840,26 @@ onBeforeUnmount(() => {
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <p class="section-hint">Schreiben ist in diesem ersten Entwicklungsstand deaktiviert. {{ selectedTransportInfo?.read_supported ? '' : selectedTransportInfo?.reason || '' }}</p>
+              <section v-if="writableRegisterCode && selectedTransport === 'cloud'" class="cloud-write-panel">
+                <strong>Cloud-Steuerung: {{ writableRegisterCode === 'Mode' ? 'Betriebsart' : 'Heizungs-Basissollwert' }}</strong>
+                <p class="section-hint">Nur für angemeldete Administratoren. Der vorhandene Wert wird vor dem Schreiben erneut geprüft; ohne Readback keine Bestätigung.</p>
+                <label class="field-label" for="register-write-value">Neuer Wert</label>
+                <select v-if="writableRegisterCode === 'Mode'" id="register-write-value" class="settings-input" v-model="writeDrafts.Mode">
+                  <option value="0">Warmwasser</option><option value="1">Heizen</option>
+                  <option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option>
+                  <option value="4">Warmwasser + Kühlen</option>
+                </select>
+                <input v-else id="register-write-value" class="settings-input" type="number" min="5" max="70" step="0.1" v-model="writeDrafts.R02" />
+                <button type="button" class="main-action" :disabled="!canWrite(writableRegisterCode)"
+                  @click="submitCloudWrite(writableRegisterCode)">
+                  <ShieldCheck :size="17" /> {{ writeBusy ? 'Prüfe und schreibe …' : 'Wert mit Readback schreiben' }}
+                </button>
+                <p v-if="!adminAuthenticated" class="section-hint">Für Schreibzugriff unter App-Einstellungen als Admin anmelden.</p>
+                <p v-else-if="writeSource(writableRegisterCode)?.quality !== 'fresh'" class="section-hint">Zuerst aktuelle Cloudwerte abfragen.</p>
+                <p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
+                <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p>
+              </section>
+              <p v-else class="section-hint">Für diesen Parameter sind Schreibzugriffe nicht freigegeben. {{ selectedTransportInfo?.read_supported ? '' : selectedTransportInfo?.reason || '' }}</p>
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Die aktuellen Cloudwerte sind bereits in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </section>
@@ -939,7 +1016,7 @@ onBeforeUnmount(() => {
             <p>{{ selectedSpecial?.description }}</p></div>
           <button type="button" class="outlined-action" aria-label="Dialog schließen" @click="specialDialog = null">Schließen</button>
         </div>
-        <p class="section-hint">Anzeige der bekannten Cloud-Werte wie in FoxAir_Control. Schreiben ist in dieser Entwicklungsstufe absichtlich deaktiviert.</p>
+        <p class="section-hint">Anzeige der bekannten Cloud-Werte wie in FoxAir_Control. Nur die WP-Betriebsart und R02 sind für Admins schreibbar. Andere Spezialfunktionen bleiben lesend.</p>
         <div class="special-toolbar">
           <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
@@ -949,6 +1026,29 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
+        <section v-if="selectedSpecial?.id === 'wp'" class="cloud-write-panel">
+          <h3>Cloud-Steuerung (Admin)</h3>
+          <p class="section-hint">Nur Mode und R02 sind freigegeben. Bestätigung vor dem Senden und Cloud-Readback danach.</p>
+          <div class="cloud-write-grid">
+            <div>
+              <label class="field-label">Betriebsart (Mode)</label>
+              <select class="settings-input" v-model="writeDrafts.Mode">
+                <option value="0">Warmwasser</option><option value="1">Heizen</option>
+                <option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option>
+                <option value="4">Warmwasser + Kühlen</option>
+              </select>
+              <button type="button" class="outlined-action" :disabled="!canWrite('Mode')" @click="submitCloudWrite('Mode')">Mode schreiben</button>
+            </div>
+            <div>
+              <label class="field-label">Heizungs-Basissollwert R02 (°C)</label>
+              <input type="number" step="0.1" min="5" max="70" class="settings-input" v-model="writeDrafts.R02" />
+              <button type="button" class="outlined-action" :disabled="!canWrite('R02')" @click="submitCloudWrite('R02')">Sollwert schreiben</button>
+            </div>
+          </div>
+          <p v-if="!adminAuthenticated" class="section-hint">Schreiben erfordert die Admin-Anmeldung in den App-Einstellungen.</p>
+          <p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
+          <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p>
+        </section>
         <div class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
             :class="{ 'is-stale': entry.quality === 'stale' }">
