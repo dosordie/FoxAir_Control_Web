@@ -76,10 +76,19 @@ const filteredCloudRows = computed(() => {
   })
 })
 
+const cloudByRegister = computed(() => {
+  const result = new Map<number, CloudRow>()
+  for (const item of cloudRows.value) {
+    if (item.register == null || item.value === null) continue
+    const current = result.get(item.register)
+    if (!current || (item.confidence === 'confirmed' && current.confidence !== 'confirmed')) {
+      result.set(item.register, item)
+    }
+  }
+  return result
+})
 function currentCloudRegisterValue(register: number) {
-  const candidates = cloudRows.value.filter(x => x.register === register && x.value !== null)
-  const confirmed = candidates.find(x => x.confidence === 'confirmed')
-  return confirmed || candidates[0] || null
+  return cloudByRegister.value.get(register) || null
 }
 function textValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—'
@@ -188,6 +197,9 @@ async function loadCloudValues() {
   try {
     cloudOverview.value = await api.cloudValues()
     cloudRows.value = cloudOverview.value.items
+    if (cloudCodeSelected.value) {
+      cloudCodeSelected.value = cloudRows.value.find(row => row.code === cloudCodeSelected.value?.code) || null
+    }
     // The register table can show current values directly from cloudRows.
   } catch {
     // Preserve the last known values until the next refresh.
