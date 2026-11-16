@@ -75,6 +75,38 @@ class CloudAdminTests(unittest.TestCase):
             self.assertEqual(cloud_config.credentials(),
                              ("test-user", "test-password", "device-456"))
 
+    def test_account_disclosure_requires_admin_password(self):
+        with patch.dict("os.environ", {"FOXAIR_CLOUD_USER": "", "FOXAIR_CLOUD_PASSWORD": "",
+                                       "FOXAIR_CLOUD_DEVICE_CODE": ""}):
+            cloud_config.save_cloud("admin@example.invalid", "hidden-secret", "dev-987")
+            denied = self.https.post("/api/cloud/account", json={"admin_password": "incorrect"})
+            self.assertEqual(denied.status_code, 403)
+            authorized = self.https.post("/api/cloud/account", json={
+                "admin_password": "A-strong-admin-password!"
+            })
+            self.assertEqual(authorized.status_code, 200)
+            self.assertEqual(authorized.json(),
+                             {"username": "admin@example.invalid", "device_code": "dev-987"})
+            self.assertNotIn("hidden-secret", authorized.text)
+
+    def test_proxy_https_header_must_come_from_configured_peer(self):
+        data = {"admin_password": "A-strong-admin-password!"}
+        headers = {"x-forwarded-proto": "https", "origin": "https://testserver"}
+        with patch.dict("os.environ", {"FOXAIR_TRUSTED_PROXY_IPS": ""}):
+            untrusted = self.http.post("/api/cloud/account", json=data, headers=headers)
+            self.assertEqual(untrusted.status_code, 403)
+        with patch.dict("os.environ", {"FOXAIR_TRUSTED_PROXY_IPS": "testclient"}):
+            trusted = self.http.post("/api/cloud/account", json=data, headers=headers)
+            self.assertEqual(trusted.status_code, 200)
+
+    def test_log_endpoint_contains_no_account_credentials(self):
+        from backend.cloud_state import log_event
+        log_event("scan", "Cloud-Katalogscan gestartet", count=535)
+        response = self.https.get("/api/cloud/logs")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any(row["kind"] == "scan" for row in response.json()["items"]))
+        self.assertNotIn("admin@example.invalid", response.text)
+
     def test_device_discovery_requires_password(self):
         with patch("backend.main.discover_devices", return_value=[
             {"deviceCode": "example", "deviceNickName": "WP"}
