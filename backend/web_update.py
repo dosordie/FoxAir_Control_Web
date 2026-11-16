@@ -58,7 +58,7 @@ def _deployed_sha() -> str | None:
 def _remote_sha() -> str | None:
     global _last_remote_attempt, _last_remote_sha
     now = time.monotonic()
-    if _last_remote_attempt and now - _last_remote_attempt < 90:
+    if _last_remote_attempt and now - _last_remote_attempt < 30:
         return _last_remote_sha
     _last_remote_attempt = now
     try:
@@ -78,7 +78,7 @@ def _remote_sha() -> str | None:
 def _remote_build_sha() -> str | None:
     global _last_remote_build_attempt, _last_remote_build_sha
     now = time.monotonic()
-    if _last_remote_build_attempt and now - _last_remote_build_attempt < 90:
+    if _last_remote_build_attempt and now - _last_remote_build_attempt < 30:
         return _last_remote_build_sha
     _last_remote_build_attempt = now
     try:
