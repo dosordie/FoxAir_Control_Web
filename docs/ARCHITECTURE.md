@@ -69,7 +69,7 @@ Die Parameter für IP/Port und serielle Eigenschaften werden im Backend konfigur
 
 ### On-Demand (keine Livewerte)
 
-1. Übersicht kann zuletzt erfolgreich erfasste Werte **mit Zeitstempel und Stale-Kennzeichnung** zeigen; kein stilles Auto-Polling.
+1. Beim Öffnen der Übersicht wird bei ausgewähltem Transport **einmalig ein aktueller Snapshot angefragt** (sofort hilfreiche Startseite). Danach kein stilles zyklisches Polling. Falls nicht erreichbar, bleibt ein vorhandener Cache sichtbar, mit Zeitstempel und Stale-Kennzeichnung.
 2. Bei „Aktualisieren“, gezieltem Registerread oder bestätigtem Write nimmt das Backend ein exklusives Bus-Lease.
 3. Ser2net-TCP öffnen, nur die benötigten Telegramme senden/empfangen, Timeout-/CRC-/Antwortzuordnung beachten.
 4. Operation abschließen, Wert ggf. rücklesen; nach kurzer konfigurierbarer Ruhezeit (Vorschlag: 3–5 s) TCP schließen; bei Abbruch/Fehler immer freigeben.
