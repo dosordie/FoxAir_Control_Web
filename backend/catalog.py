@@ -28,10 +28,39 @@ def load_registers() -> dict[str, dict[str, Any]]:
     return result
 
 
+def register_group(entry: dict, number: str = "") -> str:
+    """Use source catalog block; infer reviewed code prefix only as fallback."""
+    block = str(entry.get("block") or "").strip().upper()
+    if block:
+        return block
+    code = str(entry.get("code") or "").strip().upper()
+    if code:
+        import re
+        result = re.match(r"^[A-Z]+", code)
+        if result:
+            return result.group(0)
+    # Unmapped status / diagnostics are explicitly not promoted to T-group.
+    n = int(number or 0)
+    if 2000 <= n < 3000:
+        return "STATUS"
+    if n >= 6000:
+        return "DIAG"
+    return "OTHER"
+
+
+def group_counts() -> list[dict]:
+    counts: dict[str, int] = {}
+    for num, entry in load_registers().items():
+        grp = register_group(entry, num)
+        counts[grp] = counts.get(grp, 0) + 1
+    return [{"group": g, "count": counts[g]} for g in sorted(counts)]
+
+
 def public_register(number: str, entry: dict) -> dict:
     return {
         "register": int(number),
         "code": entry.get("code") or "",
+        "group": register_group(entry, number),
         "name": entry.get("name") or f"Register {number}",
         "description": entry.get("description") or entry.get("info") or entry.get("notes") or "",
         "unit": entry.get("unit") or ("°C" if entry.get("type") == "TEMP1" else ""),
@@ -41,11 +70,13 @@ def public_register(number: str, entry: dict) -> dict:
     }
 
 
-def search_registers(query: str = "", limit: int = 80) -> list[dict]:
+def search_registers(query: str = "", limit: int = 80, group: str = "") -> list[dict]:
     term = query.strip().casefold()
     out = []
     for number, definition in sorted(load_registers().items(), key=lambda item: int(item[0])):
         row = public_register(number, definition)
+        if group and row["group"].upper() != group.upper():
+            continue
         if term and not any(term in str(row[key]).casefold() for key in ("register", "code", "name")):
             continue
         out.append(row)
