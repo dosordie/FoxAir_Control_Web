@@ -390,7 +390,7 @@ function textValue(value: string | number | null | undefined): string {
   return String(value)
 }
 function relativeTimestamp(value: string | null | undefined): string {
-  return value ? new Date(value).toLocaleString('de-DE') : 'Noch kein aktueller Cloud-Wert'
+  return value ? new Date(value).toLocaleString('de-DE') : 'Noch kein Messwert'
 }
 
 const lastUpdated = computed(() => {
@@ -1091,7 +1091,7 @@ onBeforeUnmount(() => {
               <div class="detail-value"><span>Aktueller Wert</span>
                 <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentValue?.value ?? currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
                   <small>{{ currentValue?.unit || currentRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
-                <p>{{ relativeTimestamp(currentValue?.timestamp ?? currentRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
+                <p>{{ relativeTimestamp(currentRegisterValue(selectedRegister.register)?.timestamp ?? currentValue?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
               </div>
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span></div>
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
@@ -1120,7 +1120,7 @@ onBeforeUnmount(() => {
               </section>
               <p v-else class="section-hint">Für diesen Parameter sind Schreibzugriffe nicht freigegeben. {{ selectedTransportInfo?.read_supported ? '' : selectedTransportInfo?.reason || '' }}</p>
             </template>
-            <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Die aktuellen Cloudwerte sind bereits in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
+            <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </section>
         </div>
       </template>

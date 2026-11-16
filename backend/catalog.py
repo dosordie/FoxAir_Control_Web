@@ -92,15 +92,42 @@ def search_registers(query: str = "", limit: int = 80, group: str = "") -> list[
 
 
 def format_raw(raw: int, entry: dict) -> tuple[object, str]:
+    """Engineering values from FoxAir_Control 34ce0ed format_value_by_type.
+
+    Only local Modbus words use this function; Cloud engineering values must
+    never be scaled a second time. Unknown/ambiguous types remain raw.
+    """
     kind = str(entry.get("type") or "").upper()
     signed = raw - 0x10000 if raw >= 0x8000 else raw
-    if kind == "TEMP1":
-        return round(signed / 10.0, 1), "°C"
-    if kind == "FLOW_M3H_X100":
-        return round(raw / 100.0, 2), "m³/h"
-    if kind == "FLOW_M3H_X10":
-        return round(raw / 10.0, 1), "m³/h"
+    unit=entry.get('unit') or ''
     mapping = entry.get("value_map")
-    if isinstance(mapping, dict) and str(raw) in mapping:
-        return mapping[str(raw)], entry.get("unit") or ""
-    return signed if entry.get("signed") else raw, entry.get("unit") or ""
+    if isinstance(mapping,dict):
+        for key in (str(raw),str(signed)):
+            if key in mapping:return mapping[key],unit
+    groups=(
+        (('TEMP','TEMP1'),10,1,'°C'),
+        (('TEMP05','TEMP_0_5','STEP_0_5C'),2,1,'°C'),
+        (('POWER_KW_X10','KW_X10'),10,1,'kW'),
+        (('BAR_X10','PRESSURE_BAR_X10'),10,1,'bar'),
+        (('AMP_X2','CURRENT_A_X2'),2,1,'A'),
+        (('AMP_X10','CURRENT_A_X10'),10,1,'A'),
+        (('FLOW_M3H_X100','FLOW_X100'),100,2,'m³/h'),
+        (('FLOW_M3H_X10','FLOW_X10'),10,1,'m³/h'),
+        (('COP_X100','COP100'),100,2,''),
+        (('DIGI5',),10,1,''), (('DIGI6',),1000,3,''),
+        (('DIGI19',),100,2,''), (('DIGI4',),5,1,''),
+    )
+    for types,scale,precision,default_unit in groups:
+        if kind in types:return round(signed/scale,precision),unit or default_unit
+    if kind in ('TIME_HHMM','HHMM'):
+        hour,minute=raw>>8,raw&255
+        if hour<=23 and minute<=59:return f'{hour:02d}:{minute:02d}',unit
+    if kind=='HZ_LOW8':return raw&255,unit or 'Hz'
+    if kind in ('TEMP_OFFSET55','TEMP_OFFSET55_LOW8'):
+        return (raw&(255 if kind.endswith('LOW8') else 65535))-55,unit or '°C'
+    if kind=='YEAR_2000':return 2000+raw,unit
+    signed_units={'VOLT':'V','VOLTS':'V','V':'V','WATT':'W','WATTS':'W','POWER_W':'W',
+        'RPM':'rpm','FAN_RPM':'rpm','KWH':'kWh','ENERGY_KWH':'kWh','HZ':'Hz',
+        'MINUTES':'min','SECONDS':'s','HOURS':'h','DAYS':'days','PERCENT':'%','STEPS_N':'N'}
+    if kind in signed_units:return signed,unit or signed_units[kind]
+    return signed if entry.get('signed') or kind in ('INT16','SIGNED INT16','DIGI1','DIGI9') else raw,unit

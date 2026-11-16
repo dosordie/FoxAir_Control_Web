@@ -36,6 +36,16 @@ class WireTests(unittest.TestCase):
 
 
 class CatalogTests(unittest.TestCase):
+    def test_catalog_scaling_matches_desktop_engineering_examples(self):
+        from backend.catalog import load_registers
+        catalog=load_registers()
+        for register,raw,expected in [(2029,28,(2.8,'A')),(2054,50,(5.0,'kW')),
+            (2060,402,(4.02,'COP')),(1031,15,(7.5,'°C')),(2042,37,(3.7,'A'))]:
+            with self.subTest(register=register):
+                self.assertEqual(format_raw(raw,catalog[str(register)]),expected)
+        self.assertEqual(format_raw(65526,{'type':'DIGI5'}),(-1.0,''))
+        self.assertEqual(format_raw(0x163b,{'type':'TIME_HHMM'}),('22:59',''))
+        self.assertEqual(format_raw(123,{'type':'DIGI9'}),(123,''))
     def test_temperature_signed(self):
         self.assertEqual(format_raw(0xFFCE, {"type": "TEMP1"}), (-5.0, "°C"))
 
