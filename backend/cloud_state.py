@@ -214,17 +214,18 @@ def value_rows() -> dict[str, Any]:
                     quality = "stale"
             except (ValueError, TypeError):
                 quality = "unknown"
+        label = display_label(row.get("register"), current.get("value") if current else None)
         values.append({
             "code": row["code"],
             "name": row.get("name") or row["code"],
             "register": row.get("register"),
             "group": row.get("group") or "CLOUD",
             "kind": row.get("kind") or "other",
-            "unit": (current or {}).get("unit") or row.get("unit") or "",
+            "unit": "" if label is not None else
+                    ((current or {}).get("unit") or row.get("unit") or ""),
             "confidence": row.get("confidence") or "",
             "value": current.get("value") if current else None,
-            "display_value": display_label(row.get("register"),
-                                            current.get("value") if current else None),
+            "display_value": label,
             "timestamp": current.get("timestamp") if current else None,
             "quality": quality,
             "supported": current is not None,
