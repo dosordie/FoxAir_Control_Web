@@ -19,6 +19,7 @@ export type Register = {
   type: string
   mode: string
   write_available: boolean
+  cloud?: {code:string;value:string|number;unit:string;timestamp:string;quality:string}|null
 }
 export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string }
 
@@ -30,6 +31,31 @@ export type CloudConfigStatus = {
   storage: string
   admin_enabled: boolean
 }
+export type CloudRow = {
+  code: string
+  name: string
+  register: number | null
+  group: string
+  kind: string
+  unit: string
+  confidence: string
+  value: string | number | null
+  timestamp: string | null
+  quality: string
+  supported: boolean
+}
+export type CloudValues = {
+  items: CloudRow[]
+  total: number
+  supported: number
+  status: string
+  progress: number
+  last_scan: number
+  error: string | null
+}
+export type CloudLog = {time: string; kind: string; message: string; count?: number}
+export type CloudAccount = {username: string; device_code: string}
+
 export type CloudDevice = {
   deviceCode: string
   deviceNickName?: string
@@ -59,7 +85,7 @@ async function post<T>(path: string, body: object): Promise<T> {
 
 async function get<T>(path: string): Promise<T> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12000)
+  const timer = setTimeout(() => controller.abort(), path.startsWith('/api/dashboard') ? 55000 : 15000)
   try {
     const response = await fetch(path, { signal: controller.signal, headers: { Accept: 'application/json' }, cache: 'no-store' })
     if (!response.ok) {
@@ -84,6 +110,12 @@ export const api = {
     post<{ items: CloudDevice[]; count: number }>('/api/cloud/devices', { admin_password }),
   cloudDeviceStatus: (admin_password: string) =>
     post<{ status: Record<string, string | number | boolean | null> }>('/api/cloud/device-status', { admin_password }),
+  cloudAccount: (admin_password: string) =>
+    post<CloudAccount>('/api/cloud/account', { admin_password }),
+  cloudLogs: () => get<{ items: CloudLog[] }>('/api/cloud/logs'),
+  cloudValues: () => get<CloudValues>('/api/cloud/values'),
+  cloudScan: (admin_password: string) =>
+    post<{ started: boolean; reason?: string; count?: number }>('/api/cloud/scan', { admin_password }),
   read: (register: number, transport: TransportId) =>
     get<RegisterValue>('/api/registers/' + register + '/read?transport=' + encodeURIComponent(transport)),
 }
