@@ -417,7 +417,49 @@ onBeforeUnmount(() => {
             </label>
           </div>
           <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-/Display-Anbindung folgt separat.</p></div>
-          <button class="outlined-action" @click="loadDashboard"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
+          <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
+        </section>
+        <section class="settings-panel panel">
+          <div class="section-head"><div><span class="section-caption">LIVEABFRAGE</span><h2>Cloud-Aktualisierung</h2></div><RefreshCw :size="22" /></div>
+          <label class="settings-check"><input type="checkbox" v-model="liveEnabled" /> Automatisch aktualisieren, solange die Übersicht sichtbar ist</label>
+          <label class="field-label" for="live-interval">Intervall (10–3600 Sekunden)</label>
+          <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
+          <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
+        </section>
+        <section class="settings-panel panel cloud-panel">
+          <div class="section-head"><div><span class="section-caption">PHNIX / WARMLINK</span><h2>Cloud-Zugang & Geräte</h2></div><Cloud :size="24" /></div>
+          <p>Cloud: <strong>{{ cloudStatus?.configured ? 'eingerichtet' : 'nicht vollständig' }}</strong> · Benutzer {{ cloudStatus?.username_configured ? 'vorhanden' : 'fehlt' }} · Gerätekennung {{ cloudStatus?.device_configured ? 'vorhanden' : 'fehlt' }}</p>
+          <p v-if="!cloudStatus?.admin_enabled" class="read-error">Web-Administration lokal einrichten: <code>python3 scripts/setup_web_admin.py</code></p>
+          <p v-else-if="!secureAdminContext" class="read-error">Für die Cloud-Bearbeitung HTTPS oder einen lokalen SSH-Tunnel verwenden. Über unverschlüsseltes LAN-HTTP bleibt sie gesperrt.</p>
+          <form class="cloud-form" @submit.prevent="saveCloudSettings">
+            <label class="field-label" for="admin-password">Web-Administrationspasswort</label>
+            <input id="admin-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="off" placeholder="Lokal eingerichtet" :disabled="!secureAdminContext" />
+            <label class="field-label" for="cloud-username">WarmLink-Benutzername</label>
+            <input id="cloud-username" class="settings-input" v-model="cloudUsername" autocomplete="off" placeholder="Leer = bisherigen Benutzer behalten" :disabled="!secureAdminContext" />
+            <label class="field-label" for="cloud-password">Cloud-Passwort</label>
+            <input id="cloud-password" class="settings-input" v-model="cloudPassword" type="password" autocomplete="new-password" placeholder="Leer = bisheriges Passwort behalten" :disabled="!secureAdminContext" />
+            <label class="field-label" for="cloud-device">Gerätekennung (deviceCode)</label>
+            <input id="cloud-device" class="settings-input" v-model="cloudDeviceCode" placeholder="Leer = bisherige Kennung behalten" :disabled="!secureAdminContext" />
+            <button class="main-action" type="submit" :disabled="cloudSaving || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword">{{ cloudSaving ? 'Speichert …' : 'Cloud-Einstellungen speichern' }}</button>
+          </form>
+          <div class="cloud-discovery">
+            <button class="outlined-action" type="button" :disabled="cloudDiscovering || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="discoverCloudDevices">
+              <Search :size="17" /> {{ cloudDiscovering ? 'Suche läuft …' : 'Cloud-Geräte und Informationen abrufen' }}
+            </button>
+            <div v-if="cloudDevices.length" class="device-list">
+              <button v-for="device in cloudDevices" :key="device.deviceCode" type="button" class="device-card" @click="cloudDeviceCode = device.deviceCode">
+                <strong>{{ device.deviceNickName || device.deviceName || 'PHNIX-Gerät' }}</strong>
+                <span>Modell: {{ device.model || device.custModel || '—' }}</span>
+                <span>Status: {{ device.deviceStatus ?? '—' }} · Fehler: {{ device.isFault === undefined ? '—' : device.isFault ? 'Ja' : 'Nein' }}</span>
+                <span>DTU-Version: {{ device.dtuSoftwareVer || '—' }} · Signal: {{ device.dtuSignalIntensity ?? '—' }}</span>
+                <span v-if="device.houseName">Haus: {{ device.houseName }}</span>
+                <small>Auswählen</small>
+              </button>
+            </div>
+          </div>
+          <p v-if="cloudMessage" role="status" class="success-text">{{ cloudMessage }}</p>
+          <p v-if="cloudError" role="alert" class="read-error">{{ cloudError }}</p>
+          <p class="section-hint">Geräteinformationen stammen aus der PHNIX-Geräteliste. Passwort und Token werden nicht aus dem Server ausgelesen.</p>
         </section>
       </template>
     </main>
