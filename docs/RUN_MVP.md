@@ -55,7 +55,7 @@ Nur wenn ein dedizierter, bereits bestätigter Standard-Modbus-ser2net-Endpunkt 
 Die Gateway-Adresse ist **nur** in der Serverkonfiguration, niemals im Browser:
 
 ~~~bash
-export FOXAIR_STANDARD_HOST="192.168.10.XX"
+export FOXAIR_STANDARD_HOST="<MODBUS_HOST>"
 export FOXAIR_STANDARD_PORT="4001"
 export FOXAIR_STANDARD_SLAVE="99"
 uvicorn backend.main:app --host 127.0.0.1 --port 8081
@@ -65,26 +65,13 @@ Dann im Browser „Standard-Modbus“ auswählen. Beim Öffnen der Übersicht we
 
 Die erste Implementierung ist absichtlich **read-only**: Kein HTTP-Endpunkt akzeptiert Registerschreibbefehle.
 
-## Gemeinsamer Betrieb auf Genius-Gateway CT 103
+## Deployment
 
-Ziel: Debian-LXC 103 auf PVE-Keller, Port 8080 bereits für Genius-Gateway, neuer FoxAir-Webdienst Port **8081**. Produktions-Deployment **separat testen und freigeben**. Keine vorhandenen Genius-Dateien, -Pythonumgebungen oder systemd-Units verändern.
+Die Anwendung kann neben vorhandenen Linux-Diensten betrieben werden, wenn Prozesse, Paketumgebungen, Konfiguration, Logs und Updates getrennt bleiben.
 
-Geplante getrennte Installationspfade:
-~~~text
-/opt/foxair-web/app
-/opt/foxair-web/venv
-/etc/foxair-web/
-/var/lib/foxair-web/
-foxair-web.service (User foxair-web, Port 8081)
-~~~
+Generische Vorgaben: [DEPLOYMENT.md](DEPLOYMENT.md). Private Installationspfade, Netzwerkadressen, Host-/Containerinformationen und konkrete Ressourcenmessungen sind **nicht** Bestandteil dieses öffentlichen Projekts.
 
-Frontend im CI oder separat bauen (\`cd frontend && npm run build\`), fertiges \`frontend/dist\` zur Python-Anwendung kopieren; FastAPI liefert nach Neustart die statischen Assets aus.
-
-**Sicherheit:** Der erste MVP enthält bewusst **keine eigenständige Benutzer-Authentifizierung**. Nicht ungeschützt über Nginx/Internet freigeben! Für den Fernzugriff zuerst vorgeschaltete Authentifizierung inkl. MFA, Firewallregel *nur vom Nginx-Container zum Port 8081*, geprüfte Proxy-Header und Sitzungsschutz umsetzen. Interner Standard-Modbus-Read allein benötigt keine Freigabe aus dem Internet.
-
-Ausgangswerte CT 103 (16.11.2026, einmalige Messung): 1 vCPU, 512 MiB RAM, 4 GiB SSD, Genius-Python ca. 31 MiB RSS. Ressourcengrenzen für FoxAir nur nach Profiling festlegen. Keine Node-/Vite-Builds auf dem produktiven CT ausführen, wenn vermeidbar.
-
-Siehe auch [DEPLOYMENT_GENIUS_LXC.md](DEPLOYMENT_GENIUS_LXC.md).
+**Sicherheit:** Der erste MVP enthält noch keine eigene Benutzer-Authentifizierung. Vor Internetzugriff sind vorgeschaltete Authentifizierung, Zugriffsbeschränkung und Sicherheitsprüfung erforderlich. Das Frontend nach Möglichkeit außerhalb des Produktivsystems bauen.
 
 ## Registerpflege
 

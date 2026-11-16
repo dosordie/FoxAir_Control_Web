@@ -35,7 +35,7 @@ npm run dev
 
 Dann `http://127.0.0.1:5173/` öffnen. Ohne ser2net-Konfiguration ist die Benutzeroberfläche inklusive Registerbrowser sichtbar, aber es werden keine Livewerte vorgetäuscht.
 
-Alle Details: [MVP-Test und Betrieb](docs/RUN_MVP.md), [Architektur](docs/ARCHITECTURE.md), [UX](docs/UX.md), [Deployment im Genius-LXC CT 103](docs/DEPLOYMENT_GENIUS_LXC.md).
+Alle Details: [MVP-Test und Betrieb](docs/RUN_MVP.md), [Architektur](docs/ARCHITECTURE.md), [UX](docs/UX.md), [Allgemeines Deployment](docs/DEPLOYMENT.md).
 
 ## Lizenz
 
