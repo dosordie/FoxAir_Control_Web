@@ -60,6 +60,9 @@ ProtectSystem=strict
 ReadWritePaths=/opt/foxair-web /var/lib/foxair-web
 RestrictSUIDSGID=true
 CPUWeight=20
+CPUQuota=30%
+Nice=10
+IOSchedulingClass=idle
 MemoryMax=256M
 TimeoutStartSec=420
 EOF
