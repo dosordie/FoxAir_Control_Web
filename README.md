@@ -133,3 +133,64 @@ erlaubt ausschließlich den festgelegten Projekt-Ursprung. Sie verändert
 keine anderen systemd-Dienste. Es gibt **keinen** Shell-Zugriff, frei wählbare
 Kommandos oder `sudo`-Freigaben aus der Web-App.
 
+
+
+## Issue #6 – weitere Oberfläche / Berechtigungen / erste Cloud-Schreibwerte
+
+Die Startseite zeigt nur noch **Aktueller Sollwert** (Cloud 2014 mit
+R02-Fallback), ohne dekorative Plus-/Minus-Buttons oder technische
+Fußnote. Neben dem Vorlauf wird **Δ Soll–VL = 2014 − T02** in Kelvin angezeigt,
+als eigener Messwert die **Spreizung VL/RL = T02 − T01** in Kelvin. Bei
+Offline-Zustand werden diese neuen Differenzen nicht aus Altwerten als
+aktuelle Werte errechnet.
+
+Die Registeransichten sind nach **numerischer MAIN-Registernummer** geordnet.
+Registernummern sind prominent, bekannte Cloud-Codes bleiben als ergänzende
+Information erhalten. Die üblichen **einbuchstabigen Parametergruppen
+stehen vor Sondergruppen**, „Alle“ zuletzt; DIAG und ENG erscheinen nicht
+mehr als Gruppenauswahl. Einheiten stehen neben Messwerten statt darunter.
+Bestätigte `value_map`-Definitionen aus dem Hauptregisterkatalog werden
+als Klartext dargestellt, z. B. `Power=1 → Ein`, `Mode=1 → Heizen`,
+`H36=2 → 7-Punkt-Kennlinie`. Unbekannte Werte bleiben numerisch.
+
+### Lesender Gast und Admin-Sitzung
+
+Ohne Anmeldung ist ausschließlich **Lesen** vorgesehen. Admins können sich
+in **App-Einstellungen → Cloud-Zugang & Geräte** mit dem separat
+eingerichteten lokalen Administratorpasswort anmelden. Die Anmeldung
+erstellt ein HttpOnly-/SameSite-Strict-Cookie im Browser; der
+Sitzungsnachweis liegt nur im FoxAir-Webprozess, läuft nach **8 Stunden**
+ab und überlebt keinen Dienstneustart. Der Browser speichert **kein**
+Administratorpasswort im LocalStorage. Adminaktionen verwenden weiterhin
+HTTPS bzw. vertrauenswürdigen Reverse-Proxy/Loopback und eine zusätzliche
+CSRF-Schutzkennung. Abmelden entzieht die Sitzung sofort. Die bisherige
+serverseitige direkte Passwortauthentifizierung bleibt für ältere
+API-Clients testweise kompatibel.
+
+### Erste Cloud-Schreibfunktionen
+
+In der Parameteransicht (**MAIN 1012** = Cloud `Mode`, **MAIN 1158** =
+Cloud `R02`) sowie im Spezialdialog **Wärmepumpe** stehen nach Admin-Login
+Schreibfelder zur Verfügung:
+
+- `Mode`: ausschließlich die bestätigten Zustände 0–4 (Warmwasser,
+  Heizen, Kühlen, Warmwasser + Heizen, Warmwasser + Kühlen).
+- `R02`: Heizungs-**Basissollwert** in 0,1-°C-Schritten; nur innerhalb
+  der frisch gelesenen Grenzwerte `R10/R11` und zusätzlich 5–70 °C.
+  **R02 ist nicht der dynamisch wirksame Sollwert 2014.**
+
+Schreiben ist nur bei vorhandenen Cloudwerten möglich; vor jedem Write
+liest der Server den aktuellen Parameter erneut, vergleicht den im
+Browser angezeigten Ausgangswert und verlangt eine Benutzerbestätigung.
+Es folgt **genau ein** `app/device/control?lang=en`-Aufruf mit
+`appId=16`, danach ein Readback. Keine automatische Wiederholung
+eines Writes, auch bei Timeout. Eine unklare ACK-/Readback-Situation
+wird **nicht** als erfolgreich bestätigt. Die Steuerung ist weiterhin
+**nicht am realen Gerät getestet**; vor produktivem Einsatz die
+Betriebsart und den Sollwert unter Aufsicht kontrollieren.
+
+Andere Codes, Spezialdialoge und lokale Modbus-Transporte bleiben
+**read-only**. Die zwei Rollen bieten absichtlich noch keine
+Mehrbenutzerkontenverwaltung. Bestehende private System- und
+Cloud-Konfigurationen werden nicht in das öffentliche Repository
+übertragen.
