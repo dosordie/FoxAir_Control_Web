@@ -77,7 +77,7 @@ class CloudReader:
 
     def _post(self, endpoint: str, body: dict[str, Any], *, token: str | None = None) -> dict[str, Any]:
         if endpoint not in ("app/user/login", "app/device/getDataByCode",
-                            "app/device/deviceList", "app/device/control"):
+                            "app/device/deviceList", "app/device/getDeviceStatus", "app/device/control"):
             raise CloudError("Cloud-Endpunkt nicht zugelassen")
         content = json.dumps(body, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(
@@ -197,6 +197,25 @@ class CloudReader:
             # cloud rejects a nonessential heartbeat.
             pass
         return False
+
+    def device_status(self) -> dict[str, Any]:
+        """Optional selected-device status, without raw identifiers or secrets."""
+        response = self._request_auth(
+            "app/device/getDeviceStatus", {"deviceCode": self.device_code},
+        )
+        if not self._ok(response):
+            raise CloudError("Cloud-Gerätestatus nicht verfügbar")
+        obj = response.get("objectResult")
+        if not isinstance(obj, dict):
+            return {}
+        # Conservative allowlist; never return serials, SIM IDs, tokens or nested trees.
+        fields = (
+            "deviceStatus", "isFault", "dtuSignalIntensity", "dtuSoftwareVer",
+            "deviceName", "deviceNickName", "model", "custModel",
+            "onlineState", "deviceOnline", "lastOnlineTime",
+        )
+        return {k: obj[k] for k in fields if k in obj and
+                (obj[k] is None or isinstance(obj[k], (str, int, float, bool)))}
 
     def devices(self) -> list[dict[str, Any]]:
         """Cloud deviceList: allowlisted, secret-free metadata for admin UI."""
@@ -345,3 +364,8 @@ def read_register(register: int) -> dict[str, Any]:
 def discover_devices() -> list[dict[str, Any]]:
     with _cloud_lock:
         return _reader().devices()
+
+
+def selected_device_status() -> dict[str, Any]:
+    with _cloud_lock:
+        return _reader().device_status()
