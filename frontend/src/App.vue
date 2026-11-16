@@ -479,35 +479,89 @@ onBeforeUnmount(() => {
         <section class="page-heading"><div><span class="section-caption">FOX AIR / TECHNIK</span><h1>Parameter & Einstellungen</h1><p>Register aus dem gemeinsamen FoxAir_Control-Katalog.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <div class="work-layout">
           <section class="panel register-list">
+            <div class="source-tabs" role="group" aria-label="Register- oder Cloudansicht">
+              <button type="button" :class="{ active: !cloudView }" @click="cloudView = false">Modbus-Register</button>
+              <button type="button" :class="{ active: cloudView }" @click="cloudView = true">Alle Cloud-Codes <small>{{ cloudOverview?.total ?? 0 }}</small></button>
+            </div>
             <label class="search-box"><Search :size="19" /><input v-model="search" placeholder="Code, Name oder Register suchen" aria-label="Parameter suchen" /></label>
-            <div class="parameter-groups" aria-label="Parametergruppen">
+            <div v-if="cloudView" class="scan-info">
+              <strong>{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Codes mit Wert</strong>
+              <span>Scan: {{ cloudOverview?.status === 'running' ? 'läuft (' + cloudOverview.progress + ')' : cloudOverview?.status || 'noch nicht gestartet' }}</span>
+              <span v-if="cloudOverview?.error">{{ cloudOverview.error }}</span>
+              <div class="parameter-groups">
+                <button v-for="option in [{ id: '', name: 'Alle' }, { id: 'live', name: 'Live' }, { id: 'static', name: 'Konfiguration' }, { id: 'other', name: 'Weitere' }]"
+                  :key="option.id" class="group-chip" :class="{ active: cloudKind === option.id }"
+                  @click="cloudKind = option.id">{{ option.name }}</button>
+              </div>
+              <button type="button" class="outlined-action" @click="loadCloudValues"><RefreshCw :size="15" /> Cache aktualisieren</button>
+            </div>
+            <div v-if="!cloudView" class="parameter-groups" aria-label="Parametergruppen">
               <button type="button" class="group-chip" :class="{ active: selectedGroup === '' }" @click="selectedGroup = ''">Alle</button>
               <button v-for="group in registerGroups" :key="group.group" type="button"
                 class="group-chip" :class="{ active: selectedGroup === group.group }"
                 @click="selectedGroup = group.group">{{ group.group }} <small>{{ group.count }}</small></button>
             </div>
-            <div class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
-            <div class="register-items">
+            <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
+            <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
-                <span class="register-title">{{ entry.name }}<small>Register {{ entry.register }}</small></span>
+                <span class="register-title">{{ entry.name }}<small>Register {{ entry.register }} <template v-if="entry.cloud?.code"> · Cloud {{ entry.cloud.code }}</template></small></span>
+                <span class="register-measure" :class="{ unknown: currentCloudRegisterValue(entry.register)?.value == null }"
+                  :title="relativeTimestamp(currentCloudRegisterValue(entry.register)?.timestamp)">
+                  {{ textValue(currentCloudRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
+                  <small>{{ currentCloudRegisterValue(entry.register)?.unit || entry.cloud?.unit || '' }}</small>
+                </span>
                 <ChevronRight :size="16" />
               </button>
               <p v-if="!registerLoading && !registers.length" class="empty-state">Keine passenden Register gefunden.</p>
             </div>
+            <div v-else class="register-items">
+              <button v-for="entry in filteredCloudRows" :key="entry.code" class="register-item"
+                :class="{ active: cloudCodeSelected?.code === entry.code }" @click="cloudCodeSelected = entry">
+                <span class="register-code">{{ entry.code }}</span>
+                <span class="register-title">{{ entry.name }}
+                  <small>{{ entry.register ? 'MAIN ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
+                <span class="register-measure" :class="{ unknown: entry.value == null }" :title="relativeTimestamp(entry.timestamp)">
+                  {{ textValue(entry.value) }}<small>{{ entry.unit }}</small>
+                </span>
+                <ChevronRight :size="16" />
+              </button>
+              <p v-if="!filteredCloudRows.length" class="empty-state">Keine passenden Cloud-Codes.</p>
+            </div>
           </section>
           <section class="panel register-detail">
-            <template v-if="selectedRegister">
+            <template v-if="cloudView && cloudCodeSelected">
+              <span class="section-caption">CLOUD-CODE</span>
+              <h2>{{ cloudCodeSelected.name }}</h2>
+              <span class="register-code large">{{ cloudCodeSelected.code }}</span>
+              <div class="detail-value">
+                <span>Cloud-Wert</span>
+                <strong>{{ textValue(cloudCodeSelected.value) }} <small>{{ cloudCodeSelected.unit }}</small></strong>
+                <p>{{ relativeTimestamp(cloudCodeSelected.timestamp) }} · {{ cloudCodeSelected.quality }}</p>
+              </div>
+              <div class="detail-metadata">
+                <span>MAIN-Zuordnung <strong>{{ cloudCodeSelected.register ?? 'nicht bestätigt' }}</strong></span>
+                <span>Cloud-Kategorie <strong>{{ cloudCodeSelected.kind }}</strong></span>
+                <span>Mapping-Confidence <strong>{{ cloudCodeSelected.confidence || 'unbekannt' }}</strong></span>
+                <span>Unterstützung <strong>{{ cloudCodeSelected.supported ? 'Wert vorhanden' : 'kein Wert' }}</strong></span>
+              </div>
+              <p class="section-hint">Cloud-Originalwert in API-Skalierung; keine Umrechnung anhand lokaler Modbus-Rohwerte.</p>
+            </template>
+            <template v-else-if="!cloudView && selectedRegister">
               <span class="section-caption">PARAMETERDETAILS</span>
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><Star :size="23" class="star-muted" /></div>
-              <div class="detail-value"><span>Aktueller Wert</span><strong>{{ currentValue ? displayMetric({ value: currentValue.value, unit: currentValue.unit, raw: currentValue.raw, timestamp: currentValue.timestamp, quality: currentValue.quality }) : '—' }} <small>{{ currentValue?.unit || '' }}</small></strong><p>{{ currentValue ? 'Ausgelesen: ' + new Date(currentValue.timestamp).toLocaleString('de-DE') : 'Noch nicht ausgelesen' }}</p></div>
+              <div class="detail-value"><span>Aktueller Wert</span>
+                <strong>{{ textValue(currentValue?.value ?? currentCloudRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
+                  <small>{{ currentValue?.unit || currentCloudRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
+                <p>{{ relativeTimestamp(currentValue?.timestamp ?? currentCloudRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
+              </div>
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span></div>
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
               <p class="section-hint">Schreiben ist in diesem ersten Entwicklungsstand deaktiviert. {{ selectedTransportInfo?.read_supported ? '' : selectedTransportInfo?.reason || '' }}</p>
             </template>
-            <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>Parameter auswählen</h2><p>Links nach D14, E17, 1158 oder einer Beschreibung suchen und den Registereintrag öffnen.</p></div>
+            <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Die aktuellen Cloudwerte sind bereits in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </section>
         </div>
       </template>
