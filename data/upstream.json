@@ -6,5 +6,10 @@
     "foxair_phnix_display_registers.json",
     "foxair_phnix_knowledge.json"
   ],
-  "note": "Upstream source for each snapshot file. Sync via scripts/sync_registers.py and review changes."
+  "checksum_format": "sha256-utf8-lf",
+  "sha256": {
+    "foxair_phnix_registers.json": "f6df57dc54b4297ac636d957902f2522ebb5ef2a083577e025f572023c243c9c",
+    "foxair_phnix_display_registers.json": "43fec1ee23c1bf1c8c95ba761cee30ceefcbf099a4510e9f1fcb59e453dba636",
+    "foxair_phnix_knowledge.json": "da5aebb3b836327cfc9b3b30c212e1710cd1e6bcef3d2bdc5fb0781ce9eae636"
+  }
 }

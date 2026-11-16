@@ -1,0 +1,58 @@
+name: Propose upstream register snapshot
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Full FoxAir_Control commit SHA to review
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-register-proposal
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REF: ${{ inputs.upstream_ref }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and validate complete snapshot
+        run: |
+          python scripts/sync_registers.py --ref "$UPSTREAM_REF"
+          python scripts/sync_registers.py --check
+          python -m unittest backend.tests.test_snapshot_sync backend.tests.test_core
+      - name: Offer review pull request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data; then
+            echo 'Snapshot unchanged.'
+            exit 0
+          fi
+          branch="sync/registers-$UPSTREAM_REF"
+          git switch -c "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/foxair_phnix_registers.json data/foxair_phnix_display_registers.json data/foxair_phnix_knowledge.json data/upstream.json
+          git commit -m "chore: propose FoxAir_Control snapshot $UPSTREAM_REF"
+          git push origin "$branch"
+          cat > /tmp/snapshot-review.md <<'BODY'
+          Proposes a pinned FoxAir_Control snapshot with validated schema, knowledge references and SHA-256 checksums. The frontend cloud catalog is exported from this same revision during CI.
+
+          Review register types, scaling, read/write metadata, confirmed mapping changes and the upstream license before merging. Candidate mappings confer no write permissions. This workflow does not merge, deploy or replace the running catalog.
+
+          Validation: snapshot check and snapshot/core regression tests passed. Full application CI remains required.
+          BODY
+          gh pr create --base main --head "$branch" --title "Review FoxAir_Control snapshot $UPSTREAM_REF" --body-file /tmp/snapshot-review.md
