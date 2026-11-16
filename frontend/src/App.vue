@@ -748,33 +748,6 @@ onBeforeUnmount(() => {
           <input id="live-interval" class="settings-input" type="number" min="10" max="3600" v-model.number="liveInterval" @change="liveInterval = Math.max(10, Math.min(3600, Number(liveInterval) || 30))" />
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
         </section>
-        <section class="settings-panel panel">
-          <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
-            <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
-          <p class="section-hint">Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC installiert.</p>
-          <div class="update-versions">
-            <div><span>Installierter Commit</span><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong></div>
-            <div><span>GitHub main</span><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong></div>
-            <div><span>Aktiver Web-Build</span><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong></div>
-            <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
-            <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
-          </div>
-          <p v-if="updateInfo?.update_available" class="success-text">Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.</p>
-          <p v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote" class="section-hint">Installierter Code entspricht dem aktuellen main-Commit.</p>
-          <p v-if="!updateInfo?.installed" class="section-hint">Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code></p>
-          <div class="update-actions">
-            <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
-              <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
-            </button>
-            <button type="button" class="main-action" :disabled="!updateInfo?.installed || updateInfo?.running || updateInfo?.pending || !cloudAdminPassword || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
-              <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
-              {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
-            </button>
-          </div>
-          <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
-          <p v-if="updateError" class="read-error">{{ updateError }}</p>
-          <p class="section-hint">Für den Update-Knopf das Administrationspasswort im Bereich „Cloud-Zugang & Geräte“ eingeben. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
-        </section>
         <section class="settings-panel panel cloud-panel">
           <div class="section-head"><div><span class="section-caption">PHNIX / WARMLINK</span><h2>Cloud-Zugang & Geräte</h2></div><Cloud :size="24" /></div>
           <p>Cloud: <strong>{{ cloudStatus?.configured ? 'eingerichtet' : 'nicht vollständig' }}</strong> · Benutzer {{ cloudStatus?.username_configured ? 'vorhanden' : 'fehlt' }} · Gerätekennung {{ cloudStatus?.device_configured ? 'vorhanden' : 'fehlt' }}</p>
@@ -827,6 +800,33 @@ onBeforeUnmount(() => {
             <p class="section-hint">{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Cloud-Codes mit Wert · Scanstatus: {{ cloudOverview?.status || 'unbekannt' }}</p>
           </div>
           <p class="section-hint">Geräteinformationen stammen aus Geräteliste und Hauszuordnungen. Cloud-Passwort und Token werden nicht aus dem Server ausgelesen.</p>
+        </section>
+        <section class="settings-panel panel">
+          <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
+            <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
+          <p class="section-hint">Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC installiert.</p>
+          <div class="update-versions">
+            <div><span>Installierter Commit</span><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong></div>
+            <div><span>GitHub main</span><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong></div>
+            <div><span>Aktiver Web-Build</span><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong></div>
+            <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
+            <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
+          </div>
+          <p v-if="updateInfo?.update_available" class="success-text">Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.</p>
+          <p v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote" class="section-hint">Installierter Code entspricht dem aktuellen main-Commit.</p>
+          <p v-if="!updateInfo?.installed" class="section-hint">Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code></p>
+          <div class="update-actions">
+            <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
+              <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
+            </button>
+            <button type="button" class="main-action" :disabled="!updateInfo?.installed || updateInfo?.running || updateInfo?.pending || !cloudAdminPassword || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
+              <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
+              {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
+            </button>
+          </div>
+          <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
+          <p v-if="updateError" class="read-error">{{ updateError }}</p>
+          <p class="section-hint">Für den Update-Knopf das Administrationspasswort im Bereich „Cloud-Zugang & Geräte“ eingeben. Keine Updates ohne autorisierte Anforderung; ein echter Installationserfolg wird erst anhand der nächsten Statusprüfung angezeigt.</p>
         </section>
         <section class="settings-panel panel">
           <div class="section-head">
