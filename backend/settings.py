@@ -2,6 +2,8 @@
 from dataclasses import dataclass
 import os
 
+from backend.cloud_read import cloud_configured
+
 TRANSPORTS = {
     "cloud": ("PHNIX Cloud", "Cloud"),
     "standard_modbus": ("Standard-Modbus", "Modbus RTU"),
@@ -19,6 +21,8 @@ class Endpoint:
 
 
 def standard_endpoint() -> Endpoint | None:
+    if os.getenv("FOXAIR_ENABLE_STANDARD_MODBUS", "0") != "1":
+        return None
     host = os.getenv("FOXAIR_STANDARD_HOST", "").strip()
     if not host:
         return None
@@ -31,13 +35,16 @@ def standard_endpoint() -> Endpoint | None:
 
 
 def transport_info() -> list[dict]:
-    configured = bool(os.getenv("FOXAIR_STANDARD_HOST", "").strip())
+    configured = (os.getenv("FOXAIR_ENABLE_STANDARD_MODBUS", "0") == "1"
+                  and bool(os.getenv("FOXAIR_STANDARD_HOST", "").strip()))
+    cloud_enabled = cloud_configured()
     return [
-        {"id": "cloud", "name": "PHNIX Cloud", "configured": False,
-         "read_supported": False, "reason": "Cloud-Adapter folgt in einer weiteren Etappe"},
+        {"id": "cloud", "name": "PHNIX Cloud", "configured": cloud_enabled,
+         "read_supported": cloud_enabled,
+         "reason": "" if cloud_enabled else "Cloud-Zugangsdaten serverseitig noch nicht konfiguriert"},
         {"id": "standard_modbus", "name": "Standard-Modbus", "configured": configured,
          "read_supported": configured,
-         "reason": "" if configured else "FOXAIR_STANDARD_HOST/PORT noch nicht konfiguriert"},
+         "reason": "" if configured else "Standard-Modbus deaktiviert (separater Bus kann belegt sein)"},
         {"id": "display_modbus", "name": "Display-Modbus", "configured": False,
          "read_supported": False, "reason": "Passiver/aktiver Displaybus-Adapter noch in Entwicklung"},
         {"id": "warmlink_raw", "name": "LTE-/Warmlink-Modbus", "configured": False,

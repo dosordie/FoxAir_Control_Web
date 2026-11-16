@@ -5,13 +5,13 @@ NOT enabled in this first implementation.
 """
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.catalog import format_raw, load_registers, public_register, search_registers
+from backend.catalog import format_raw, load_registers, search_registers
+from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
 
@@ -59,6 +59,13 @@ def registers(query: str = "", limit: int = Query(80, ge=1, le=200)):
 @app.get("/api/registers/{register}/read")
 def register_read(register: int, transport: str = "cloud"):
     require_transport(transport)
+    if transport == "cloud":
+        try:
+            result = cloud_read_register(register)
+        except CloudError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+        return {"register": register, **result, "transport": transport,
+                "timestamp": now_iso(), "quality": "fresh"}
     if transport != "standard_modbus":
         raise HTTPException(status_code=501, detail="Dieser Transport unterstützt noch keine aktiven Registerreads")
     endpoint = standard_endpoint()
@@ -91,6 +98,18 @@ def dashboard(transport: str = "cloud"):
         "metrics": {name: None for name in DASHBOARD_FIELDS},
         "live_supported": False,
     }
+    if transport == "cloud":
+        try:
+            metrics = cloud_dashboard()
+            for key, item in metrics.items():
+                snapshot["metrics"][key] = {**item, "timestamp": snapshot["timestamp"]} if item else None
+            count = sum(item is not None for item in snapshot["metrics"].values())
+            snapshot["status"] = "online" if count == len(DASHBOARD_FIELDS) else ("partial" if count else "unavailable")
+            if not count:
+                snapshot["error"] = "Keine unterstützten Cloud-Werte zurückgegeben"
+        except CloudError as exc:
+            snapshot["error"] = str(exc)
+        return snapshot
     if transport != "standard_modbus":
         snapshot["error"] = "Adapter noch nicht implementiert; keine simulierten Gerätewerte"
         return snapshot
