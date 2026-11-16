@@ -31,6 +31,14 @@ export type CloudConfigStatus = {
   storage: string
   admin_enabled: boolean
 }
+export type SpecialDialog = {
+  id: string
+  title: string
+  description: string
+  codes: string[]
+  count: number
+  read_only: boolean
+}
 export type CloudRow = {
   code: string
   name: string
@@ -114,6 +122,11 @@ export const api = {
     post<CloudAccount>('/api/cloud/account', { admin_password }),
   cloudLogs: () => get<{ items: CloudLog[] }>('/api/cloud/logs'),
   cloudValues: () => get<CloudValues>('/api/cloud/values'),
+  specialDialogs: () => get<{items: SpecialDialog[]}>('/api/cloud/dialogs'),
+  refreshSpecialDialog: (id: string) =>
+    post<{updated:boolean;reason?:string;count:number;unsupported?:number}>(
+      '/api/cloud/dialogs/' + encodeURIComponent(id) + '/refresh', {}
+    ),
   cloudScan: (admin_password: string) =>
     post<{ started: boolean; reason?: string; count?: number }>('/api/cloud/scan', { admin_password }),
   read: (register: number, transport: TransportId) =>
