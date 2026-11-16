@@ -1,0 +1,62 @@
+"""Cloud contract tests; no real PHNIX credentials or network traffic."""
+import unittest
+from unittest.mock import patch
+
+from backend.cloud_read import CLOUD_REGISTERS, CloudReader, CloudError, cloud_configured
+
+
+class CloudReadTests(unittest.TestCase):
+    def test_config_required(self):
+        with patch.dict("os.environ", {"FOXAIR_CLOUD_USER": "", "FOXAIR_CLOUD_PASSWORD": "",
+                                       "FOXAIR_CLOUD_DEVICE_CODE": ""}):
+            self.assertFalse(cloud_configured())
+
+    def test_login_reuses_token_and_sends_only_read(self):
+        client = CloudReader("fake-account", "fake-password", "fake-device")
+        calls = []
+
+        def post(endpoint, payload, *, token=None):
+            calls.append((endpoint, payload, token))
+            if endpoint == "app/user/login":
+                return {"isReusltSuc": True, "objectResult": {"x-token": "mock-token"}}
+            self.assertEqual(token, "mock-token")
+            self.assertEqual(payload["deviceCode"], "fake-device")
+            return {"isReusltSuc": True, "objectResult": [
+                {"code": "T04", "value": "-1.5"}, {"code": "T08", "value": 42.0},
+            ]}
+
+        with patch.object(client, "_post", side_effect=post):
+            rows = client.read_codes(["T04", "T08"])
+            self.assertEqual(rows["T04"]["value"], "-1.5")
+            self.assertEqual(rows["T08"]["value"], 42.0)
+            client.read_codes(["T04"])
+        self.assertEqual([item[0] for item in calls].count("app/user/login"), 1)
+        self.assertTrue(all(x[0] in ("app/user/login", "app/device/getDataByCode") for x in calls))
+
+    def test_nonwhitelisted_cloud_codes_rejected(self):
+        client = CloudReader("fake", "fake", "fake")
+        with self.assertRaises(CloudError):
+            client.read_codes(["T200"])
+        self.assertIsNone(client.token)
+
+    def test_empty_cloud_values_are_unavailable_but_zero_valid(self):
+        client = CloudReader("fake", "fake", "fake")
+        client.token = "fake-token"
+        response = {"isReusltSuc": True, "objectResult": [
+            {"code": "T04", "value": ""},
+            {"code": "T08", "value": 0},
+        ]}
+        with patch.object(client, "_post", return_value=response):
+            result = client.read_codes(["T04", "T08"])
+        self.assertNotIn("T04", result)
+        self.assertEqual(result["T08"]["value"], 0)
+
+    def test_known_mapping_includes_verified_dashboard_codes(self):
+        self.assertEqual(CLOUD_REGISTERS[2048], "T04")
+        self.assertEqual(CLOUD_REGISTERS[2047], "T08")
+        self.assertEqual(CLOUD_REGISTERS[2035], "T40")
+        self.assertEqual(CLOUD_REGISTERS[2036], "T41")
+
+
+if __name__ == "__main__":
+    unittest.main()
