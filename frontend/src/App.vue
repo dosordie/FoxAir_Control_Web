@@ -24,6 +24,8 @@ const selectedGroup = ref('')
 const registerGroups = ref<{ group: string; count: number }[]>([])
 const cloudStatus = ref<CloudConfigStatus | null>(null)
 const cloudDevices = ref<CloudDevice[]>([])
+const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
+const cloudStatusLoading = ref(false)
 const cloudUsername = ref('')
 const cloudPassword = ref('')
 const cloudDeviceCode = ref('')
@@ -153,6 +155,18 @@ async function saveCloudSettings() {
     cloudError.value = e instanceof Error ? e.message : 'Einstellungen konnten nicht gespeichert werden.'
   } finally {
     cloudSaving.value = false
+  }
+}
+
+async function queryCloudDeviceStatus() {
+  cloudStatusLoading.value = true
+  cloudError.value = ''
+  try {
+    selectedCloudStatus.value = (await api.cloudDeviceStatus(cloudAdminPassword.value)).status
+  } catch (e) {
+    cloudError.value = e instanceof Error ? e.message : 'Gerätestatus nicht verfügbar'
+  } finally {
+    cloudStatusLoading.value = false
   }
 }
 
@@ -455,6 +469,14 @@ onBeforeUnmount(() => {
                 <span v-if="device.houseName">Haus: {{ device.houseName }}</span>
                 <small>Auswählen</small>
               </button>
+            </div>
+          </div>
+          <div class="cloud-discovery">
+            <button type="button" class="outlined-action" :disabled="cloudStatusLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="queryCloudDeviceStatus">
+              <Activity :size="17" /> {{ cloudStatusLoading ? 'Frage Gerätestatus ab …' : 'Status des ausgewählten Cloud-Geräts abrufen' }}
+            </button>
+            <div v-if="Object.keys(selectedCloudStatus).length" class="device-status">
+              <div v-for="(value, key) in selectedCloudStatus" :key="key"><span>{{ key }}</span><strong>{{ value ?? '—' }}</strong></div>
             </div>
           </div>
           <p v-if="cloudMessage" role="status" class="success-text">{{ cloudMessage }}</p>
