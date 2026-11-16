@@ -602,6 +602,10 @@ onBeforeUnmount(() => {
           <form class="cloud-form" @submit.prevent="saveCloudSettings">
             <label class="field-label" for="admin-password">Web-Administrationspasswort</label>
             <input id="admin-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="off" placeholder="Lokal eingerichtet" :disabled="!secureAdminContext" />
+            <button type="button" class="outlined-action account-load" :disabled="accountLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="loadStoredAccount">
+              <ShieldCheck :size="17" /> {{ accountLoading ? 'Prüfe Adminzugang …' : 'Aktuelle E-Mail und Gerätekennung anzeigen' }}
+            </button>
+            <p v-if="accountLoaded" class="success-text">Gespeicherter Benutzer und deviceCode wurden in die beiden Felder unten übernommen. Das Cloud-Passwort bleibt verborgen.</p>
             <label class="field-label" for="cloud-username">WarmLink-Benutzername</label>
             <input id="cloud-username" class="settings-input" v-model="cloudUsername" autocomplete="off" placeholder="Leer = bisherigen Benutzer behalten" :disabled="!secureAdminContext" />
             <label class="field-label" for="cloud-password">Cloud-Passwort</label>
@@ -635,7 +639,28 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="cloudMessage" role="status" class="success-text">{{ cloudMessage }}</p>
           <p v-if="cloudError" role="alert" class="read-error">{{ cloudError }}</p>
-          <p class="section-hint">Geräteinformationen stammen aus der PHNIX-Geräteliste. Passwort und Token werden nicht aus dem Server ausgelesen.</p>
+          <div class="cloud-discovery">
+            <button type="button" class="outlined-action" :disabled="cloudScanLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !cloudAdminPassword" @click="rescanCloud">
+              <RefreshCw :size="17" :class="{ spinning: cloudScanLoading }" /> Vollständigen Cloud-Katalog erneut abfragen
+            </button>
+            <p class="section-hint">{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Cloud-Codes mit Wert · Scanstatus: {{ cloudOverview?.status || 'unbekannt' }}</p>
+          </div>
+          <p class="section-hint">Geräteinformationen stammen aus Geräteliste und Hauszuordnungen. Cloud-Passwort und Token werden nicht aus dem Server ausgelesen.</p>
+        </section>
+        <section class="settings-panel panel">
+          <div class="section-head">
+            <div><span class="section-caption">DIAGNOSE</span><h2>Cloud-Protokoll</h2></div>
+            <button type="button" class="outlined-action" @click="loadCloudLogs"><RefreshCw :size="16" /> Aktualisieren</button>
+          </div>
+          <p class="section-hint">Letzte Ereignisse aus dem laufenden Webserver: Login-/Lese- und Scanstatus, ohne Zugangsdaten, Tokens oder Gerätekennungen. Das Protokoll wird beim Dienstneustart zurückgesetzt.</p>
+          <div class="cloud-log-list">
+            <div v-for="(entry, index) in cloudLogs" :key="index" class="cloud-log-item">
+              <time>{{ new Date(entry.time).toLocaleString('de-DE') }}</time>
+              <span class="cloud-log-kind" :class="entry.kind">{{ entry.kind }}</span>
+              <span>{{ entry.message }} <template v-if="entry.count !== undefined">({{ entry.count }})</template></span>
+            </div>
+            <p v-if="!cloudLogs.length" class="empty-state">Noch keine Cloud-Ereignisse aufgezeichnet.</p>
+          </div>
         </section>
       </template>
     </main>
