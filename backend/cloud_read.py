@@ -36,6 +36,10 @@ CLOUD_REGISTERS: dict[int, str] = {
     2077: "T39",
     2035: "T40",
     2036: "T41",
+    2045: "T01",  # Main water inlet/return, not AC branch T40
+    2046: "T02",  # Main water outlet/supply, not AC branch T41
+    2014: "2014",  # Firmware-selected temperature setpoint (not R02 base)
+
     1158: "R02",
 }
 
@@ -45,9 +49,10 @@ DASHBOARD_MAPPING = {
     "flow": 2077,
     "tank": 2047,
     "outdoor": 2048,
-    "return": 2035,
-    "supply": 2036,
+    "return": 2045,
+    "supply": 2046,
     "target": 1158,
+    "selected_target": 2014,
 }
 
 
@@ -446,6 +451,28 @@ def read_dashboard(*, live: bool = False) -> dict[str, Any]:
         if isinstance(mapping, dict):
             value = mapping.get(str(value), value)
         output[key] = {"value": value, "raw": None, "unit": unit, "quality": "fresh"}
+    # The firmware-selected runtime setpoint is distinct from the user R02
+    # baseline (e.g. 35 °C). Prefer valid 2014; do NOT add an unverified
+    # cloud offset, since 2014 already includes the active control selection.
+    # Some installations report 0/empty for unavailable status values.
+    selected = output.pop("selected_target", None)
+    baseline = output.get("target")
+    if selected:
+        try:
+            candidate = float(str(selected["value"]).replace(",", "."))
+        except (TypeError, ValueError):
+            candidate = 0.0
+        if 5 <= candidate <= 80:
+            output["base_target"] = baseline
+            output["target"] = {**selected, "source_code": "2014",
+                                "label": "Aktueller Wassersollwert"}
+        else:
+            output["base_target"] = baseline
+    else:
+        output["base_target"] = baseline
+    if output.get("target"):
+        output["target"].setdefault("source_code", "R02")
+        output["target"].setdefault("label", "Heizungs-Basissollwert")
     return output
 
 

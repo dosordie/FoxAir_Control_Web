@@ -27,12 +27,13 @@ DASHBOARD_FIELDS = {
     "flow": 2077,
     "tank": 2047,
     "outdoor": 2048,
-    "return": 2035,
-    "supply": 2036,
+    "return": 2045,
+    "supply": 2046,
     "target": 1158,
+    "base_target": 1158,
 }
 # FC03 ranges reduce requests; avoid active probing on the Display/LTE bus.
-READ_BLOCKS = ((1011, 1), (1158, 1), (2012, 1), (2035, 14), (2077, 1))
+READ_BLOCKS = ((1011, 1), (1158, 1), (2012, 3), (2035, 14), (2077, 1))
 VALID_TRANSPORTS = set(TRANSPORTS)
 
 
@@ -258,6 +259,20 @@ def dashboard(transport: str = "cloud", live: bool = False):
             value, unit = format_raw(words[register], definition.get(str(register), {}))
             snapshot["metrics"][name] = {"value": value, "unit": unit, "raw": words[register],
                                          "timestamp": snapshot["timestamp"], "quality": "fresh"}
+    if 2014 in words:
+        selected, unit = format_raw(words[2014], definition.get("2014", {}))
+        try:
+            valid = 5 <= float(selected) <= 80
+        except (TypeError, ValueError):
+            valid = False
+        if valid:
+            snapshot["metrics"]["target"] = {"value": selected, "unit": unit or "°C",
+                "raw": words[2014], "timestamp": snapshot["timestamp"],
+                "quality": "fresh", "source_code": "2014",
+                "label": "Aktueller Wassersollwert"}
+    if snapshot["metrics"]["target"] and "source_code" not in snapshot["metrics"]["target"]:
+        snapshot["metrics"]["target"].update(
+            source_code="R02", label="Heizungs-Basissollwert")
     snapshot["status"] = "online" if len(words) > 0 and not errors else ("partial" if words else "unavailable")
     if errors:
         snapshot["error"] = "Modbus-Abfrage nicht vollständig: " + "; ".join(errors)
