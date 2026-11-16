@@ -23,6 +23,7 @@ class WarmlinkSession:
         self.buffer = bytearray()
         self.poisoned = False
         self.last_received = 0.0
+        self.foreign_pending = None
 
     def receive(self, timeout):
         self.sock.settimeout(max(.001, timeout))
@@ -38,6 +39,12 @@ class WarmlinkSession:
             raise ValueError("LTE-Stream nicht synchronisiert")
         frames = find_frames(self.buffer, 125)
         log_event("lte-rx", f"LTE RX: {len(data)} Bytes, {len(frames)} gültige Frames, {len(self.buffer)} Restbytes")
+        from backend.bus_connection import observe
+        observe(frames)
+        for f in frames:
+            if f[0] != self.endpoint.slave:continue
+            if f[9] == 'read-request':self.foreign_pending=(f[2],f[3])
+            elif f[9]=='read-response' and self.foreign_pending and f[3]==self.foreign_pending[1]*2:self.foreign_pending=None
         return frames
 
     def quiet(self):
@@ -45,15 +52,11 @@ class WarmlinkSession:
             raise ValueError("LTE-Verbindung nach unklarer Antwort gesperrt")
         deadline = time.monotonic() + self.endpoint.timeout
         quiet_since = time.monotonic()
-        foreign_read = False
+        foreign_read = self.foreign_pending is not None
         while time.monotonic() < deadline:
             frames = self.receive(.1)
             quiet_since = max(quiet_since, self.last_received)
-            for f in frames:
-                if f[0] == self.endpoint.slave and f[9] == "read-request":
-                    foreign_read = True
-                elif f[0] == self.endpoint.slave and f[9] == "read-response":
-                    foreign_read = False
+            foreign_read = self.foreign_pending is not None
             if time.monotonic() - quiet_since >= .8:
                 if foreign_read:
                     raise ValueError("Fremde LTE-Leseabfrage noch unbeantwortet")
@@ -110,6 +113,13 @@ class WarmlinkSession:
 
 @contextmanager
 def open_warmlink(endpoint):
+    from backend.settings import warmlink_config
+    from backend.bus_connection import wanted, operation, start, status
+    mode=warmlink_config().get('connection_mode','on_demand')
+    if mode != "on_demand" or status()["connected"]:
+        start()
+        with operation(endpoint) as client:yield client
+        return
     key = (endpoint.host, endpoint.port)
     with _bus_guard:
         lock = _bus_locks.setdefault(key, threading.Lock())

@@ -70,3 +70,11 @@ Geprüft: 97 Backendtests, drei Frontendtests, Typecheck/Build; lokal alle drei 
 Weiter offen: permanenter passiver RX, vollständige SG-/AT-Schreibeditoren, allgemeine parameterabhängige Schreibfreigaben und Displaybus. Aus früheren Abschnitten offene Timer-/Betriebs-Pop-ups sind mit diesem Abschnitt teilweise umgesetzt; die Hardwareabnahme von Änderungen steht aus.
 
 Nachprüfung: 98 Backendtests erfolgreich. Dezimale Cloud-Schalter wie 1.0/0.0 werden wie lokale Schalter übersetzt (Klartext und Lüfterzustand). Ungültige Timer-Eingaben bleiben als Entwurf sichtbar und sperren Senden; frisches Lesen setzt sie zurück.
+
+## Verbindung offen halten und Cloud-Erkenntnisse aus Issue 7
+
+LTE-Verbindungsmodus ist privat konfigurierbar: bei Bedarf, Browser-Lease (90 Sekunden nach letztem Lebenszeichen), dauerhaft einschließlich Dienstneustart. Ein Prozess besitzt genau einen Socket, aktives Lesen/Schreiben und passiver Empfang teilen dieselbe Sperre. Hintergrundempfang sendet nichts; bei Fehlern nur Neuverbindung, keine Wiederholung von Writes. CRC-geprüfte FC16-Statusblöcke werden separat als beobachtete Rohwerte mit Alter erfasst (`/api/warmlink/connection`); Schreibabsichten werden nicht als Messwerte übernommen. Noch keine vollständige Projektion aller passiven Rohwerte in sämtliche Parameter-/Dashboardansichten. Betrieb mit einem API-Worker vorgesehen.
+
+Issue 7: begrenzte Historienadressen (vier Temperaturen und Verbrauchs-Alias 2078+9), maximal 31 Tage, feste beobachtete Zeitzone UTC+1; Graph mit Zeitachse und Messpunkten, Cache und Abfragelimit. Aktueller Verbrauchstag ausdrücklich unvollständig. Lesende OTA-Verfügbarkeitsprüfung (kein Flash/Download/Start) und separater Hersteller-Servicekatalog ohne Mapping-/Schreibrechtsänderungen. Enum-Detailtabellen und AI-Supportanzeige sind noch offen; Issue 7 bleibt offen. Herstellerkatalog-Schema muss auf der Installation geprüft werden.
+
+Tests ergänzt für Lease-Ablauf, Socket-Wiederverwendung, vergiftete Sitzungen, passive Statusblöcke gegenüber Schreibabsichten, Historienvalidierung, OTA-Leerantwort, Cache, Fehler-Ratelimit, unvollständige Tageswerte und Metadaten-Filterung. Display-Modbus bleibt in diesem Schritt deaktiviert; kein blindes Freischalten als Standard-RTU und kein unbestätigter Displaybus-Init.

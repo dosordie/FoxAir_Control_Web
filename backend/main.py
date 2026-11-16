@@ -92,9 +92,28 @@ class AdminLogin(BaseModel):
 
 
 class WarmlinkConfigUpdate(CloudAdminAction):
+    connection_mode: Literal["on_demand", "browser", "permanent"] = "on_demand"
     host: str = Field(min_length=1, max_length=64)
     port: int = Field(ge=1, le=65535)
     enabled: bool
+
+
+@app.on_event("startup")
+def start_bus_manager():
+    from backend.bus_connection import start
+    start()
+
+
+@app.get("/api/warmlink/connection")
+def bus_connection_state():
+    from backend.bus_connection import status, observed_words
+    return {**status(),"observed":observed_words()}
+
+
+@app.post("/api/warmlink/lease")
+def bus_browser_lease():
+    from backend.bus_connection import lease
+    return lease()
 
 
 @app.post("/api/warmlink/config")
@@ -107,7 +126,7 @@ def get_warmlink_config(payload: CloudAdminAction, request: Request):
 def update_warmlink_config(payload: WarmlinkConfigUpdate, request: Request):
     require_admin(request, payload.admin_password)
     try:
-        return save_warmlink(payload.host, payload.port, payload.enabled)
+        return save_warmlink(payload.host, payload.port, payload.enabled, payload.connection_mode)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except OSError:
@@ -298,6 +317,32 @@ def timer_write(kind: str, payload: TimerWrite, request: Request):
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except (OSError, ValueError, CloudError) as exc:
         raise HTTPException(status_code=503, detail="Timerprüfung fehlgeschlagen: " + str(exc)) from None
+
+
+class HistoryRequest(CloudAdminAction):
+    address: str
+    start: str
+    end: str
+    frequency: Literal["day","month"] = "day"
+    time_zone: StrictInt = 1
+
+
+@app.post("/api/cloud/history")
+def cloud_history(payload: HistoryRequest, request: Request):
+    require_admin(request,payload.admin_password)
+    from backend.cloud_insights import history_args,request as query_cloud
+    try:return query_cloud('history',history_args(payload.address,payload.start,payload.end,payload.frequency,payload.time_zone))
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
+    except CloudError as exc:raise HTTPException(status_code=503,detail=str(exc)) from None
+
+
+@app.post("/api/cloud/insights/{kind}")
+def cloud_extra(kind: Literal["ota","metadata"], payload: CloudAdminAction, request: Request):
+    require_admin(request,payload.admin_password)
+    from backend.cloud_insights import request as query_cloud
+    try:return query_cloud(kind)
+    except ValueError as exc:raise HTTPException(status_code=429,detail=str(exc)) from None
+    except CloudError as exc:raise HTTPException(status_code=503,detail=str(exc)) from None
 
 
 @app.get("/api/registers")

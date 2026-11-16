@@ -10,11 +10,13 @@ WARMLINK_FILE = STATE_DIR / "warmlink.json"
 def warmlink_config() -> dict:
     row = _read_json(WARMLINK_FILE)
     return {"host": row.get("host", "192.168.1.50"), "port": row.get("port", 2001),
-            "enabled": row.get("enabled") is True, "slave": 99}
+            "enabled": row.get("enabled") is True, "slave": 99, "connection_mode": row.get("connection_mode", "on_demand")}
 
 
-def save_warmlink(host: str, port: int, enabled: bool) -> dict:
+def save_warmlink(host: str, port: int, enabled: bool, connection_mode: str = "on_demand") -> dict:
     import ipaddress
+    if connection_mode not in ("on_demand", "browser", "permanent"):
+        raise ValueError("Unbekannter Verbindungsmodus")
     # Explicit raw TCP endpoint only; no URLs, paths, credentials or DNS rebinding.
     try:
         address = ipaddress.ip_address(host.strip())
@@ -22,7 +24,7 @@ def save_warmlink(host: str, port: int, enabled: bool) -> dict:
         raise ValueError("Bitte eine gültige lokale IP-Adresse eingeben") from None
     if not address.is_private or address.is_loopback or address.is_unspecified or address.is_multicast or not 1 <= port <= 65535:
         raise ValueError("Lokale IP-Adresse und TCP-Port 1–65535 erforderlich")
-    _atomic_json(WARMLINK_FILE, {"host": str(address), "port": port, "enabled": enabled})
+    _atomic_json(WARMLINK_FILE, {"host": str(address), "port": port, "enabled": enabled, "connection_mode": connection_mode})
     return warmlink_config()
 
 

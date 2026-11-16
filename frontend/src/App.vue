@@ -8,6 +8,7 @@ import {
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import TimerEditor from './TimerEditor.vue'
+import CloudInsights from './CloudInsights.vue'
 import { api, writeValueText } from './api'
 import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId, UpdateStatus } from './api'
 
@@ -105,7 +106,7 @@ async function openOperation(code:'Power'|'Mode'|'H22'){
   writeFeedback.value='';writeError.value='';operationSources.value={};operationCode.value=code
   await refreshOperation()
 }
-const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99})
+const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99,connection_mode:'on_demand'})
 const connectionSettingsOpen = ref(false)
 const connectionDialogElement = ref<HTMLDialogElement | null>(null)
 watch(connectionSettingsOpen, opened => {
@@ -114,6 +115,16 @@ watch(connectionSettingsOpen, opened => {
   if (opened && !dialog.open) dialog.showModal()
   else if (!opened && dialog.open) dialog.close()
 })
+const busState=ref<Awaited<ReturnType<typeof api.busConnection>>|null>(null)
+let busTimer:ReturnType<typeof setTimeout>|undefined
+async function updateBusLease(){
+  if(unmounted)return
+  try {
+    if(selectedTransport.value==='warmlink_raw')await api.busLease()
+    busState.value=await api.busConnection()
+  }catch{/* The connection panel shows the last confirmed state. */}
+  if(!unmounted)busTimer=setTimeout(updateBusLease,15000)
+}
 const lteBusy = ref(false)
 const lteMessage = ref('')
 const lteError = ref('')
@@ -700,6 +711,7 @@ watch(search, () => {
   searchTimer = setTimeout(() => { if (page.value === 'parameters') void loadRegisters() }, 240)
 })
 onMounted(async () => {
+  void updateBusLease()
   syncRoute()
   window.addEventListener('hashchange', syncRoute)
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -720,6 +732,7 @@ onMounted(async () => {
   scheduleValueRefresh()
 })
 onBeforeUnmount(() => {
+  clearTimeout(busTimer)
   unmounted = true
   window.removeEventListener('hashchange', syncRoute)
   document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -1044,6 +1057,7 @@ onBeforeUnmount(() => {
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
         </section>
 
+        <CloudInsights :admin="adminAuthenticated&&secureAdminContext" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
             <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
@@ -1113,6 +1127,10 @@ onBeforeUnmount(() => {
             <input id="lte-host" class="settings-input" v-model="lteConfig.host" required />
             <label class="field-label" for="lte-port">TCP-Port</label>
             <input id="lte-port" class="settings-input" type="number" min="1" max="65535" v-model.number="lteConfig.port" required />
+            <label class="field-label" for="connection-mode">Verbindung offen halten</label>
+            <select id="connection-mode" class="settings-input" v-model="lteConfig.connection_mode"><option value="on_demand">Nur bei einer Abfrage</option><option value="browser">Solange ein Browser geöffnet ist</option><option value="permanent">Dauerhaft – auch ohne Browser</option></select>
+            <p class="section-hint">Browser-Modus: Schließen spätestens 90 Sekunden nach dem letzten Lebenszeichen. Dauerhaftes Mithören sendet keine eigenen Lese- oder Schreibbefehle.</p>
+            <p role="status">TCP: {{ busState?.connected?'Verbunden':'Geschlossen' }} · Modus: {{ {on_demand:'Bei Bedarf',browser:'Browser geöffnet',permanent:'Dauerhaft'}[busState?.mode as 'on_demand'|'browser'|'permanent'] || 'Bei Bedarf' }}<span v-if="busState?.error"> · {{ busState.error }}</span></p>
             <label><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Lesen und Modus/R02-Schreiben aktivieren</label>
             <button class="main-action" :disabled="lteBusy">{{ lteBusy ? 'Speichert …' : 'LTE-Anschluss speichern' }}</button>
           </form>
