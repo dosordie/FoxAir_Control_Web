@@ -111,7 +111,10 @@ def bus_connection_state():
 
 
 @app.post("/api/warmlink/lease")
-def bus_browser_lease():
+def bus_browser_lease(request: Request):
+    ensure_secure_origin(request)
+    if request.headers.get("x-foxair-admin") != "1":
+        raise HTTPException(status_code=403,detail="Lebenszeichen-Header fehlt")
     from backend.bus_connection import lease
     return lease()
 

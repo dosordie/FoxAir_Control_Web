@@ -35,9 +35,9 @@ class WarmlinkSession:
             raise ConnectionError("LTE-Verbindung geschlossen")
         self.last_received = time.monotonic()
         self.buffer.extend(data)
+        frames = find_frames(self.buffer, 125)
         if len(self.buffer) > 4096:
             raise ValueError("LTE-Stream nicht synchronisiert")
-        frames = find_frames(self.buffer, 125)
         log_event("lte-rx", f"LTE RX: {len(data)} Bytes, {len(frames)} gültige Frames, {len(self.buffer)} Restbytes")
         from backend.bus_connection import observe
         observe(frames)
