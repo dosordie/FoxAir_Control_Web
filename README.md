@@ -8,11 +8,13 @@ Responsive Web-App / PWA für FoxAir-/PHNIX-Wärmepumpen. Ein **eigenständiges 
 - **Parameter / Einstellungen** per Button erreichbar: Suchfunktion nach Code/Registernummer/Name, Details, einzelne Reads.
 - Letzter Transport pro Browser gespeichert.
 - FoxAir_Control-Registerdatenbank als überprüfter Snapshot ohne parallele manuelle Pflege.
-- **Standard-Modbus read-only** über rohes ser2net/RTU: nur während einer Abfrage geöffnet. **Keine aktive Display-/LTE-Multi-Master-Kommunikation** in dieser Version.
+- **Cloud read-only**: PHNIX/Linked-Go mit serverseitig hinterlegten Zugangsdaten und gezielt freigegebenen Dashboard-Codes.
+- **LTE-/Warmlink-Modbus hat als Nächstes Priorität**; vorerst noch gesperrt wegen vorhandener DTU als Bus-Master.
+- Standard-Modbus ist **standardmäßig deaktiviert** und wird nicht für automatische Abfragen genutzt (etwa wenn ein anderer Dienst den Bus bereits belegt).
 - FastAPI + Vue 3/TypeScript/Vite und PWA-Manifest.
 - GitHub Actions prüfen Python-Backend und Frontend-Build.
 
-**Grenze:** Cloud-Adapter, Live-Leases, Sollwertschreiben und alle schreibenden Parameterfunktionen sind noch nicht implementiert. Die angezeigten `—` sind echte *fehlende* Werte, keine Simulationen.
+**Grenze:** Cloud-Lesezugriff ist implementiert, aber noch nicht gegen deine reale Cloud-Verbindung getestet. LTE-/Display-Modbus, Live-Leases, Sollwertschreiben und alle schreibenden Parameterfunktionen sind noch nicht implementiert. Die angezeigten `—` sind echte *fehlende* Werte, keine Simulationen.
 
 **Sicherheit:** Die erste Implementierung hat noch **keine eigene Authentifizierung**. Nicht ohne Nginx-Zugriffsschutz/MFA, Firewallbegrenzung und Abschluss der Sicherheitsprüfung ins Internet stellen.
 
@@ -26,6 +28,14 @@ sudo bash scripts/update.sh
 ```
 
 Beim ersten Mal zusätzlich `sudo bash scripts/install_service.sh` (Beispiel für diesen Installationspfad). Beide Anwendungen werden separat verwaltet; der Beispiel-Dienst bindet zunächst nur an `127.0.0.1:8081`. **Keinen ungeschützten Zugriff ins Internet erlauben.** Ausführlich: [RUN_MVP.md](docs/RUN_MVP.md).
+
+### PHNIX Cloud konfigurieren (read-only)
+
+Auf dem Zielsystem mit interaktiver Konsole einmalig `sudo python3 scripts/configure_cloud.py` ausführen. Das Skript fragt Benutzername, Passwort und Gerätecode ab, speichert sie **nur lokal** in einer rootgeschützten systemd-EnvironmentFile und startet ausschließlich den FoxAir-Dienst neu. **Keine Geheimnisse im Repository hinterlegen.**
+
+Abfragen funktionieren danach auf der Übersicht mit Transport `PHNIX Cloud` sowie per `GET /api/dashboard?transport=cloud`.
+
+**Sicherheitsgrenze:** Der MVP hat noch keine eigene Web-Anmeldung. Cloud-Konfiguration und Messwert-API daher nicht aus ungeschützten Netzen zugänglich machen; vor Internetfreigabe Authentifizierung und Firewall einrichten.
 
 ### LAN-Zugriff auf den Testdienst
 

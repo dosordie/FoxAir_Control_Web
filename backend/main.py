@@ -1,7 +1,7 @@
 """FoxAir Web MVP: WarmLink-style dashboard and on-demand standard Modbus reads.
 
-Writes, live leases, cloud, display and LTE multi-master protocols are intentionally
-NOT enabled in this first implementation.
+Cloud reading is supported with server-side credentials; writes, live leases,
+display and LTE multi-master protocols are not enabled yet.
 """
 from datetime import datetime, timezone
 from pathlib import Path
