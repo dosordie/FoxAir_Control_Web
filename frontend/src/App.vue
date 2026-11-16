@@ -88,6 +88,32 @@ const fanRunning = computed(() =>
   snapshot.value?.status !== 'unavailable' &&
   snapshot.value?.metrics.power?.quality !== 'stale' &&
   ['Ein', '1', 'ON'].includes(powerText.value))
+const supplyDelta = computed(() => {
+  const data = snapshot.value?.metrics
+  if (!data || data.target?.source_code !== '2014') return null
+  const target = Number(String(data.target.value).replace(',', '.'))
+  const supply = Number(String(data.supply?.value ?? '').replace(',', '.'))
+  return Number.isFinite(target) && data.supply != null && Number.isFinite(supply)
+    ? Math.round((target - supply) * 10) / 10 : null
+})
+const waterSpread = computed(() => {
+  const data = snapshot.value?.metrics
+  if (!data || !data.supply || !data.return) return null
+  const supply = Number(String(data.supply.value).replace(',', '.'))
+  const waterReturn = Number(String(data.return.value).replace(',', '.'))
+  return Number.isFinite(supply) && Number.isFinite(waterReturn)
+    ? Math.round((supply - waterReturn) * 10) / 10 : null
+})
+function deltaText(value: number | null): string {
+  return value === null ? '—' : (value > 0 ? '+' : '') + value.toLocaleString('de-DE', {maximumFractionDigits:1})
+}
+const orderedGroups = computed(() => registerGroups.value
+  .filter(entry => !['DIAG', 'ENG'].includes(entry.group.toUpperCase()))
+  .sort((a, b) => {
+    const specialA = a.group.length === 1 ? 0 : 1
+    const specialB = b.group.length === 1 ? 0 : 1
+    return specialA - specialB || a.group.localeCompare(b.group, 'de')
+  }))
 const mainRegisterOpen = ref(false)
 const mainRegisterGroup = ref('T')
 const mainRegisterSearch = ref('')
@@ -97,6 +123,9 @@ const mainRegisterRows = computed(() => {
     (!mainRegisterGroup.value || row.group === mainRegisterGroup.value) &&
     (!query || [row.name, row.code, String(row.register ?? '')]
       .some(text => text.toLowerCase().includes(query)))
+  ).sort((a, b) =>
+    (a.register ?? Number.MAX_SAFE_INTEGER) - (b.register ?? Number.MAX_SAFE_INTEGER) ||
+    a.code.localeCompare(b.code, 'de')
   ).slice(0, 60)
 })
 const filteredCloudRows = computed(() => {
@@ -105,7 +134,10 @@ const filteredCloudRows = computed(() => {
     if (cloudKind.value && row.kind !== cloudKind.value) return false
     return !term || [row.code, row.name, String(row.register ?? ''), row.group]
       .some(part => part.toLowerCase().includes(term))
-  })
+  }).sort((a, b) =>
+    (a.register ?? Number.MAX_SAFE_INTEGER) - (b.register ?? Number.MAX_SAFE_INTEGER) ||
+    a.code.localeCompare(b.code, 'de')
+  )
 })
 
 const cloudByRegister = computed(() => {
@@ -519,18 +551,10 @@ onBeforeUnmount(() => {
                 <span class="unit-ground"></span>
               </div>
               <div class="target-temperature">
-                <span class="overline">{{ snapshot?.metrics.target?.label || 'Heizungs-Basissollwert' }}</span>
-                <div class="temp-adjust">
-                  <button class="round-adjust" type="button" disabled title="Sollwertschreiben folgt in einer späteren Version" aria-label="Solltemperatur senken"><Minus :size="25" /></button>
+                <span class="overline">Aktueller Sollwert</span>
+                <div class="temp-adjust target-readonly">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
-                  <button class="round-adjust" type="button" disabled title="Sollwertschreiben folgt in einer späteren Version" aria-label="Solltemperatur erhöhen"><Plus :size="25" /></button>
                 </div>
-                <span class="hero-footnote">
-                  {{ snapshot?.metrics.target?.source_code === '2014' ? 'Betriebsabhängig gewählter Wassersollwert (2014)' : 'Basiswert R02 · ohne bestätigte Korrektur' }}
-                  <template v-if="snapshot?.metrics.base_target && snapshot?.metrics.target?.source_code === '2014'">
-                    · R02: {{ displayMetric(snapshot.metrics.base_target) }} °C
-                  </template>
-                </span>
                 <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>
@@ -541,9 +565,16 @@ onBeforeUnmount(() => {
                 :class="{ 'is-stale': snapshot?.metrics[item.key]?.quality === 'stale' }"
                 :title="snapshot?.metrics[item.key]?.quality === 'stale' ? 'Letzter bekannter Wert, Verbindung unterbrochen' : ''">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
-                <strong>{{ metric(item.key) }}</strong>
-                <span class="metric-unit">{{ item.unit }}</span>
+                <strong>{{ metric(item.key) }} <small class="metric-unit">{{ item.unit }}</small></strong>
                 <span class="metric-label">{{ item.label }}</span>
+                <span v-if="item.key === 'supply'" class="metric-subvalue">
+                  Δ Soll–VL: {{ deltaText(supplyDelta) }} K
+                </span>
+              </div>
+              <div class="hero-metric" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
+                <Waves :size="24" :stroke-width="1.8" />
+                <strong>{{ deltaText(waterSpread) }} <small class="metric-unit">K</small></strong>
+                <span class="metric-label">Spreizung VL/RL</span>
               </div>
             </div>
           </div>
@@ -611,7 +642,7 @@ onBeforeUnmount(() => {
               <div class="register-preview-controls">
                 <label class="search-box"><Search :size="17" /><input v-model="mainRegisterSearch" placeholder="Register oder Code suchen" aria-label="Hauptfenster Register filtern" /></label>
                 <div class="parameter-groups">
-                  <button v-for="grp in ['', 'T', 'H', 'P', 'R', 'D', 'E', 'SG', 'CLOUD']" :key="grp" class="group-chip"
+                  <button v-for="grp in ['T', 'H', 'P', 'R', 'D', 'E', 'SG', 'CLOUD', '']" :key="grp" class="group-chip"
                     :class="{ active: mainRegisterGroup === grp }" @click="mainRegisterGroup = grp">{{ grp || 'Alle' }}</button>
                 </div>
               </div>
@@ -651,10 +682,10 @@ onBeforeUnmount(() => {
               <button type="button" class="outlined-action" @click="loadCloudValues"><RefreshCw :size="15" /> Cache aktualisieren</button>
             </div>
             <div v-if="!cloudView" class="parameter-groups" aria-label="Parametergruppen">
-              <button type="button" class="group-chip" :class="{ active: selectedGroup === '' }" @click="selectedGroup = ''">Alle</button>
-              <button v-for="group in registerGroups" :key="group.group" type="button"
+              <button v-for="group in orderedGroups" :key="group.group" type="button"
                 class="group-chip" :class="{ active: selectedGroup === group.group }"
                 @click="selectedGroup = group.group">{{ group.group }} <small>{{ group.count }}</small></button>
+              <button type="button" class="group-chip" :class="{ active: selectedGroup === '' }" @click="selectedGroup = ''">Alle</button>
             </div>
             <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
             <div v-if="!cloudView" class="register-items">
