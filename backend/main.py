@@ -17,6 +17,7 @@ from backend.cloud_state import (catalog as full_cloud_catalog, value_rows as cl
     scan_start as cloud_scan_start, logs as cloud_logs, log_event as cloud_log_event)
 from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, cached_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
 from backend.cloud_dialogs import definitions as cloud_dialog_definitions, refresh as refresh_cloud_dialog
+from backend.web_update import status as web_update_status, request_update as web_request_update
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
 
@@ -154,6 +155,22 @@ def cloud_dialog_refresh(dialog_id: str):
         raise HTTPException(status_code=404, detail="Spezialdialog nicht vorhanden") from None
     except CloudError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+@app.get("/api/update/status")
+def update_status():
+    return web_update_status()
+
+
+@app.post("/api/update/request")
+def update_request(payload: CloudAdminAction, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        result = web_request_update()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    cloud_log_event("update", "FoxAir-Web-Update angefordert")
+    return result
 
 
 @app.get("/api/registers")
