@@ -1,5 +1,5 @@
 export type TransportId = 'cloud' | 'standard_modbus' | 'display_modbus' | 'warmlink_raw'
-export type Metric = { value: number | string; unit: string; raw: number; quality: string; timestamp: string } | null
+export type Metric = { value: number | string; unit: string; raw: number | null; quality: string; timestamp: string } | null
 export type Dashboard = {
   transport: TransportId
   status: 'online' | 'partial' | 'unavailable'
@@ -12,6 +12,7 @@ export type Transport = { id: TransportId; name: string; configured: boolean; re
 export type Register = {
   register: number
   code: string
+  group: string
   name: string
   description: string
   unit: string
@@ -19,7 +20,42 @@ export type Register = {
   mode: string
   write_available: boolean
 }
-export type RegisterValue = { register: number; raw: number; value: string | number; unit: string; transport: string; timestamp: string; quality: string }
+export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string }
+
+export type CloudConfigStatus = {
+  configured: boolean
+  username_configured: boolean
+  password_configured: boolean
+  device_configured: boolean
+  storage: string
+  admin_enabled: boolean
+}
+export type CloudDevice = {
+  deviceCode: string
+  deviceNickName?: string
+  deviceName?: string
+  model?: string
+  custModel?: string
+  deviceStatus?: string | number
+  isFault?: boolean
+  dtuSoftwareVer?: string
+  dtuSignalIntensity?: number | string
+  isShared?: boolean
+  houseName?: string
+  houseRoleType?: string
+}
+
+async function post<T>(path: string, body: object): Promise<T> {
+  const response = await fetch(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body), cache: 'no-store', credentials: 'same-origin'
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as { detail?: string }
+    throw new Error(data.detail || 'HTTP ' + response.status)
+  }
+  return await response.json() as T
+}
 
 async function get<T>(path: string): Promise<T> {
   const controller = new AbortController()
@@ -38,8 +74,14 @@ async function get<T>(path: string): Promise<T> {
 export const api = {
   health: () => get<{ ok: boolean; version: string }>('/api/health'),
   transports: () => get<{ items: Transport[]; live_supported: boolean }>('/api/transports'),
-  dashboard: (transport: TransportId) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport)),
-  registers: (query: string) => get<{ items: Register[]; catalog_size: number }>('/api/registers?query=' + encodeURIComponent(query)),
+  dashboard: (transport: TransportId, live = false) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport) + (live ? '&live=true' : '')),
+  registerGroups: () => get<{ items: { group: string; count: number }[] }>('/api/register-groups'),
+  registers: (query: string, group = '') => get<{ items: Register[]; catalog_size: number }>('/api/registers?query=' + encodeURIComponent(query) + '&group=' + encodeURIComponent(group) + '&limit=200'),
+  cloudStatus: () => get<CloudConfigStatus>('/api/cloud/config'),
+  cloudSave: (admin_password: string, username: string, password: string, device_code: string) =>
+    post<CloudConfigStatus>('/api/cloud/config', { admin_password, username, password, device_code }),
+  cloudDevices: (admin_password: string) =>
+    post<{ items: CloudDevice[]; count: number }>('/api/cloud/devices', { admin_password }),
   read: (register: number, transport: TransportId) =>
     get<RegisterValue>('/api/registers/' + register + '/read?transport=' + encodeURIComponent(transport)),
 }
