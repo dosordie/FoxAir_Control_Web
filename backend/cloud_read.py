@@ -435,6 +435,16 @@ def read_dashboard(*, live: bool = False) -> dict[str, Any]:
     merge(values)
     log_event("live" if live else "read", "Cloud-Livewerte aktualisiert" if live
               else "Cloud-Übersicht gelesen", count=len(values))
+    return project_dashboard(values)
+
+
+def cached_dashboard() -> dict[str, Any]:
+    from backend.cloud_state import cached_raw_values
+    return project_dashboard(cached_raw_values(), stale=True)
+
+
+def project_dashboard(values: dict[str, dict[str, Any]],
+                      *, stale: bool = False) -> dict[str, Any]:
     definitions = load_registers()
     output: dict[str, dict[str, Any] | None] = {}
     for key, register in DASHBOARD_MAPPING.items():
@@ -450,7 +460,11 @@ def read_dashboard(*, live: bool = False) -> dict[str, Any]:
         mapping = definition.get("value_map")
         if isinstance(mapping, dict):
             value = mapping.get(str(value), value)
-        output[key] = {"value": value, "raw": None, "unit": unit, "quality": "fresh"}
+        output[key] = {
+            "value": value, "raw": None, "unit": row.get("unit") or unit,
+            "quality": "stale" if stale else row.get("quality", "fresh"),
+            "timestamp": row.get("timestamp") if stale else None,
+        }
     # The firmware-selected runtime setpoint is distinct from the user R02
     # baseline (e.g. 35 °C). Prefer valid 2014; do NOT add an unverified
     # cloud offset, since 2014 already includes the active control selection.

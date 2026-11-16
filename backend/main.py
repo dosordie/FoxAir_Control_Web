@@ -15,7 +15,7 @@ from backend.catalog import format_raw, load_registers, search_registers, group_
 from backend.cloud_config import cloud_status, credentials, save_cloud, require_admin
 from backend.cloud_state import (catalog as full_cloud_catalog, value_rows as cloud_values,
     scan_start as cloud_scan_start, logs as cloud_logs, log_event as cloud_log_event)
-from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
+from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, cached_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
 
@@ -215,7 +215,7 @@ def dashboard(transport: str = "cloud", live: bool = False):
         try:
             metrics = cloud_dashboard(live=live)
             for key, item in metrics.items():
-                snapshot["metrics"][key] = {**item, "timestamp": snapshot["timestamp"]} if item else None
+                snapshot["metrics"][key] = {**item, "timestamp": item.get("timestamp") or snapshot["timestamp"]} if item else None
             count = sum(item is not None for item in snapshot["metrics"].values())
             snapshot["status"] = "online" if count == len(DASHBOARD_FIELDS) else ("partial" if count else "unavailable")
             if not count:
@@ -228,8 +228,13 @@ def dashboard(transport: str = "cloud", live: bool = False):
                 pass  # Dashboard remains useful without an optional full scan.
         except CloudError as exc:
             cloud_log_event("error", "Cloud-Übersicht konnte nicht gelesen werden")
-
-            snapshot["error"] = str(exc)
+            # Never synthesize a live online state from cached values. The
+            # original timestamps and explicit stale quality are preserved.
+            for key, item in cached_dashboard().items():
+                if key in snapshot["metrics"] and item:
+                    snapshot["metrics"][key] = item
+            snapshot["error"] = str(exc) + " · letzte bekannte Werte (veraltet)"
+            snapshot["status"] = "unavailable"
         return snapshot
     if transport != "standard_modbus":
         snapshot["error"] = "Adapter noch nicht implementiert; keine simulierten Gerätewerte"
