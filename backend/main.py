@@ -6,12 +6,14 @@ display and LTE multi-master protocols are not enabled yet.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.catalog import format_raw, load_registers, search_registers
-from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register
+from backend.catalog import format_raw, load_registers, search_registers, group_counts
+from backend.cloud_config import cloud_status, credentials, save_cloud, require_admin
+from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register, discover_devices
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
 
@@ -48,12 +50,59 @@ def health():
 
 @app.get("/api/transports")
 def transports():
-    return {"items": transport_info(), "live_supported": False}
+    return {"items": transport_info(), "live_supported": True, "cloud_live_interval": 30}
+
+
+@app.get("/api/register-groups")
+def register_groups():
+    return {"items": group_counts()}
+
+
+@app.get("/api/cloud/config")
+def cloud_config():
+    # Deliberately no username, device code, password or cloud token.
+    return cloud_status()
+
+
+class CloudConfigUpdate(BaseModel):
+    admin_password: str = Field(min_length=1, max_length=256)
+    username: str = Field(min_length=1, max_length=160)
+    password: str = Field(default="", max_length=256)
+    device_code: str = Field(min_length=3, max_length=128)
+
+
+class CloudAdminAction(BaseModel):
+    admin_password: str = Field(min_length=1, max_length=256)
+
+
+@app.post("/api/cloud/config")
+def cloud_config_update(payload: CloudConfigUpdate, request: Request):
+    require_admin(request, payload.admin_password)
+    _, existing_password, _ = credentials()
+    try:
+        save_cloud(payload.username, payload.password or existing_password, payload.device_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except OSError:
+        raise HTTPException(status_code=503, detail="Cloud-Einstellungen können nicht gespeichert werden") from None
+    return cloud_status()
+
+
+@app.post("/api/cloud/devices")
+def cloud_devices(payload: CloudAdminAction, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        devices = discover_devices()
+    except CloudError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    return {"items": devices, "count": len(devices)}
+
 
 
 @app.get("/api/registers")
-def registers(query: str = "", limit: int = Query(80, ge=1, le=200)):
-    return {"items": search_registers(query, limit), "catalog_size": len(load_registers())}
+def registers(query: str = "", group: str = Query("", max_length=18),
+              limit: int = Query(80, ge=1, le=200)):
+    return {"items": search_registers(query, limit, group=group), "catalog_size": len(load_registers())}
 
 
 @app.get("/api/registers/{register}/read")
@@ -88,7 +137,7 @@ def register_read(register: int, transport: str = "cloud"):
 
 
 @app.get("/api/dashboard")
-def dashboard(transport: str = "cloud"):
+def dashboard(transport: str = "cloud", live: bool = False):
     require_transport(transport)
     snapshot = {
         "transport": transport,
@@ -96,11 +145,11 @@ def dashboard(transport: str = "cloud"):
         "status": "unavailable",
         "error": None,
         "metrics": {name: None for name in DASHBOARD_FIELDS},
-        "live_supported": False,
+        "live_supported": transport == "cloud",
     }
     if transport == "cloud":
         try:
-            metrics = cloud_dashboard()
+            metrics = cloud_dashboard(live=live)
             for key, item in metrics.items():
                 snapshot["metrics"][key] = {**item, "timestamp": snapshot["timestamp"]} if item else None
             count = sum(item is not None for item in snapshot["metrics"].values())
