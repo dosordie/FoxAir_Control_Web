@@ -73,3 +73,63 @@ Alle Details: [MVP-Test und Betrieb](docs/RUN_MVP.md), [Architektur](docs/ARCHIT
 ## Lizenz
 
 Vor einer Veröffentlichung/Kopplung der Quellmodule ist die widersprüchliche Lizenzangabe des Upstream-Projekts (README vs. LICENSE) zu klären. Die Quellcode-Synchronisierung erfordert einen geprüften Upstream-Commit.
+
+## Issue #6 – Registeransicht, Livewerte und Spezialdialoge
+
+Der Startbildschirm verwendet die generischen Cloud-Sensoren **T01/T02**
+für Rücklauf/Vorlauf, nicht die separaten Klima-Zonen T40/T41. Für den
+betriebsabhängigen Sollwert wird bevorzugt **2014** verwendet, wenn sein
+Wert plausibel ist; ansonsten wird **R02 nur ausdrücklich als Basiswert**
+angezeigt. Ein unbestätigter Offset wird nicht künstlich addiert.
+
+Die iPhone-Parametergruppen werden innerhalb ihrer eigenen Karte horizontal
+gescrollt. Die Ventilatorgrafik dreht sich nur bei frisch gemeldetem
+Anlagenstatus `Ein`, niemals aufgrund einer zwischengespeicherten Altinformation.
+Unter der Dashboardübersicht gibt es eine aufklappbare Register-Schnellansicht
+mit den zuletzt bekannten Cloudwerten.
+
+Die zuletzt gültigen Cloudwerte werden in einer **privaten lokalen Cachedatei**
+gespeichert. Bei Ausfällen bleiben sie als **veraltet** sichtbar; die
+Verbindungsanzeige bleibt offline und führt das Originaldatum weiter.
+Ohne erfolgreichen Aktualisierungskontakt werden Livewerte nach **5 Minuten**
+als `stale` gekennzeichnet. Schreibvorgänge und Passwortdaten sind nicht
+Teil dieses Caches.
+
+Die Spezialdialoge **Wärmepumpe, AT-Kurve, SG-Ready, Zeitprogramme,
+Ruhemodus und Störungen** bieten jeweils einen gezielten Cloud-Leseaufruf,
+die bestätigten Codebezeichnungen und Ablesewerte. Aktuell sind **alle
+Dialoge bewusst read-only**. Eine später freizugebende Cloud-Schreibfunktion
+benötigt eigene Wertvalidierung, ausdrückliche Bedienbestätigung, Quittierung,
+Readback und Sperrlogik.
+
+### Web-Git-Update (optionale Einmalinstallation)
+
+Die Weboberfläche darf aufgrund ihrer Diensthärtung keinen Systembefehl mit
+höheren Privilegien ausführen. Deshalb wird der Updateknopf durch ein
+**separates systemd Path/Oneshot-Paar** realisiert: ein authentifizierter
+HTTPS-Aufruf erstellt nur einen fest kodierten Trigger. Der root-eigene
+Hilfsdienst ruft ausschließlich das bekannte `scripts/update.sh` auf;
+der Code-/Frontend-Revisionsabgleich schützt vor nicht passenden Builds.
+
+Einmalig im bestehenden FoxAir-Checkout als root:
+
+~~~bash
+cd /opt/foxair-web/app
+bash scripts/update.sh
+bash scripts/install_web_update.sh
+~~~
+
+Danach **App-Einstellungen → Cloud-Zugang & Geräte**:
+Web-Administrationspasswort eingeben und unter
+**App-Einstellungen → FoxAir-Web aktualisieren** Versionen prüfen und
+ein Update anfordern. Der Nutzer sieht jeweils installierten Git-Commit,
+aktiven Web-Build und den Stand von GitHub `main`. Da der FoxAir-Dienst
+beim Update neu gestartet wird, ist ein kurzer Verbindungsabbruch normal.
+Die Anforderung ist **noch keine Erfolgsmeldung**; nach erneutem Laden
+des Browserfensters den aktiven Web-Build mit `main` vergleichen.
+
+Die Einrichtung kontrolliert Besitzer/Berechtigungen des Git-Checkouts und
+erlaubt ausschließlich den festgelegten Projekt-Ursprung. Sie verändert
+keine anderen systemd-Dienste. Es gibt **keinen** Shell-Zugriff, frei wählbare
+Kommandos oder `sudo`-Freigaben aus der Web-App.
+

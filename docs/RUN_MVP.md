@@ -236,3 +236,55 @@ git diff -- data/
 python -m unittest discover -s backend/tests -v
 cd frontend && npm install && npm run build
 ~~~
+
+## Issue #6: Korrigierte Sensoren und Web-Update
+
+Die Startseite verwendet Cloud **T01 (MAIN 2045)** als Wasser-Einlass/Rücklauf
+und **T02 (MAIN 2046)** als Auslass/Vorlauf. Die bisher für diesen Zweck
+fälschlich verwendeten **T40/T41** bleiben separat als Klimakreis-Codes
+im Registerkatalog. Der betriebsabhängige Temperaturwert **2014** wird
+bei plausibler Cloudantwort vor `R02` dargestellt; der R02-Basiswert bleibt
+separat angezeigt. Ohne 2014 behauptet die Anzeige keine berechnete Korrektur.
+
+Beim Offline-Fall werden bisherige Cloudwerte **nicht** als frisch markiert.
+Es wird stattdessen ein zeitgestempelter Altwert angezeigt. Livewerte gelten
+nach 300 Sekunden als `stale`; der private Persistenzcache wird nur
+höchstens einmal pro Minute geschrieben. Neue Zugangsdaten werden in
+einem anderen, zugriffsgeschützten lokalen Dateispeicher aufbewahrt.
+
+### Nachrüstbarer Updateknopf
+
+Nach dem gewöhnlichen `bash scripts/update.sh` einmal als root:
+
+~~~bash
+bash scripts/install_web_update.sh
+~~~
+
+Damit werden nur `foxair-web-update.path` und
+`foxair-web-update.service` angelegt; andere Dienstkonfigurationen
+werden nicht angefasst. Die Web-App löst nach erfolgreicher
+Admin-Passwortprüfung über HTTPS nur einen lokalen, fest benannten
+Dateitrigger aus. Das Update wird separat als systemd-Oneshot ausgeführt
+und kann dessen Erfolg/Fehlschlag unter **Update-Status** anzeigen.
+
+`systemctl status foxair-web-update.service` und
+`journalctl -u foxair-web-update.service -n 50 --no-pager`
+geben im Bedarfsfall die konkreten Updatefehler aus.
+
+**Sicherheitsgrenze:** Keine Freigabe für beliebige Shellbefehle.
+Der Update-Dienst prüft beim Installieren root-eigene, nicht gruppen-
+oder weltweit beschreibbare Dateien im Quellcheckout und eine erlaubte
+Git-Quelle. Der unprivilegierte Webdienst darf das ausführbare
+`update.sh` nicht verändern. Der Git-Build muss weiterhin zur
+jeweiligen `main`-Revision passen.
+
+### Spezialdialoge (zunächst nur Anzeige)
+
+Über **Schnellzugriff** erscheinen Wärmepumpe, AT-Kurve,
+SG-Ready, M-/WP-Timer, Silent-Timer und Störungsübersicht.
+Bekannte Cloudcodes werden aus dem im CI erzeugten Katalog übernommen.
+Gezielte Read-Requests sind auf diese Codes und ein Mindestintervall
+begrenzt. Die allgemeine Cloud-Abfrage und die reine Diagnose bleiben
+weiterhin read-only. Schreibfunktionen benötigen eine separate
+Security-/Readback-Implementierung.
+
