@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.catalog import format_raw, load_registers, search_registers, group_counts
 from backend.cloud_config import cloud_status, credentials, save_cloud, require_admin
-from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register, discover_devices
+from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, read_register as cloud_read_register, discover_devices, selected_device_status
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, transport_info, TRANSPORTS
 
@@ -98,6 +98,15 @@ def cloud_devices(payload: CloudAdminAction, request: Request):
         raise HTTPException(status_code=503, detail=str(exc)) from None
     return {"items": devices, "count": len(devices)}
 
+
+
+@app.post("/api/cloud/device-status")
+def cloud_device_status(payload: CloudAdminAction, request: Request):
+    require_admin(request, payload.admin_password)
+    try:
+        return {"status": selected_device_status()}
+    except CloudError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
 
 
 @app.get("/api/registers")
