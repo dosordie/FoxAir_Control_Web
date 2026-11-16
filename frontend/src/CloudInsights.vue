@@ -6,6 +6,8 @@ const busy=ref(false),error=ref(''),address=ref('2046'),days=ref(1)
 const history=ref<Awaited<ReturnType<typeof api.cloudHistory>>|null>(null)
 const ota=ref<Awaited<ReturnType<typeof api.cloudInsight>>|null>(null)
 const metadata=ref<Awaited<ReturnType<typeof api.cloudInsight>>|null>(null)
+const ai=ref<Awaited<ReturnType<typeof api.cloudInsight>>|null>(null)
+const state=(value:boolean|null|undefined)=>value==null?'Unbekannt':value?'Ja':'Nein'
 const enums=ref<Record<string,Record<string,string>[]>>({})
 async function loadEnum(key:string){
  if(busy.value)return
@@ -14,7 +16,7 @@ async function loadEnum(key:string){
  catch(e){error.value=e instanceof Error?e.message:'Bedeutungen nicht verfügbar'}
  finally{busy.value=false}
 }
-async function load(kind:'history'|'ota'|'metadata'){
+async function load(kind:'history'|'ota'|'metadata'|'ai'){
  if(busy.value)return
  busy.value=true;error.value=''
  try{
@@ -23,7 +25,8 @@ async function load(kind:'history'|'ota'|'metadata'){
    const format=(d:Date)=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Etc/GMT-1',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d)
    history.value=await api.cloudHistory(address.value,format(start),format(end),days.value>1?'month':'day')
   }else if(kind==='ota')ota.value=await api.cloudInsight(kind)
-  else metadata.value=await api.cloudInsight(kind)
+  else if(kind==='ai')ai.value=await api.cloudInsight(kind)
+  else {metadata.value=await api.cloudInsight(kind);enums.value={}}
  }catch(e){error.value=e instanceof Error?e.message:'Cloud-Abfrage fehlgeschlagen'}
  finally{busy.value=false}
 }
@@ -54,8 +57,9 @@ const chart=computed(()=>{
    <p v-if="!history.points.length">Keine Messpunkte im gewählten Zeitraum.</p>
    <details><summary>Messpunkte mit Zeitstempeln</summary><div class="history-points"><div v-for="point in history.points" :key="point.time"><time>{{ point.time }}</time><strong>{{ point.value.toLocaleString('de-DE') }} {{ history.unit }}</strong><span v-if="point.incomplete">Laufender Tag – möglicherweise unvollständig</span></div></div></details>
   </div>
-  <div v-if="mode==='device'" class="cloud-extra-controls"><button class="outlined-action" :disabled="busy||!admin" @click="load('ota')">Geräte-Firmware: Verfügbarkeit prüfen</button><button class="outlined-action" :disabled="busy||!admin" @click="load('metadata')">Hersteller-Servicekatalog laden</button></div>
+  <div v-if="mode==='device'" class="cloud-extra-controls"><button class="outlined-action" :disabled="busy||!admin" @click="load('ota')">Geräte-Firmware: Verfügbarkeit prüfen</button><button class="outlined-action" :disabled="busy||!admin" @click="load('metadata')">Hersteller-Servicekatalog laden</button><button class="outlined-action" :disabled="busy||!admin" @click="load('ai')">AI- und SG-Unterstützung prüfen</button></div>
+  <div v-if="ai" class="timer-time-card"><strong>Herstellerstatus · {{ new Date(ai.checked_at).toLocaleString('de-DE') }}</strong><span>AI-Frequenzregelung unterstützt: {{ state(ai.frequency_supported) }}</span><span>AI-Energiesparen eingeschaltet: {{ state(ai.ai_enabled) }}</span><span>SG-Ready unterstützt: {{ state(ai.sg_supported) }}</span><span>Gemeldeter SG-Modus: {{ ai.sg_mode??'Unbekannt' }}</span><small>Unterstützung bedeutet nicht, dass eine Funktion eingeschaltet ist. Rein lesende Anzeige.</small></div>
   <p v-if="ota" role="status">{{ ota.available?'Firmwareangebot gemeldet ('+ota.count+').':'Kein Firmwareupdate angeboten.' }} Geprüft {{ new Date(ota.checked_at).toLocaleString('de-DE') }}. Es wird kein Update gestartet.</p>
-  <details v-if="metadata"><summary>{{ metadata.items?.length||0 }} Hersteller-Einträge</summary><p class="section-hint">{{ metadata.source }}</p><div class="history-points"><div v-for="(row,i) in metadata.items" :key="i"><strong>{{ row.num }} · {{ row.content }} <small>({{ row.address }})</small></strong><span>{{ row.dataValue }} {{ row.tranferUnit }} <template v-if="row.rangeStart||row.rangeEnd">· Bereich {{ row.rangeStart }}–{{ row.rangeEnd }}</template></span><button v-if="row.enum_key" class="outlined-action" :disabled="busy||!admin" @click="loadEnum(row.enum_key)">Bedeutungen laden</button><ul v-if="row.enum_key&&enums[row.enum_key]"><li v-for="(item,n) in enums[row.enum_key]" :key="n">{{ item.value }}: {{ item.enMeaning||item.meaning||item.description }}</li><li v-if="!enums[row.enum_key]?.length">Keine zusätzlichen Bedeutungen gemeldet.</li></ul></div></div></details>
+  <details v-if="metadata"><summary>{{ metadata.items?.length||0 }} Hersteller-Einträge</summary><p class="section-hint">{{ metadata.source }}</p><div class="history-points"><div v-for="(row,i) in metadata.items" :key="i"><strong>{{ row.num }} · {{ row.content }} <small>({{ row.address }})</small></strong><span>{{ row.dataValue }} {{ row.tranferUnit }} <template v-if="row.rangeStart||row.rangeEnd">· Bereich {{ row.rangeStart }}–{{ row.rangeEnd }}</template></span><small>{{ row.comparison }}</small><button v-if="row.enum_key" class="outlined-action" :disabled="busy||!admin" @click="loadEnum(row.enum_key)">Bedeutungen laden</button><ul v-if="row.enum_key&&enums[row.enum_key]"><li v-for="(item,n) in enums[row.enum_key]" :key="n">{{ item.value }}: {{ item.enMeaning||item.meaning||item.description }}</li><li v-if="!enums[row.enum_key]?.length">Keine zusätzlichen Bedeutungen gemeldet.</li></ul></div></div></details>
  </section>
 </template>

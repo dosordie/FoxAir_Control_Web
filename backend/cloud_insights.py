@@ -1,6 +1,7 @@
 """Bounded, cached read-only WarmLink 3.5 observations from issue 7."""
 from datetime import datetime,timedelta,timezone
 import math
+import os
 import secrets
 import threading
 import time
@@ -32,7 +33,7 @@ def request(kind,payload=None):
     payload=payload or {}
     endpoints={'history':'device/snapshot/listCollectData','ota':'app/device/ota/judgeUpgradeList',
                'metadata':'app/device/getControlDetailStatusByDeviceCode',
-               'enum':'app/protocal/getEnumDataByDetailId'}
+               'enum':'app/protocal/getEnumDataByDetailId','ai':'app/device/ai/getAiInfoByDeviceCode'}
     if kind not in endpoints:raise ValueError('Unbekannte Cloud-Abfrage')
     with _lock,_cloud_lock:
         account=credentials()
@@ -50,6 +51,10 @@ def request(kind,payload=None):
         body={'deviceCode':client.device_code,**payload}
         if kind=='metadata':
             body.update(pageIndex=1,pageSize=9999,paramName='',num='',protocalId=client.service_protocol())
+        elif kind=='ai':
+            # Captured app context for this installation, privately configurable.
+            body.update(country=os.environ.get('FOXAIR_CLOUD_COUNTRY','Germany')[:64],
+                        timezone=os.environ.get('FOXAIR_CLOUD_TIMEZONE','CET/CEST')[:64])
         elif kind=='enum':
             detail=_details.get((account,payload.get('key')))
             if not detail:raise ValueError('Servicekatalog erneut laden; Eintrag ist nicht mehr verfügbar')
@@ -69,9 +74,15 @@ def request(kind,payload=None):
             for key in list(_details):
                 if key[0]==account:del _details[key]
             result['items']=[]
+            from backend.cloud_state import catalog
+            confirmed={str(item['code']):item for item in catalog() if item.get('confidence')=='confirmed'}
             for row in obj['dataList'][:500]:
                 if not isinstance(row,dict):continue
                 public={k:str(row[k])[:180] for k in allowed if k in row and isinstance(row[k],(str,int,float,bool))}
+                match=confirmed.get(str(row.get('num') or ''))
+                if match:
+                    public['comparison']='Bestätigter Katalog stimmt überein' if str(match.get('register'))==str(row.get('address')) else 'Abweichende Herstelleradresse – nicht übernommen'
+                else:public['comparison']='Keine bestätigte Cloud-Zuordnung – nur Herstellerangabe'
                 if row.get('detailId') and isinstance(row['detailId'],(str,int)):
                     if len(_details)>=2000:_details.pop(next(iter(_details)))
                     reference=secrets.token_urlsafe(12)
@@ -92,6 +103,15 @@ def request(kind,payload=None):
             result['items']=[{k:str(row[k])[:300] for k in allowed if isinstance(row.get(k),(str,int,float,bool))}
                              for row in obj[:100] if isinstance(row,dict)]
             result['count']=len(result['items'])
+        elif kind=='ai':
+            if not isinstance(obj,dict):raise CloudError('Unbekanntes AI-Antwortschema')
+            def flag(name):
+                value=obj.get(name)
+                return str(value)=='1' if value in (0,1,'0','1') and not isinstance(value,bool) else None
+            result.update(frequency_supported=flag('supportAIFreqState'),ai_enabled=flag('enAIPower'),
+                          sg_supported=flag('supportSGReadyState'))
+            mode=obj.get('setSGReadyMode')
+            result['sg_mode']=int(mode) if not isinstance(mode,bool) and str(mode) in tuple(str(i) for i in range(8)) else None
         else:
             if not isinstance(obj,dict) or not isinstance(obj.get('valueList'),list):raise CloudError('Unbekanntes Historien-Antwortschema')
             points=[]

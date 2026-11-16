@@ -98,7 +98,7 @@ class CloudReader:
                      "device/snapshot/listCollectData", "app/device/ota/judgeUpgradeList",
                      "app/device/getControlDetailStatusByDeviceCode",
                      "app/device/queryDeviceById", "app/product/queryProductById",
-                     "app/protocal/getEnumDataByDetailId")
+                     "app/protocal/getEnumDataByDetailId", "app/device/ai/getAiInfoByDeviceCode")
         if endpoint not in endpoints or method not in ("GET", "POST"):
             raise CloudError("Cloud-Endpunkt nicht zugelassen")
         content = json.dumps(body, ensure_ascii=False).encode("utf-8")

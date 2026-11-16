@@ -98,3 +98,5 @@ Der lokal bereitgestellte Mitschnitt flows-2 bestätigt den Servicekatalog-Reque
 Enum-Bedeutungen werden auf Klick anhand kurzlebiger, kontogebundener Referenzen aus dem geladenen Katalog abgerufen. Interne Hersteller-IDs bleiben auf dem Server. Metadaten und Enum-Tabellen verleihen weiterhin keine Schreibrechte.
 
 Historische Diagramme sind jetzt ausschließlich über „Verlauf & Diagramme“ auf der Startseite erreichbar. Der modale Dialog und seine Diagrammkomponente öffnen erst nach Klick; Messdaten werden erst durch „Verlauf laden“ angefragt. OTA und Servicekatalog bleiben in den App-Einstellungen.
+
+Der AI-/SG-Herstellerstatus aus flows-2 ist ebenfalls lesend abrufbar. Die Anzeige trennt Frequenzregelungs-Unterstützung, eingeschaltetes AI-Energiesparen, SG-Unterstützung und den gemeldeten SG-Modus. Finanz-/Accountfelder aus derselben Antwort werden verworfen. App-Kontext der untersuchten deutschen Installation: Germany / CET/CEST (serverseitig über FOXAIR_CLOUD_COUNTRY / FOXAIR_CLOUD_TIMEZONE anpassbar). Serviceeinträge zeigen separat den Abgleich mit bestätigten statischen Cloud-Zuordnungen; Abweichungen werden nicht übernommen. 117 Backendtests erfolgreich.

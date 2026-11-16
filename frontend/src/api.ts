@@ -153,7 +153,7 @@ export type WarmlinkConfig = {connection_mode:'on_demand'|'browser'|'permanent';
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
 export const api = {
   cloudEnum: (key:string)=>post<{items:Record<string,string>[]}>('/api/cloud/service-enum',{key}),
-  cloudInsight: (kind:'ota'|'metadata')=>post<{checked_at:string;cached:boolean;available?:boolean;count?:number;items?:Record<string,string>[];source?:string}>('/api/cloud/insights/'+kind,{}),
+  cloudInsight: (kind:'ota'|'metadata'|'ai')=>post<{checked_at:string;cached:boolean;available?:boolean;count?:number;items?:Record<string,string>[];source?:string;frequency_supported?:boolean|null;ai_enabled?:boolean|null;sg_supported?:boolean|null;sg_mode?:number|null}>('/api/cloud/insights/'+kind,{}),
   cloudHistory: (address:string,start:string,end:string,frequency:string)=>post<{checked_at:string;cached:boolean;unit:string;points:{time:string;value:number;incomplete:boolean}[]}>('/api/cloud/history',{address,start,end,frequency,time_zone:1}),
   busLease: () => post<object>('/api/warmlink/lease',{}),
   passiveDashboard: () => get<Dashboard>('/api/dashboard?transport=warmlink_raw&passive=true'),

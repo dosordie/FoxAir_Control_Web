@@ -353,7 +353,7 @@ def cloud_service_enum(payload: EnumRequest, request: Request):
 
 
 @app.post("/api/cloud/insights/{kind}")
-def cloud_extra(kind: Literal["ota","metadata"], payload: CloudAdminAction, request: Request):
+def cloud_extra(kind: Literal["ota","metadata","ai"], payload: CloudAdminAction, request: Request):
     require_admin(request,payload.admin_password)
     from backend.cloud_insights import request as query_cloud
     try:return query_cloud(kind)

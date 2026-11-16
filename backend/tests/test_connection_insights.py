@@ -111,7 +111,7 @@ class CloudInsightTests(unittest.TestCase):
     def test_metadata_does_not_expose_identifiers_or_create_grants(self):
         self.reader._request_auth.return_value={'objectResult':{'total':1,'dataList':[{'address':'2157','content':'PV_Power','deviceCode':'private','token':'secret','write_allowed':True}]}}
         result=cloud.request('metadata')
-        self.assertEqual(result['items'],[{'address':'2157','content':'PV_Power'}])
+        self.assertEqual(result['items'],[{'address':'2157','content':'PV_Power','comparison':'Keine bestätigte Cloud-Zuordnung – nur Herstellerangabe'}])
         body=self.reader._request_auth.call_args.args[1]
         self.assertEqual((body['pageIndex'],body['pageSize'],body['paramName'],body['num']),(1,9999,'',''))
         self.reader.service_protocol.assert_called_once()
@@ -127,3 +127,19 @@ class CloudInsightTests(unittest.TestCase):
         self.assertEqual(self.reader._request_auth.call_args.args[1],{'detailId':'private-detail'})
         with patch('backend.cloud_insights.credentials',return_value=('other','secret','other-device')):
             with self.assertRaises(ValueError):cloud.request('enum',{'key':key})
+
+    def test_ai_support_does_not_imply_enabled_and_only_flags_are_exposed(self):
+        self.reader._request_auth.return_value={'objectResult':{'supportAIFreqState':1,'enAIPower':0,'supportSGReadyState':1,'setSGReadyMode':0,'deviceCode':'private','totalElecBillYear':999}}
+        result=cloud.request('ai')
+        self.assertTrue(result['frequency_supported'])
+        self.assertFalse(result['ai_enabled'])
+        self.assertTrue(result['sg_supported'])
+        self.assertEqual(result['sg_mode'],0)
+        self.assertNotIn('private',str(result))
+        self.assertNotIn('totalElecBillYear',result)
+
+    def test_unknown_extra_schemas_fail_without_dumping_response(self):
+        self.reader._request_auth.return_value={'objectResult':{'secret':'private'}}
+        for kind in ('ota','history','metadata'):
+            with self.assertRaises(CloudError) as caught:cloud.request(kind,{'address':'2046'} if kind=='history' else {})
+            self.assertNotIn('private',str(caught.exception))
