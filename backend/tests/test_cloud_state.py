@@ -1,6 +1,8 @@
 """No-network full scan tests with reviewed code kinds and unsupported bisection."""
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
+from pathlib import Path
+from tempfile import TemporaryDirectory, Mock
 
 from backend import cloud_state
 from backend.cloud_read import UnsupportedCloudCode
@@ -39,6 +41,31 @@ class FullCatalogScanTests(unittest.TestCase):
         self.assertEqual(known["value"], -2.1)
         self.assertIsNone(unknown["value"])
         self.assertGreaterEqual(len(calls), 3)
+
+    def test_persisted_cache_restores_last_values_as_stale_without_identifiers(self):
+        account = ("sample@example.invalid", "secret-token-not-committed", "device-test-01")
+        with TemporaryDirectory() as tmp:
+            cache_path = Path(tmp) / "last.json"
+            with patch.object(cloud_state, "_CACHE_FILE", cache_path), \
+                    patch("backend.cloud_state._account", return_value=account):
+                with cloud_state._LOCK:
+                    cloud_state._SOURCE = None
+                    cloud_state._ROWS.clear()
+                cloud_state.merge({"T01": {"value": 39.4, "unit": "°C"}}, source=account)
+                self.assertTrue(cache_path.is_file())
+                raw = cache_path.read_text(encoding="utf-8")
+                self.assertNotIn("secret-token", raw)
+                self.assertNotIn("sample@example.invalid", raw)
+                self.assertNotIn("device-test-01", raw)
+                with cloud_state._LOCK:
+                    cloud_state._SOURCE = None
+                    cloud_state._ROWS.clear()
+                restored = cloud_state.cached_raw_values()
+                self.assertEqual(restored["T01"]["value"], 39.4)
+                self.assertEqual(restored["T01"]["quality"], "stale")
+                with cloud_state._LOCK:
+                    cloud_state._SOURCE = None
+                    cloud_state._ROWS.clear()
 
     def test_logging_is_bounded(self):
         for i in range(170):
