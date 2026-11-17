@@ -368,24 +368,30 @@ function scheduleRefresh() {
   refreshTimer = setTimeout(() => { void loadDashboard(true) }, seconds * 1000)
 }
 
+let dashboardGeneration = 0
+let dashboardSource: TransportId | null = null
 async function loadDashboard(live = false) {
-  if (refreshing.value) return
   const source = selectedTransport.value
+  if (refreshing.value && dashboardSource === source) return
+  const generation = ++dashboardGeneration
+  dashboardSource = source
   refreshing.value = true
   error.value = ''
   try {
     const data = await api.dashboard(source, live && source === 'cloud')
-    if (source !== selectedTransport.value) return
+    if (generation !== dashboardGeneration || source !== selectedTransport.value) return
     snapshot.value = data
     void loadLastValues()
     if (data.error) error.value = data.error
     if (source === 'cloud') void loadCloudValues()
   } catch (err) {
-    if (source === selectedTransport.value)
+    if (generation === dashboardGeneration && source === selectedTransport.value)
       error.value = err instanceof Error ? err.message : 'Keine Verbindung zum Webserver'
   } finally {
-    refreshing.value = false
-    scheduleRefresh()
+    if (generation === dashboardGeneration) {
+      refreshing.value = false
+      scheduleRefresh()
+    }
   }
 }
 
@@ -535,7 +541,14 @@ watch(selectedTransport, (value) => {
   operationCode.value = null
   if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
   clearTimeout(refreshTimer)
-  snapshot.value = null
+  if (snapshot.value) {
+    snapshot.value = {
+      ...snapshot.value, transport:value, status:'unavailable', error:null,
+      metrics:Object.fromEntries(Object.entries(snapshot.value.metrics).map(([key, metric])=>[
+        key, metric ? {...metric,quality:Date.now()-Date.parse(metric.timestamp)>300000?'stale':'cached'} : null,
+      ])) as Dashboard['metrics'],
+    }
+  }
   void loadDashboard()
 })
 watch([page,selectedTransport],([current,transport],[previous,previousTransport])=>{
