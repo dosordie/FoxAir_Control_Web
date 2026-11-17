@@ -1,0 +1,76 @@
+<script setup lang="ts">
+import { Settings2, ShieldCheck } from 'lucide-vue-next'
+import type { Page } from '../types/navigation'
+defineProps<{ page: Page; authenticated: boolean; busy: boolean; secure: boolean; error: string }>()
+const password = defineModel<string>('password', { required: true })
+const loginOpen = defineModel<boolean>('loginOpen', { required: true })
+const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: [] }>()
+</script>
+<template>
+  <header class="shell-header">
+    <button
+      class="brand"
+      type="button"
+      @click="emit('navigate', 'home')"
+      aria-label="Zur Übersicht"
+    >
+      <span class="brand-mark official-brand"><img src="/foxye-logo.png" alt="FoxAir-Logo" /></span>
+      <span><strong>FoxAir</strong><small>CONTROL WEB</small></span>
+    </button>
+    <nav class="desktop-nav" aria-label="Hauptnavigation">
+      <button :class="{ selected: page === 'home' }" @click="emit('navigate', 'home')">
+        Übersicht
+      </button>
+      <button :class="{ selected: page === 'parameters' }" @click="emit('navigate', 'parameters')">
+        Parameter
+      </button>
+      <button :class="{ selected: page === 'settings' }" @click="emit('navigate', 'settings')">
+        Einstellungen
+      </button>
+    </nav>
+    <div class="shell-header-right">
+      <div class="user-menu">
+        <button
+          class="outlined-action"
+          type="button"
+          :aria-expanded="loginOpen"
+          @click="loginOpen = !loginOpen"
+        >
+          <ShieldCheck :size="17" /> {{ authenticated ? 'Administrator' : 'Gast · Anmelden' }}
+        </button>
+        <div v-if="loginOpen" class="login-popover">
+          <p>
+            <strong>{{ authenticated ? 'Administrator' : 'Lesender Gast' }}</strong>
+          </p>
+          <button v-if="authenticated" class="outlined-action" @click="emit('logout')">
+            Abmelden
+          </button>
+          <form v-else @submit.prevent="emit('login')">
+            <label class="field-label" for="header-password">Admin-Passwort</label>
+            <input
+              id="header-password"
+              class="settings-input"
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              :disabled="!secure"
+            />
+            <p v-if="!secure" class="read-error">Anmeldung benötigt HTTPS.</p>
+            <p v-if="error" class="read-error" role="alert">{{ error }}</p>
+            <button class="main-action" :disabled="!secure || busy || !password">
+              {{ busy ? 'Anmeldung läuft …' : 'Anmelden' }}
+            </button>
+          </form>
+        </div>
+      </div>
+      <button
+        class="header-icon"
+        type="button"
+        @click="emit('navigate', 'settings')"
+        aria-label="App-Einstellungen"
+      >
+        <Settings2 :size="21" />
+      </button>
+    </div>
+  </header>
+</template>

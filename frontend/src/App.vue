@@ -4,15 +4,19 @@ import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
   ChevronRight, Clock3, Cloud, Gauge, HeartPulse, House,
   Power, RadioTower, RefreshCw, Search,
-  Settings2, ShieldCheck, SlidersHorizontal, Star,
+  Settings2, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
 import TimerEditor from './TimerEditor.vue'
 import CloudInsights from './CloudInsights.vue'
+import { useAdminSession } from './composables/useAdminSession'
+import AppHeader from './components/AppHeader.vue'
+import UpdatePanel from './components/UpdatePanel.vue'
+import type { Page } from './types/navigation'
+import { useLteConnection } from './composables/useLteConnection'
 import { api, writeValueText } from './api'
-import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, LteSnapshot, LteScan, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId, UpdateStatus } from './api'
+import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId } from './api'
 
-type Page = 'home' | 'parameters' | 'settings'
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
 const storedId = window.localStorage.getItem('foxair.lastTransport') as TransportId
 const selectedTransport = ref<TransportId>(validIds.includes(storedId) ? storedId : 'cloud')
@@ -56,23 +60,21 @@ const cloudCodeSelected = ref<CloudRow | null>(null)
 const accountLoading = ref(false)
 const accountLoaded = ref(false)
 const cloudScanLoading = ref(false)
-const updateInfo = ref<UpdateStatus | null>(null)
-const updateLoading = ref(false)
-const updateRequesting = ref(false)
-const updateError = ref('')
-const updateMessage = ref('')
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
 const cloudStatusLoading = ref(false)
 const cloudUsername = ref('')
 const cloudPassword = ref('')
 const cloudDeviceCode = ref('')
-const cloudAdminPassword = ref('')
-const adminAuthenticated = ref(false)
-const adminBusy = ref(false)
-const loginOpen = ref(false)
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
-const adminLoginError = ref('')
+const { secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession(
+  () => Promise.all([loadStoredAccount(), loadLteConfig()]),
+  () => {
+    cloudUsername.value = ''; cloudDeviceCode.value = ''; cloudPassword.value = ''
+    accountLoaded.value = false; cloudDevices.value = []; selectedCloudStatus.value = {}
+  },
+)
+
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
 const writeBusy = ref(false)
@@ -123,72 +125,9 @@ watch(connectionSettingsOpen, opened => {
   if (opened && !dialog.open) dialog.showModal()
   else if (!opened && dialog.open) dialog.close()
 })
-const busState=ref<Awaited<ReturnType<typeof api.busConnection>>|null>(null)
-const localValues=ref<Record<string,RegisterValue>>({})
-const lteScan=ref<LteScan>({status:'idle',completed:0,total:8,error:null})
-const pushConnected=ref(false)
-const scanStarting=ref(false)
-let localEvents:EventSource|undefined
-let busTimer:ReturnType<typeof setTimeout>|undefined
-function applyLteSnapshot(incoming:LteSnapshot){
-  if(selectedTransport.value!=='warmlink_raw')return
-  busState.value={...incoming.connection,observed:busState.value?.observed||{}}
-  if(incoming.removed?.length || (incoming.reset&&!Object.keys(incoming.values).length)){
-    currentValue.value=null
-    lteWriteSources.value={}
-    if(snapshot.value?.transport==='warmlink_raw'){
-      for(const key of Object.keys(snapshot.value.metrics) as (keyof Dashboard['metrics'])[])snapshot.value.metrics[key]=null
-    }
-  }
-  if(incoming.reset)localValues.value={}
-  for(const key of incoming.removed||[])delete localValues.value[key]
-  for(const [key,next] of Object.entries(incoming.values)){
-    const previous=localValues.value[key]
-    if(!previous || Date.parse(next.timestamp)>=Date.parse(previous.timestamp))localValues.value[key]=next
-  }
-  lteScan.value=incoming.scan
-  if(snapshot.value?.transport==='warmlink_raw'){
-    for(const key of Object.keys(incoming.metrics) as (keyof Dashboard['metrics'])[]){
-      const next=incoming.metrics[key], previous=snapshot.value.metrics[key]
-      if(next && (!previous || Date.parse(next.timestamp)>=Date.parse(previous.timestamp)))snapshot.value.metrics[key]=next
-      const shown=snapshot.value.metrics[key]
-      if(shown && ((!incoming.connection.connected && shown.quality==='observed') || Date.now()-Date.parse(shown.timestamp)>300000))shown.quality='stale'
-    }
-    const fresh=Object.values(snapshot.value.metrics).filter(item=>item && item.quality!=='stale').length
-    snapshot.value.status=fresh===Object.keys(snapshot.value.metrics).length?'online':fresh?'partial':'unavailable'
-    snapshot.value.error=incoming.connection.error
-  }
-}
-function connectLocalEvents(){
-  localEvents?.close();localEvents=undefined;pushConnected.value=false
-  if(selectedTransport.value!=='warmlink_raw' || unmounted)return
-  const events=new EventSource('/api/warmlink/events')
-  localEvents=events
-  events.onmessage=event=>{
-    if(localEvents!==events)return
-    try{applyLteSnapshot(JSON.parse(event.data) as LteSnapshot);pushConnected.value=true}catch{pushConnected.value=false}
-  }
-  events.onerror=()=>{if(localEvents===events)pushConnected.value=false}
-}
-async function startLteScan(){
-  if(scanStarting.value || lteScan.value.status==='running' || selectedTransport.value!=='warmlink_raw')return
-  scanStarting.value=true
-  try{
-    lteScan.value=await api.lteScan()
-    applyLteSnapshot({...await api.lteSnapshot(),reset:true})
-  }catch(e){lteScan.value={...lteScan.value,status:'error',error:e instanceof Error?e.message:'LTE-Lesen fehlgeschlagen'}}
-  finally{scanStarting.value=false}
-}
-async function updateBusLease(){
-  if(unmounted)return
-  try {
-    if(selectedTransport.value==='warmlink_raw'){
-      await api.busLease()
-      if(!pushConnected.value)applyLteSnapshot({...await api.lteSnapshot(),reset:true})
-    }else busState.value=await api.busConnection()
-  }catch{/* SSE reconnects automatically; keep confirmed timestamps. */}
-  if(!unmounted)busTimer=setTimeout(updateBusLease,15000)
-}
+const { busState, localValues, lteScan, pushConnected, scanStarting, startLteScan, refreshSnapshot } = useLteConnection(
+  selectedTransport, snapshot, () => { currentValue.value = null; lteWriteSources.value = {} },
+)
 const lteBusy = ref(false)
 const lteMessage = ref('')
 const lteError = ref('')
@@ -283,8 +222,6 @@ const cloudSaving = ref(false)
 const cloudDiscovering = ref(false)
 const cloudMessage = ref('')
 const cloudError = ref('')
-const secureAdminContext = window.location.protocol === 'https:' ||
-  ['127.0.0.1', 'localhost', '[::1]'].includes(window.location.hostname)
 const liveEnabled = ref(window.localStorage.getItem('foxair.cloudLiveEnabled') !== 'false')
 const storedInterval = Number(window.localStorage.getItem('foxair.cloudLiveInterval') || 30)
 const liveInterval = ref(Number.isFinite(storedInterval) ? Math.max(10, Math.min(3600, storedInterval)) : 30)
@@ -447,7 +384,6 @@ function syncRoute() {
   if (page.value === 'settings') {
     void loadCloudLogs()
     void loadCloudStatus()
-    void loadGitUpdateStatus()
   }
 }
 function navigate(target: Page, term = '') {
@@ -489,7 +425,7 @@ async function loadDashboard(live = false) {
 
 function onVisibilityChange() {
   if(selectedTransport.value==='warmlink_raw'){
-    if(!document.hidden && !pushConnected.value)void api.lteSnapshot().then(data=>applyLteSnapshot({...data,reset:true})).catch(()=>{})
+    if(!document.hidden && !pushConnected.value)void refreshSnapshot().catch(()=>{})
     return
   }
   clearTimeout(refreshTimer)
@@ -585,38 +521,6 @@ async function loadCloudLogs() {
   try { cloudLogs.value = (await api.cloudLogs()).items }
   catch { /* Logs are optional and must not block operation */ }
 }
-async function checkAdminSession() {
-  try {
-    adminAuthenticated.value = (await api.adminSession()).authenticated
-  } catch { adminAuthenticated.value = false }
-}
-async function loginAsAdmin() {
-  if (!secureAdminContext || !cloudAdminPassword.value) return
-  adminBusy.value = true
-  adminLoginError.value = ''
-  try {
-    adminAuthenticated.value = (await api.adminLogin(cloudAdminPassword.value)).authenticated
-    cloudAdminPassword.value = ''
-    loginOpen.value = false
-    if (adminAuthenticated.value) {
-      await Promise.all([loadStoredAccount(), loadGitUpdateStatus(), loadLteConfig()])
-    }
-  } catch (e) {
-    adminAuthenticated.value = false
-    adminLoginError.value = e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen'
-  } finally { adminBusy.value = false }
-}
-async function logoutAsAdmin() {
-  try { await api.adminLogout() } catch { /* log out UI regardless */ }
-  adminAuthenticated.value = false
-  cloudUsername.value = ''
-  cloudDeviceCode.value = ''
-  cloudPassword.value = ''
-  cloudAdminPassword.value = ''
-  accountLoaded.value = false
-  cloudDevices.value = []
-  selectedCloudStatus.value = {}
-}
 async function loadStoredAccount() {
   accountLoading.value = true
   cloudError.value = ''
@@ -643,32 +547,6 @@ async function rescanCloud() {
     cloudError.value = e instanceof Error ? e.message : 'Scan konnte nicht gestartet werden'
   } finally {
     cloudScanLoading.value = false
-  }
-}
-
-async function loadGitUpdateStatus() {
-  updateLoading.value = true
-  updateError.value = ''
-  try { updateInfo.value = await api.updateStatus() }
-  catch (e) { updateError.value = e instanceof Error ? e.message : 'Update-Status nicht erreichbar' }
-  finally { updateLoading.value = false }
-}
-async function submitGitUpdate() {
-  if (!secureAdminContext || !adminAuthenticated.value) {
-    updateError.value = 'HTTPS und Web-Administrationspasswort erforderlich.'
-    return
-  }
-  updateRequesting.value = true
-  updateError.value = ''
-  updateMessage.value = ''
-  try {
-    await api.requestUpdate('')
-    updateMessage.value = 'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert den passenden Git-Build. Die Web-App kann dabei kurz neu starten.'
-    // Do not claim an installation succeeded: completion is observed separately.
-  } catch (e) {
-    updateError.value = e instanceof Error ? e.message : 'Update-Anforderung fehlgeschlagen'
-  } finally {
-    updateRequesting.value = false
   }
 }
 
@@ -769,9 +647,6 @@ async function readRegister() {
 watch(selectedTransport, (value) => {
   window.localStorage.setItem('foxair.lastTransport', value)
   currentValue.value = null
-  localValues.value={}
-  lteScan.value={status:'idle',completed:0,total:8,error:null}
-  connectLocalEvents()
   lteWriteSources.value = {}
   specialLocalRows.value = []
   operationSources.value = {}
@@ -799,8 +674,6 @@ watch(search, () => {
   searchTimer = setTimeout(() => { if (page.value === 'parameters') void loadRegisters() }, 240)
 })
 onMounted(async () => {
-  connectLocalEvents()
-  void updateBusLease()
   syncRoute()
   window.addEventListener('hashchange', syncRoute)
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -816,13 +689,11 @@ onMounted(async () => {
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
-  if (page.value === 'settings') await Promise.all([loadCloudLogs(), loadGitUpdateStatus()])
+  if (page.value === 'settings') await loadCloudLogs()
   scheduleRefresh()
   scheduleValueRefresh()
 })
 onBeforeUnmount(() => {
-  localEvents?.close()
-  clearTimeout(busTimer)
   unmounted = true
   window.removeEventListener('hashchange', syncRoute)
   document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -837,36 +708,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <header class="shell-header">
-      <button class="brand" type="button" @click="navigate('home')" aria-label="Zur Übersicht">
-        <span class="brand-mark official-brand"><img src="/foxye-logo.png" alt="FoxAir-Logo" /></span>
-        <span><strong>FoxAir</strong><small>CONTROL WEB</small></span>
-      </button>
-      <nav class="desktop-nav" aria-label="Hauptnavigation">
-        <button :class="{ selected: page === 'home' }" @click="navigate('home')">Übersicht</button>
-        <button :class="{ selected: page === 'parameters' }" @click="navigate('parameters')">Parameter</button>
-        <button :class="{ selected: page === 'settings' }" @click="navigate('settings')">Einstellungen</button>
-      </nav>
-      <div class="shell-header-right">
-        <div class="user-menu">
-          <button class="outlined-action" type="button" :aria-expanded="loginOpen" @click="loginOpen = !loginOpen">
-            <ShieldCheck :size="17" /> {{ adminAuthenticated ? 'Administrator' : 'Gast · Anmelden' }}
-          </button>
-          <div v-if="loginOpen" class="login-popover">
-            <p><strong>{{ adminAuthenticated ? 'Administrator' : 'Lesender Gast' }}</strong></p>
-            <button v-if="adminAuthenticated" class="outlined-action" @click="logoutAsAdmin">Abmelden</button>
-            <form v-else @submit.prevent="loginAsAdmin">
-              <label class="field-label" for="header-password">Admin-Passwort</label>
-              <input id="header-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="current-password" :disabled="!secureAdminContext" />
-              <p v-if="!secureAdminContext" class="read-error">Anmeldung benötigt HTTPS.</p>
-              <p v-if="adminLoginError" class="read-error" role="alert">{{ adminLoginError }}</p>
-              <button class="main-action" :disabled="!secureAdminContext || adminBusy || !cloudAdminPassword">{{ adminBusy ? 'Anmeldung läuft …' : 'Anmelden' }}</button>
-            </form>
-          </div>
-        </div>
-        <button class="header-icon" type="button" @click="navigate('settings')" aria-label="App-Einstellungen"><Settings2 :size="21" /></button>
-      </div>
-    </header>
+    <AppHeader :page="page" :authenticated="adminAuthenticated" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
+      v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
     <main>
       <template v-if="page === 'home'">
@@ -1162,39 +1005,7 @@ onBeforeUnmount(() => {
         </section>
 
         <CloudInsights mode="device" :admin="adminAuthenticated&&secureAdminContext" />
-        <section class="settings-panel panel">
-          <div class="section-head"><div><span class="section-caption">VERSIONEN / GITHUB</span>
-            <h2>FoxAir-Web aktualisieren</h2></div><RefreshCw :size="22" /></div>
-          <p class="section-hint">Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC installiert.</p>
-          <div class="update-versions">
-            <div><span>Installierter Commit</span><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong></div>
-            <div><span>GitHub main</span><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong></div>
-            <div><span>Aktiver Web-Build</span><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong></div>
-            <div><span>GitHub web-dist</span><strong>{{ updateInfo?.remote_build?.slice(0, 10) || 'noch nicht erreichbar' }}</strong></div>
-            <div><span>Hilfsdienst</span><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong></div>
-            <div><span>Status</span><strong>{{ updateInfo?.running ? 'Update läuft' : updateInfo?.pending ? 'Anforderung wartet' : updateInfo?.last_result || '—' }}</strong></div>
-          </div>
-          <p v-if="updateInfo?.remote && updateInfo?.deployed === updateInfo.remote" class="success-text"><strong>Alles aktuell – neueste Web-Version installiert.</strong></p>
-          <p v-else-if="updateInfo?.remote && updateInfo?.deployed !== updateInfo.remote" class="notice"><strong>Neue Version verfügbar{{ updateInfo.build_ready ? ' – bereit zur Installation' : ' – Build läuft noch' }}.</strong></p>
-          <p v-if="updateInfo?.update_available" class="success-text">Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.</p>
-          <p v-if="updateInfo?.remote && !updateInfo?.build_ready" class="section-hint">
-            GitHub Actions baut noch den passenden Web-Stand. Der Updateknopf ist bis zur Fertigstellung gesperrt.
-          </p>
-          <p v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote" class="section-hint">Installierter Code entspricht dem aktuellen main-Commit.</p>
-          <p v-if="!updateInfo?.installed" class="section-hint">Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code></p>
-          <div class="update-actions">
-            <button type="button" class="outlined-action" :disabled="updateLoading" @click="loadGitUpdateStatus">
-              <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
-            </button>
-            <button type="button" class="main-action" :disabled="!updateInfo?.installed || !updateInfo?.build_ready || updateInfo?.running || updateInfo?.pending || !adminAuthenticated || !secureAdminContext || updateRequesting" @click="submitGitUpdate">
-              <RefreshCw :size="16" :class="{ spinning: updateRequesting }" />
-              {{ updateRequesting ? 'Fordere Update an …' : 'Jetzt über GitHub aktualisieren' }}
-            </button>
-          </div>
-          <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
-          <p v-if="updateError" class="read-error">{{ updateError }}</p>
-          <p class="section-hint">Für Updates oben rechts als Administrator anmelden. Die Anmeldung bleibt bis zu 30 Tage erhalten, auch bei einem Serverneustart. Der Installationserfolg wird durch die nächste Statusprüfung bestätigt.</p>
-        </section>
+        <UpdatePanel :admin="adminAuthenticated" :secure="secureAdminContext" />
         <section class="settings-panel panel">
           <div class="section-head">
             <div><span class="section-caption">DIAGNOSE</span><h2>Verbindungsprotokoll</h2></div>

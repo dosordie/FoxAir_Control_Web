@@ -25,7 +25,8 @@ export type Register = {
 }
 export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string;display_value?:string|null;code?:string;name?:string;group?:string }
 export type LteScan = {status:'idle'|'running'|'complete'|'partial'|'error';completed:number;total:number;error:string|null}
-export type LteSnapshot = {values:Record<string,RegisterValue>;metrics:Partial<Dashboard['metrics']>;connection:{connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number};scan:LteScan;removed?:string[];reset?:boolean}
+export type ConnectionState = {connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number;pending_read?:{register:number;count:number;age_seconds:number;ambiguous:boolean}|null}
+export type LteSnapshot = {values:Record<string,RegisterValue>;metrics:Partial<Dashboard['metrics']>;connection:ConnectionState;scan:LteScan;removed?:string[];reset?:boolean}
 
 export type CloudConfigStatus = {
   configured: boolean
