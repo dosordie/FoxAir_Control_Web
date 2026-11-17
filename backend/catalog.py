@@ -25,6 +25,7 @@ def load_registers() -> dict[str, dict[str, Any]]:
         knowledge = json.loads(extra.read_text(encoding="utf-8"))
         for number, item in knowledge.items():
             if number in result and isinstance(item, dict):
+                result[number]["_knowledge"] = dict(item)
                 if not result[number].get("description"):
                     result[number]["description"] = item.get("description", "")
     return result
@@ -58,13 +59,29 @@ def group_counts() -> list[dict]:
     return [{"group": g, "count": counts[g]} for g in sorted(counts)]
 
 
+def register_description(entry: dict) -> str:
+    """Keep all reviewed explanatory text; a short range must not hide knowledge."""
+    parts = []
+    seen = set()
+    knowledge = entry.get("_knowledge") or {}
+    for field, label in (("description", ""), ("knowledge", "Hinweis"),
+                         ("explanation", "Erläuterung"), ("notes", "Notiz"),
+                         ("hint", "Hinweis"), ("info", "Information")):
+        for source in (entry, knowledge):
+            text = str(source.get(field) or "").strip()
+            if text and text not in seen:
+                parts.append(f"{label}: {text}" if label else text)
+                seen.add(text)
+    return "\n\n".join(parts)
+
+
 def public_register(number: str, entry: dict) -> dict:
     return {
         "register": int(number),
         "code": entry.get("code") or "",
         "group": register_group(entry, number),
         "name": entry.get("name") or f"Register {number}",
-        "description": entry.get("description") or entry.get("info") or entry.get("notes") or "",
+        "description": register_description(entry),
         "unit": entry.get("unit") or ("°C" if entry.get("type") == "TEMP1" else ""),
         "type": entry.get("type") or "RAW",
         "mode": entry.get("mode") or "read",

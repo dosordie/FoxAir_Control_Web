@@ -100,6 +100,7 @@ def refresh_group(payload: GroupRead, request: Request):
 
 class ParameterWrite(BaseModel):
     transport: str
+    expected_transport: str | None = None
     value: str = Field(max_length=64)
     expected: str = Field(max_length=64)
 
@@ -113,7 +114,13 @@ def write_parameter(register: int, payload: ParameterWrite, request: Request):
 
     require_admin(request, "")
     try:
-        return write(register, payload.transport, payload.value, payload.expected)
+        return write(
+            register,
+            payload.transport,
+            payload.value,
+            payload.expected,
+            expected_transport=payload.expected_transport,
+        )
     except WriteConflictError as exc:
         raise HTTPException(409, str(exc)) from None
     except WriteValidationError as exc:

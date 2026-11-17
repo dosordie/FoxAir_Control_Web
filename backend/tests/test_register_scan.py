@@ -55,6 +55,48 @@ class BlockReadTests(unittest.TestCase):
         self.assertTrue(client.foreign_ambiguous)
         observer.assert_not_called()
 
+    def test_expired_ambiguous_request_does_not_block_a_later_read(self):
+        import socket
+
+        endpoint = Endpoint("private", 2001, timeout=5)
+        sock = Mock()
+        response = with_crc(bytes.fromhex("63 03 02 01 7d"))
+
+        def receive(_size):
+            if sock.sendall.called:
+                return response
+            raise socket.timeout()
+
+        sock.recv.side_effect = receive
+        observer = Mock()
+        client = WarmlinkSession(sock, endpoint, on_observed_read=observer)
+        client.foreign_pending = (6, 1)
+        client.foreign_since = 10
+        client.foreign_ambiguous = True
+        ticks = iter(100 + i * 0.05 for i in range(200))
+        with patch(
+            "backend.warmlink_protocol.time.monotonic", side_effect=lambda: next(ticks)
+        ):
+            self.assertEqual(client.read_holding(2046, 1), [381])
+        self.assertIsNone(client.foreign_pending)
+        self.assertFalse(client.foreign_ambiguous)
+        observer.assert_not_called()
+        sock.sendall.assert_called_once()
+
+    def test_expiration_never_assigns_a_late_response_to_an_old_request(self):
+        endpoint = Endpoint("private", 2001, timeout=5)
+        sock = Mock()
+        sock.recv.return_value = with_crc(bytes.fromhex("63 03 02 01 7d"))
+        observer = Mock()
+        client = WarmlinkSession(sock, endpoint, on_observed_read=observer)
+        client.foreign_pending = (2046, 1)
+        client.foreign_since = 10
+        with patch("backend.warmlink_protocol.time.monotonic", return_value=16):
+            client.receive(0.1)
+        observer.assert_not_called()
+        self.assertIsNone(client.foreign_pending)
+        sock.sendall.assert_not_called()
+
     def test_wire_read_uses_fc03_and_ninety_words(self):
         words = list(range(90))
         response = with_crc(

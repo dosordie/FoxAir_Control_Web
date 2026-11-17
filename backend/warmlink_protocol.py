@@ -24,15 +24,36 @@ class WarmlinkSession:
         self.foreign_ambiguous = False
         self.inflight_request = None
 
+    def _expire_foreign_read(self):
+        """Forget correlation only after the foreign response window has passed.
+
+        A timed-out or overlapping foreign request is not a permanent bus lease.
+        Expiration never accepts a response or skips quiet()/CRC validation.
+        """
+        if (
+            self.foreign_pending
+            and time.monotonic() - self.foreign_since > self.endpoint.timeout
+        ):
+            self.foreign_pending = None
+            self.foreign_ambiguous = False
+            self.foreign_since = 0.0
+            log_event(
+                "lte",
+                "Antwortzeitfenster der fremden FC3-Abfrage abgelaufen; Zuordnung verworfen",
+            )
+
     def receive(self, timeout):
+        self._expire_foreign_read()
         self.sock.settimeout(max(0.001, timeout))
         try:
             data = self.sock.recv(4096)
         except socket.timeout:
+            self._expire_foreign_read()
             return []
         if not data:
             raise ConnectionError("LTE-Verbindung geschlossen")
         self.last_received = time.monotonic()
+        self._expire_foreign_read()
         self.buffer.extend(data)
         frames = find_frames(self.buffer, 125)
         if len(self.buffer) > 4096:

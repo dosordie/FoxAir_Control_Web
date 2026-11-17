@@ -103,3 +103,23 @@ LTE-Verbindungseinstellungen bieten zusätzlich `idle_timeout_seconds` (0–3600
 und `browser_timeout_seconds` (30–3600, Standard 90). Im Bedarfsmodus verlängert jede
 abgeschlossene Operation die Leerlaufzeit; passives Empfangen verlängert sie nicht.
 Der Dauermodus bleibt unabhängig davon offen.
+
+
+### Ergänzung: abgelaufene Fremdabfragen und direkte Bearbeitung
+
+Eine beobachtete FC03-Anfrage belegt nur ihr begrenztes Antwortzeitfenster. Der LTE-Parser
+verwirft nach dessen Ablauf die Zuordnung einschließlich Mehrdeutigkeitsmarker; er übernimmt
+keine verspätete Antwort in den Cache. Die normale Ruhephase und die Kollisions-/CRC-Prüfung
+bleiben erforderlich. Insbesondere wird kein abgebrochener Schreibauftrag wiederholt.
+
+Der Parametereditor übernimmt vorhandene bekannte Werte direkt als optimistische Baseline.
+Bei einem Quellenwechsel wird deren Skalierung serverseitig konvertiert. Das Backend liest
+vor jeder Änderung den aktuellen Wert und lehnt Konflikte weiterhin ab. Live-Aktualisierungen
+überschreiben keinen bereits bearbeiteten Entwurf. Ohne gültigen Ausgangswert bleibt manuelles
+Aktualisieren verfügbar. Parametertexte vereinen Beschreibung, Wissen, Erläuterungen und Notizen
+aus MAIN und Knowledge; Cloud-Code-Details verwenden dieselbe Projektion.
+
+Die kompakte Hz-Anzeige nutzt Frequenz/90 als Balkenanteil (28 Hz rund 31 %, 0 Hz leer).
+Dies ist ein Frequenzanteil, keine elektrische oder thermische Leistungsangabe. Der Lüfterstatus
+verwendet gültige Drehzahlen, ersatzweise Kompressor-/Ein-Aus-Werte, statt den Gesamtstatus
+aller Messwerte als Voraussetzung zu verwenden.

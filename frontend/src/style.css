@@ -388,4 +388,9 @@ a{color:inherit}
 
 .register-favorites{margin:12px 0}.favorite-button{display:inline-grid;place-items:center;flex:none;min-width:44px;min-height:44px;border:1px solid #e5e8ec;border-radius:12px;background:#fff;color:#939ba7}.favorite-button.selected{background:#fff3df;color:#c37a0b;border-color:#f5c974}.register-favorites button[aria-pressed="true"]{background:#fff3df;border-color:#f5c974}
 
-.compressor-gauge{position:absolute;bottom:-48px;left:15%;width:70%;color:#303842;text-align:center;font-size:12px}.compressor-track{height:9px;border-radius:8px;background:#ffffffa6;overflow:hidden;margin:5px 0}.compressor-fill{height:100%;border-radius:8px;transition:width .4s ease}.compressor-gauge small{color:inherit}.illustrated-unit .compressor-hz{bottom:-20px}.hero-main{margin-bottom:55px}.power-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.power-summary>div{background:#f6f7f9;border-radius:12px;padding:12px;text-align:center}.power-summary strong{display:block;font-size:20px}.power-summary small{display:block;color:#777f89;margin-top:5px}@media(prefers-reduced-motion:reduce){.compressor-fill{transition:none}}
+.compressor-fill{height:100%;transition:width .4s ease}.power-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.power-summary>div{background:#f6f7f9;border-radius:12px;padding:12px;text-align:center}.power-summary strong{display:block;font-size:20px}.power-summary small{display:block;color:#777f89;margin-top:5px}@media(prefers-reduced-motion:reduce){.compressor-fill{transition:none}}
+
+.compressor-badge{position:absolute;left:40%;bottom:-30px;width:max-content;border-radius:6px;background:#ffffffd9;color:#34423c;box-shadow:0 2px 8px #0001;overflow:hidden}.compressor-reading{display:block;padding:5px 9px;font-size:14px;font-weight:700;line-height:18px}.compressor-badge .compressor-track{height:5px;margin:0;border-radius:0;background:#c9cdd2}.compressor-badge .compressor-fill{border-radius:0}
+.parameter-description{white-space:pre-line;line-height:1.65;overflow-wrap:anywhere}
+
+.parameter-description-title{font-size:14px;margin:22px 0 8px}

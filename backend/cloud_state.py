@@ -186,6 +186,8 @@ def value_rows() -> dict[str, Any]:
         progress = _PROGRESS
         last_scan = _LAST_SCAN
         err = _LAST_ERROR
+    from backend.catalog import load_registers, register_description
+    definitions = load_registers()
     values: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc)
     for row in sorted(items, key=lambda r:
@@ -204,6 +206,7 @@ def value_rows() -> dict[str, Any]:
         values.append({
             "code": row["code"],
             "name": row.get("name") or row["code"],
+            "description": register_description(definitions.get(str(row.get("register")), {})) or row.get("description") or "",
             "register": row.get("register"),
             "group": row.get("group") or "CLOUD",
             "kind": row.get("kind") or "other",

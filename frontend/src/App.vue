@@ -21,6 +21,7 @@ import { useRegisterFavorites } from './composables/useRegisterFavorites'
 import { useRegisterCatalog } from './composables/useRegisterCatalog'
 import { useLteConnection } from './composables/useLteConnection'
 import { api, writeValueText } from './api'
+import { fanIsRunning } from './telemetry'
 import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
@@ -206,10 +207,11 @@ const transportLabel = computed(() => selectedTransportInfo.value?.name || 'PHNI
 const online = computed(() => snapshot.value?.status === 'online')
 const modeText = computed(() => displayMetric(snapshot.value?.metrics.mode || null, '—'))
 const powerText = computed(() => displayMetric(snapshot.value?.metrics.power || null, '—'))
-const fanRunning = computed(() =>
-  snapshot.value?.status !== 'unavailable' &&
-  snapshot.value?.metrics.power?.quality !== 'stale' &&
-  ['Ein', '1', 'ON'].includes(powerText.value))
+const fanRunning = computed(() => fanIsRunning(
+  snapshot.value?.metrics.power || null,
+  snapshot.value?.metrics.compressor_frequency || null,
+  [currentRegisterValue(2074), currentRegisterValue(2075)],
+))
 const supplyDelta = computed(() => {
   const data = snapshot.value?.metrics
   if (!data || snapshot.value?.status === 'unavailable' ||
@@ -817,6 +819,7 @@ onBeforeUnmount(() => {
                 <span>Mapping-Confidence <strong>{{ cloudCodeSelected.confidence || 'unbekannt' }}</strong></span>
                 <span>Quelle <strong>Cloud</strong></span><span>Unterstützung <strong>{{ cloudCodeSelected.supported ? 'Wert vorhanden' : 'kein Wert' }}</strong></span>
               </div>
+              <p v-if="cloudCodeSelected.description" class="description parameter-description">{{ cloudCodeSelected.description }}</p>
               <p class="section-hint">Cloud-Originalwert in API-Skalierung; keine Umrechnung anhand lokaler Modbus-Rohwerte.</p>
             </template>
             <template v-else-if="!cloudView && selectedRegister">
@@ -828,10 +831,11 @@ onBeforeUnmount(() => {
                 <p>{{ relativeTimestamp(currentRegisterValue(selectedRegister.register)?.timestamp ?? currentValue?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
               </div>
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span><span>Quelle <strong>{{ valueSource(selectedRegister.register) }}</strong></span></div>
-              <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
+              <h3 class="parameter-description-title">Beschreibung & Hinweise</h3>
+              <p class="description parameter-description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated" @updated="readRegister" @read="currentValue=$event" />
+              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </section>

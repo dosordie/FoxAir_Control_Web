@@ -24,6 +24,14 @@ class HumanReadableRegisterTests(unittest.TestCase):
         self.assertEqual(cloud_state.display_label(2045, "39.2"), None)
         self.assertEqual(cloud_state.display_label(None, 1), None)
 
+    def test_known_explanations_and_notes_are_not_hidden_by_short_descriptions(self):
+        definitions=load_registers()
+        sg=public_register("1334",definitions["1334"])["description"]
+        self.assertIn("Machine-Learning-Algorithmus",sg)
+        curve=public_register("1234",definitions["1234"])["description"]
+        self.assertIn("klassischen linearen",curve)
+        self.assertIn("Vermutete Formel",curve)
+
     def test_cloud_rows_sorted_by_register_not_textual_code(self):
         rows = [
             {"code": "H36", "register": 1236, "kind": "static"},

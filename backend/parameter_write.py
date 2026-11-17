@@ -141,8 +141,58 @@ def timer_kind(register):
     return next((kind for kind, schema in SCHEMAS.items() if register in schema), None)
 
 
-def write(register, transport, requested, expected):
+def convert_baseline(register, entry, expected, source, target):
+    """Convert an optimistic baseline across transports; server still rereads it."""
+    if source is None or source == target:
+        return expected
+    if source not in ("cloud", "warmlink_raw", "standard_modbus"):
+        raise WriteValidationError("Unbekannte Quelle des Ausgangswertes")
+    if target != "cloud" and source != "cloud":
+        return expected  # Both local transports use raw words.
+    from backend import timers
+
+    if source == "cloud":
+        return str(
+            timers.cloud_word(register, expected)
+            if timer_kind(register)
+            else encode(expected, entry)
+        )
+    raw = _number(expected)
+    if raw != raw.to_integral_value() or not 0 <= raw <= 65535:
+        raise WriteValidationError("Ungültiger Ausgangswert")
+    if timer_kind(register):
+        return timers.wire_value(register, int(raw))
+    kind = str(entry.get("type") or "RAW").upper()
+    signed = (
+        bool(entry.get("signed"))
+        or kind in SCALES
+        or kind
+        in (
+            "INT16",
+            "SIGNED INT16",
+            "DIGI1",
+            "DIGI9",
+            "STEPS_N",
+            "MINUTES",
+            "SECONDS",
+            "DAYS",
+            "HZ",
+            "RPM",
+            "PERCENT",
+            "WATT",
+            "HOURS",
+        )
+    )
+    if signed and not entry.get("value_map") and raw >= 32768:
+        raw -= 65536
+    return str(raw / SCALES.get(kind, 1))
+
+
+def write(register, transport, requested, expected, *, expected_transport=None):
     entry = definition(register)
+    expected = convert_baseline(
+        register, entry, expected, expected_transport, transport
+    )
     word = encode(requested, entry)
     if (
         entry.get("interface") == "direct_user_modbus"

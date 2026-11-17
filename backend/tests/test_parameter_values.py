@@ -81,6 +81,44 @@ class ParameterWriteTests(unittest.TestCase):
         with self.assertRaises(WriteValidationError):
             encode("2", {"type": "ENUM", "value_map": {"0": "Aus", "1": "Ein"}})
 
+    def test_cross_transport_baseline_conversion_preserves_scale_enums_and_timers(self):
+        from backend.parameter_write import convert_baseline
+
+        self.assertEqual(
+            convert_baseline(1105, {"type": "TEMP1"}, "12.5", "cloud", "warmlink_raw"),
+            "125",
+        )
+        self.assertEqual(
+            convert_baseline(1105, {"type": "TEMP1"}, "65521", "warmlink_raw", "cloud"),
+            "-1.5",
+        )
+        self.assertEqual(
+            convert_baseline(
+                1011,
+                {"type": "DIGI1", "value_map": {"0": "Aus", "1": "Ein"}},
+                "1",
+                "warmlink_raw",
+                "cloud",
+            ),
+            "1",
+        )
+        self.assertEqual(
+            convert_baseline(
+                1268,
+                {"type": "TIMER_BITPAIR"},
+                "0000000010000001",
+                "cloud",
+                "warmlink_raw",
+            ),
+            "129",
+        )
+        self.assertEqual(
+            convert_baseline(
+                1268, {"type": "TIMER_BITPAIR"}, "129", "warmlink_raw", "cloud"
+            ),
+            "0000000010000001",
+        )
+
     def test_read_only_register_cannot_be_written(self):
         with self.assertRaises(WriteValidationError):
             write(2046, "warmlink_raw", "40", "367")
