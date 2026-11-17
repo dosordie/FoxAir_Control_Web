@@ -291,8 +291,7 @@ const {
           </button>
           <div v-if="Object.keys(selectedCloudStatus).length" class="device-status">
             <div v-for="(value, key) in selectedCloudStatus" :key="key">
-              <span>{{ key }}</span
-              ><strong>{{ value ?? '—' }}</strong>
+              <span>{{ key }}</span><strong>{{ value ?? '—' }}</strong>
             </div>
           </div>
         </div>
