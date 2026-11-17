@@ -7,7 +7,6 @@ confirmed live codes, as in FoxAir_Control's RE documentation.
 """
 from __future__ import annotations
 
-from collections import deque
 from datetime import datetime, timezone
 import json
 import hashlib
@@ -18,12 +17,12 @@ import threading
 import time
 from typing import Any
 
+from backend.diagnostics import log_event, logs
 from backend.cloud_config import credentials
 from backend.cloud_read import CloudError, UnsupportedCloudCode, _reader, _cloud_lock
 
 _LOCK = threading.RLock()
 _ROWS: dict[str, dict[str, Any]] = {}
-_LOGS: deque[dict[str, Any]] = deque(maxlen=150)
 _SOURCE: tuple[str, str, str] | None = None
 _STATUS = "idle"
 _PROGRESS = 0
@@ -38,21 +37,6 @@ STALE_AFTER_SECONDS = 300  # five minutes; timeout never changes live availabili
 
 def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def log_event(kind: str, message: str, *, count: int | None = None) -> None:
-    # All messages MUST be hardcoded or counts from the application, never
-    # cloud responses, usernames, tokens, IPs or device identifiers.
-    event: dict[str, Any] = {"time": _ts(), "kind": kind, "message": message}
-    if count is not None:
-        event["count"] = count
-    with _LOCK:
-        _LOGS.appendleft(event)
-
-
-def logs() -> list[dict[str, Any]]:
-    with _LOCK:
-        return list(_LOGS)
 
 
 def catalog() -> list[dict[str, Any]]:

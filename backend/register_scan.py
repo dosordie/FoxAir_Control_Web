@@ -1,55 +1,108 @@
-"""Shared, bounded FC03 initialization from FoxAir_Control warmlink_worker.
+"""One cancellable FC03 initialization job shared by all browsers."""
 
-Eight sequential 90-word blocks; first ambiguous response aborts the job. No
-retries, no parallel scan per browser, no writes or standard/display traffic.
-"""
+from dataclasses import asdict, dataclass
 import threading
 import time
+from typing import Literal
 
-from backend.settings import warmlink_endpoint
+from backend.settings import Endpoint, warmlink_endpoint
 from backend.warmlink import open_warmlink
+from backend.register_definitions import LTE_INIT_BLOCKS
 
-BLOCKS=tuple((start,90) for start in (1001,1091,1181,1271,1361,1451,2001,2091))
-_lock=threading.RLock()
-_job={'status':'idle','completed':0,'total':len(BLOCKS),'error':None}
-_source=None
-_finished=0.0
+BLOCKS = LTE_INIT_BLOCKS
+
+
+@dataclass
+class ScanState:
+    status: Literal["idle", "running", "complete", "partial", "error"] = "idle"
+    completed: int = 0
+    total: int = len(BLOCKS)
+    error: str | None = None
+
+
+class RegisterScan:
+    def __init__(
+        self, *, endpoint_provider=warmlink_endpoint, connection_factory=open_warmlink
+    ):
+        self._endpoint_provider = endpoint_provider
+        self._connection_factory = connection_factory
+        self._lock = threading.RLock()
+        self._state = ScanState()
+        self._source: Endpoint | None = None
+        self._finished = 0.0
+        self._cancel = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def status(self) -> dict:
+        endpoint = self._endpoint_provider()
+        with self._lock:
+            return asdict(self._state if self._source == endpoint else ScanState())
+
+    def _run(self, endpoint: Endpoint) -> None:
+        try:
+            with self._connection_factory(endpoint) as client:
+                for start, count in BLOCKS:
+                    if self._cancel.is_set() or self._endpoint_provider() != endpoint:
+                        raise ValueError("scan cancelled or source changed")
+                    words = client.read_holding(start, count)
+                    if len(words) != count:
+                        raise ValueError("incomplete read")
+                    with self._lock:
+                        self._state.completed += 1
+            with self._lock:
+                self._state.status = "complete"
+                self._state.error = None
+        except (OSError, ValueError):
+            with self._lock:
+                self._state.status = "partial" if self._state.completed else "error"
+                self._state.error = "LTE-Blockabfrage abgebrochen; bestätigte Teilwerte bleiben erhalten. Kein automatischer Wiederholungsversuch."
+        finally:
+            with self._lock:
+                self._finished = time.monotonic()
+
+    def start(self) -> dict:
+        endpoint = self._endpoint_provider()
+        if endpoint is None:
+            raise ValueError("LTE-Anschluss noch nicht aktiviert")
+        with self._lock:
+            if self._state.status == "running" or (
+                self._thread and self._thread.is_alive()
+            ):
+                return {**self.status(), "started": False}
+            if self._source == endpoint and time.monotonic() - self._finished < 30:
+                return {**self.status(), "started": False}
+            self._source = endpoint
+            self._cancel.clear()
+            self._state = ScanState(status="running")
+            self._thread = threading.Thread(
+                target=self._run,
+                args=(endpoint,),
+                daemon=True,
+                name="lte-register-scan",
+            )
+            self._thread.start()
+            return {**self.status(), "started": True}
+
+    def stop(self, timeout: float = 2.0) -> bool:
+        """Do not send another block after shutdown; do not repeat an in-flight read."""
+        self._cancel.set()
+        with self._lock:
+            thread = self._thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout)
+        return thread is None or not thread.is_alive()
+
+
+scan = RegisterScan()
 
 
 def status():
-    with _lock:
-        if _source != warmlink_endpoint():return {'status':'idle','completed':0,'total':len(BLOCKS),'error':None}
-        return dict(_job)
-
-
-def _run(endpoint):
-    global _finished
-    try:
-        with open_warmlink(endpoint) as client:
-            for start,count in BLOCKS:
-                if warmlink_endpoint()!=endpoint:raise ValueError('source changed')
-                words=client.read_holding(start,count)
-                if len(words)!=count:raise ValueError('incomplete read')
-                with _lock:_job['completed']+=1
-        with _lock:_job.update(status='complete',error=None)
-    except (OSError,ValueError):
-        with _lock:_job.update(status='partial' if _job['completed'] else 'error',
-            error='LTE-Blockabfrage abgebrochen; bestätigte Teilwerte bleiben erhalten. Kein automatischer Wiederholungsversuch.')
-    finally:
-        with _lock:_finished=time.monotonic()
+    return scan.status()
 
 
 def start():
-    global _source
-    endpoint=warmlink_endpoint()
-    if endpoint is None:raise ValueError('LTE-Anschluss noch nicht aktiviert')
-    with _lock:
-        if _job['status']=='running':return {**status(),'started':False}
-        # A second tab shares the same recent scan; explicit future re-reads
-        # remain possible without creating a per-browser train of bus traffic.
-        if _source==endpoint and time.monotonic()-_finished<30:
-            return {**status(),'started':False}
-        _source=endpoint
-        _job.update(status='running',completed=0,error=None)
-        threading.Thread(target=_run,args=(endpoint,),daemon=True,name='lte-register-scan').start()
-        return {**status(),'started':True}
+    return scan.start()
+
+
+def stop():
+    return scan.stop()

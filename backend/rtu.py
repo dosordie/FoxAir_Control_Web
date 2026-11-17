@@ -3,16 +3,11 @@
 Intended only for a dedicated standard Modbus bus. Do NOT use this generic
 request/response client on an existing Display/LTE multi-master bus.
 """
-from collections import defaultdict
 from contextlib import contextmanager
 import socket
-import threading
 
 from backend.settings import Endpoint
-
-_bus_guard = threading.Lock()
-_bus_locks: dict[tuple[str, int], threading.Lock] = {}
-
+from backend.bus_locks import endpoint_lock
 
 def crc16(payload: bytes) -> int:
     crc = 0xFFFF
@@ -66,10 +61,7 @@ class RtuReadSession:
 @contextmanager
 def open_rtu(endpoint: Endpoint):
     """Exactly one client/operation at a time; socket always closes on exit."""
-    key = (endpoint.host, endpoint.port)
-    with _bus_guard:
-        lock = _bus_locks.setdefault(key, threading.Lock())
-    with lock:
+    with endpoint_lock(endpoint):
         with socket.create_connection((endpoint.host, endpoint.port), timeout=endpoint.timeout) as sock:
             sock.settimeout(endpoint.timeout)
             yield RtuReadSession(sock, endpoint.slave)

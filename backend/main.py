@@ -1,15 +1,12 @@
-"""FoxAir Web MVP: WarmLink-style dashboard and on-demand standard Modbus reads.
-
-Cloud reading is supported with server-side credentials; writes, live leases,
-display and LTE multi-master protocols are not enabled yet.
-"""
+"""FoxAir HTTP API: authentication, validated actions and transport presentation."""
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, StrictInt, StrictFloat
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.catalog import format_raw, load_registers, search_registers, group_counts
@@ -22,29 +19,31 @@ from backend.cloud_read import CloudError, read_dashboard as cloud_dashboard, ca
 from backend.cloud_dialogs import definitions as cloud_dialog_definitions, refresh as refresh_cloud_dialog
 from backend.cloud_write import write_control, WriteValidationError, WriteConflictError
 from backend.web_update import status as web_update_status, request_update as web_request_update
+from backend.register_definitions import (
+    DASHBOARD_FIELDS, LTE_DASHBOARD_BLOCKS as LTE_READ_BLOCKS,
+    STANDARD_DASHBOARD_BLOCKS as READ_BLOCKS,
+)
+from backend.routes.lte import router as lte_router
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, warmlink_endpoint, warmlink_config, save_warmlink, transport_info, TRANSPORTS
 from backend.warmlink import open_warmlink, write_control as write_warmlink_control
 
-app = FastAPI(title="FoxAir Control Web", version="0.1.0", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    from backend.bus_connection import start, stop
+    from backend.register_scan import stop as stop_scan
+    start()
+    try:
+        yield
+    finally:
+        stop_scan()
+        stop()
 
-DASHBOARD_FIELDS = {
-    "power": 1011,
-    "mode": 2012,
-    "flow": 2077,
-    "tank": 2047,
-    "outdoor": 2048,
-    "return": 2045,
-    "supply": 2046,
-    "target": 1158,
-    "base_target": 1158,
-    "compressor_frequency": 2072,
-    "silent": 1030,
-}
-# FC03 ranges reduce requests; avoid active probing on the Display/LTE bus.
-READ_BLOCKS = ((1011, 1), (1030, 1), (1158, 1), (2012, 3), (2035, 14), (2072, 1), (2077, 1))
-LTE_READ_BLOCKS = ((1011,20),(1158,1),(2012,66))
+
+app = FastAPI(title="FoxAir Control Web", version="0.1.0", docs_url=None, redoc_url=None, lifespan=lifespan)
+
 VALID_TRANSPORTS = set(TRANSPORTS)
+app.include_router(lte_router)
 
 
 def now_iso() -> str:
@@ -97,74 +96,6 @@ class WarmlinkConfigUpdate(CloudAdminAction):
     host: str = Field(min_length=1, max_length=64)
     port: int = Field(ge=1, le=65535)
     enabled: bool
-
-
-@app.on_event("startup")
-def start_bus_manager():
-    from backend.bus_connection import start
-    start()
-
-
-@app.get("/api/warmlink/connection")
-def bus_connection_state():
-    from backend.bus_connection import status, observed_words
-    return {**status(),"observed":observed_words()}
-
-
-def lte_snapshot():
-    from backend.bus_connection import register_values,observed_metrics,status
-    from backend.register_scan import status as scan_status
-    endpoint=warmlink_endpoint()
-    return {'connection':status(),'values':register_values(endpoint),
-            'metrics':observed_metrics(DASHBOARD_FIELDS,endpoint),'scan':scan_status()}
-
-
-@app.get('/api/warmlink/state')
-def lte_state():
-    return lte_snapshot()
-
-
-@app.post('/api/warmlink/scan')
-def lte_scan(request: Request):
-    ensure_secure_origin(request)
-    if request.headers.get('x-foxair-admin')!='1':
-        raise HTTPException(status_code=403,detail='Anwendungs-Header fehlt')
-    from backend.register_scan import start
-    try:return start()
-    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
-
-
-@app.get('/api/warmlink/events')
-async def lte_events(request: Request):
-    import asyncio
-    import json
-    async def events():
-        previous={};previous_state=None;first=True;ticks=0
-        while not await request.is_disconnected():
-            # Reading this cache never connects to the DTU or sends telegrams.
-            snapshot=lte_snapshot()
-            values=snapshot.pop('values')
-            changed={key:value for key,value in values.items() if previous.get(key)!=value}
-            removed=[key for key in previous if key not in values]
-            if first or changed or removed or snapshot!=previous_state:
-                yield 'data: '+json.dumps({**snapshot,'values':changed,'removed':removed,'reset':first},ensure_ascii=False)+'\n\n'
-                previous=values;previous_state=snapshot;first=False;ticks=0
-            elif ticks>=30:
-                yield ': keepalive\n\n'
-                ticks=0
-            ticks+=1
-            await asyncio.sleep(.5)
-    return StreamingResponse(events(),media_type='text/event-stream',
-        headers={'Cache-Control':'no-cache, no-store','X-Accel-Buffering':'no'})
-
-
-@app.post("/api/warmlink/lease")
-def bus_browser_lease(request: Request):
-    ensure_secure_origin(request)
-    if request.headers.get("x-foxair-admin") != "1":
-        raise HTTPException(status_code=403,detail="Lebenszeichen-Header fehlt")
-    from backend.bus_connection import lease
-    return lease()
 
 
 @app.post("/api/warmlink/config")

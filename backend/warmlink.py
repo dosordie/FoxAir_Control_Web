@@ -1,164 +1,30 @@
-"""On-demand LTE RTU stream operations with foreign-master collision detection.
+"""Application-level LTE operations. Protocol and connection ownership are separate."""
 
-There is no physical multi-master arbitration on RS485. We wait for quiet,
-drain existing traffic, serialize our requests, reject competing FC03 reads,
-drain orphan tails only after 800 ms quiet, and close on timeout/ambiguity. Never retry a write. FC16 unsolicited
-blocks and local echoes are distinguished from responses by the stream parser.
-"""
 from contextlib import contextmanager
-import socket
-import threading
 import time
 
-from backend.rtu import with_crc, _bus_guard, _bus_locks
-from backend.warmlink_frames import find_frames, next_frame_pos
-from backend.cloud_state import log_event
+from backend.warmlink_protocol import WarmlinkSession
 
 _last_write = {}
 
 
-class WarmlinkSession:
-    def __init__(self, sock, endpoint):
-        self.sock, self.endpoint = sock, endpoint
-        from backend.bus_connection import select_source
-        select_source(endpoint)
-        self.buffer = bytearray()
-        self.poisoned = False
-        self.last_received = 0.0
-        self.foreign_pending = None
-        self.foreign_since = 0.0
-        self.foreign_ambiguous = False
-        self.inflight_request = None
-
-    def receive(self, timeout):
-        self.sock.settimeout(max(.001, timeout))
-        try:
-            data = self.sock.recv(4096)
-        except socket.timeout:
-            return []
-        if not data:
-            raise ConnectionError("LTE-Verbindung geschlossen")
-        self.last_received = time.monotonic()
-        self.buffer.extend(data)
-        frames = find_frames(self.buffer, 125)
-        if len(self.buffer) > 4096:
-            raise ValueError("LTE-Stream nicht synchronisiert")
-        log_event("lte-rx", f"LTE RX: {len(data)} Bytes, {len(frames)} gültige Frames, {len(self.buffer)} Restbytes")
-        from backend.bus_connection import observe
-        observe(frames,self.endpoint)
-        for f in frames:
-            if f[0] != self.endpoint.slave:continue
-            if f[9] == 'read-request' and f[6]!=self.inflight_request:
-                self.foreign_ambiguous=self.foreign_pending is not None
-                self.foreign_pending=(f[2],f[3])
-                self.foreign_since=time.monotonic()
-                log_event('lte-observed',f'Beobachtete FC3-Anfrage: MAIN {f[2]}, Anzahl {f[3]}')
-            elif f[9]=='read-response' and self.foreign_pending and f[3]==self.foreign_pending[1]*2:
-                if not self.foreign_ambiguous:
-                    if time.monotonic()-self.foreign_since<=self.endpoint.timeout:
-                        from backend.bus_connection import observe_read
-                        words=[int.from_bytes(f[4][i:i+2],'big') for i in range(0,f[3],2)]
-                        observe_read(self.endpoint,self.foreign_pending[0],words)
-                    self.foreign_pending=None
-        return frames
-
-    def quiet(self):
-        if self.poisoned:
-            raise ValueError("LTE-Verbindung nach unklarer Antwort gesperrt")
-        deadline = time.monotonic() + self.endpoint.timeout
-        quiet_since = time.monotonic()
-        foreign_read = self.foreign_pending is not None
-        while time.monotonic() < deadline:
-            frames = self.receive(.1)
-            quiet_since = max(quiet_since, self.last_received)
-            foreign_read = self.foreign_pending is not None
-            if time.monotonic() - quiet_since >= .8:
-                if foreign_read:
-                    raise ValueError("Fremde LTE-Leseabfrage noch unbeantwortet")
-                if self.buffer and next_frame_pos(self.buffer, -1) >= 0:
-                    # Preserve a real incomplete candidate through the full
-                    # deadline. TCP can split a complete RTU frame arbitrarily.
-                    continue
-                if self.buffer:
-                    log_event("lte", "LTE-Restbytes ohne Frameanfang nach Ruhephase verworfen")
-                self.buffer.clear()
-                return
-        raise TimeoutError("LTE-Bus belegt; kein Telegramm gesendet")
-
-    def exchange(self, request, mode, register, count):
-        self.quiet()
-        self.inflight_request=request
-        log_event("lte", f"LTE TX: {mode}, MAIN {register}, Anzahl {count}")
-        self.sock.sendall(request)
-        deadline = time.monotonic() + self.endpoint.timeout
-        try:
-            while time.monotonic() < deadline:
-                for f in self.receive(min(.1, deadline - time.monotonic())):
-                    slave, func, start, length, payload, _, raw, _, _, kind = f
-                    if slave != self.endpoint.slave:
-                        continue
-                    if raw == request:
-                        continue  # local TX echo
-                    if kind == "read-request":
-                        raise ValueError("Konkurrierende DTU-Abfrage; LTE-Antwort nicht eindeutig")
-                    if mode == "read" and kind == "read-response":
-                        if length != count * 2:
-                            raise ValueError("LTE-Antwort gehört nicht zur aktuellen Anfrage")
-                        log_event("lte", f"LTE RX: MAIN {register}, Anzahl {count}, CRC gültig")
-                        return [int.from_bytes(payload[i:i+2], "big") for i in range(0, length, 2)]
-                    if mode == "write" and kind == "write-response" and start == register and length == count:
-                        log_event("lte", f"LTE Schreib-ACK: MAIN {register}")
-                        return []
-            raise TimeoutError("Keine eindeutige LTE-Antwort; kein automatischer Retry")
-        except (OSError, ValueError):
-            log_event("lte-error", "LTE-Antwort unklar oder Timeout; Verbindung gesperrt")
-            self.poisoned = True
-            raise
-        finally:self.inflight_request=None
-
-    def read_holding(self, register, count=1):
-        if not 0 <= register <= 65535 or not 1 <= count <= 125:
-            raise ValueError("Ungültiger LTE-Registerbereich")
-        body = bytes((self.endpoint.slave, 3)) + register.to_bytes(2, "big") + count.to_bytes(2, "big")
-        words=self.exchange(with_crc(body), "read", register, count)
-        from backend.bus_connection import record_read
-        record_read(self.endpoint,register,words)
-        return words
-
-    def write_one(self, register, raw):
-        # Same FC16 single-word format as Desktop build_write_frame.
-        body = bytes((self.endpoint.slave, 16)) + register.to_bytes(2, "big") + b"\x00\x01\x02" + raw.to_bytes(2, "big")
-        self.exchange(with_crc(body), "write", register, 1)
-
-
 @contextmanager
 def open_warmlink(endpoint):
-    from backend.settings import warmlink_config
-    from backend.bus_connection import wanted, operation, start, status
-    mode=warmlink_config().get('connection_mode','on_demand')
-    if mode != "on_demand" or status()["connected"]:
-        start()
-        with operation(endpoint) as client:yield client
-        return
-    key = (endpoint.host, endpoint.port)
-    with _bus_guard:
-        lock = _bus_locks.setdefault(key, threading.Lock())
-    with lock:
-        try:
-            with socket.create_connection(key, timeout=endpoint.timeout) as sock:
-                log_event("lte", "LTE TCP verbunden; bedarfsgesteuerte Sitzung")
-                try:
-                    yield WarmlinkSession(sock, endpoint)
-                finally:
-                    log_event("lte", "LTE TCP-Sitzung beendet")
-        except (OSError, ValueError) as exc:
-            log_event("lte-error", "LTE-Abfrage abgebrochen: " + type(exc).__name__)
-            raise
+    from backend.bus_connection import manager
+
+    with manager.open(endpoint) as client:
+        yield client
 
 
 def write_control(code, requested, expected):
     from backend.settings import warmlink_endpoint
-    from backend.cloud_write import _format_value, _number, WriteValidationError, WriteConflictError
+    from backend.cloud_write import (
+        _format_value,
+        _number,
+        WriteValidationError,
+        WriteConflictError,
+    )
+
     endpoint = warmlink_endpoint()
     if endpoint is None:
         raise WriteValidationError("LTE-Anschluss nicht aktiviert")
@@ -168,25 +34,43 @@ def write_control(code, requested, expected):
     with open_warmlink(endpoint) as client:
         key = (endpoint.host, endpoint.port)
         if time.monotonic() - _last_write.get(key, -1000) < 5:
-            raise WriteConflictError("Nächster LTE-Schreibvorgang frühestens nach fünf Sekunden")
+            raise WriteConflictError(
+                "Nächster LTE-Schreibvorgang frühestens nach fünf Sekunden"
+            )
         previous = _number(client.read_holding(register)[0]) / scale
         if previous != _number(expected):
             raise WriteConflictError("LTE-Wert inzwischen geändert; bitte neu lesen")
         if code == "R02":
             low, high = client.read_holding(1164, 2)
             if not 50 <= low <= high <= 700 or not low <= desired * 10 <= high:
-                raise WriteValidationError("R02 außerhalb der frisch gelesenen LTE-R10/R11-Grenzen")
+                raise WriteValidationError(
+                    "R02 außerhalb der frisch gelesenen LTE-R10/R11-Grenzen"
+                )
         if warmlink_endpoint() != endpoint:
             raise WriteConflictError("LTE-Anschluss während der Prüfung geändert")
         if previous == desired:
-            return {"status": "unchanged", "confirmed": True, "code": code, "value": float(previous)}
+            return {
+                "status": "unchanged",
+                "confirmed": True,
+                "code": code,
+                "value": float(previous),
+            }
         try:
             _last_write[key] = time.monotonic()
             client.write_one(register, int(desired * scale))
-            time.sleep(.8)
+            time.sleep(0.8)
             actual = _number(client.read_holding(register)[0]) / scale
         except (OSError, ValueError):
-            return {"status": "unconfirmed", "confirmed": False, "code": code,
-                    "message": "LTE-Schreibvorgang nicht bestätigt; Zustand neu lesen, nicht erneut senden"}
-        return {"status": "confirmed" if actual == desired else "unconfirmed", "confirmed": actual == desired,
-                "code": code, "value": float(actual), "message": "LTE-Readback ausgewertet"}
+            return {
+                "status": "unconfirmed",
+                "confirmed": False,
+                "code": code,
+                "message": "LTE-Schreibvorgang nicht bestätigt; Zustand neu lesen, nicht erneut senden",
+            }
+        return {
+            "status": "confirmed" if actual == desired else "unconfirmed",
+            "confirmed": actual == desired,
+            "code": code,
+            "value": float(actual),
+            "message": "LTE-Readback ausgewertet",
+        }

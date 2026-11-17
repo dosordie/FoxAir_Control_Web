@@ -1,209 +1,290 @@
-"""One process-owned LTE socket, serialized with active operations.
+"""Lifecycle owner for the LTE socket, browser lease and passive receiver.
 
-Browser ownership uses a 90 second renewable lease; permanent mode is driven
-by private server configuration. Background receiving never sends telegrams.
+Parsing lives in warmlink_protocol; values live in RegisterCache. All clients
+share the public endpoint lock. Background receiving never transmits.
 """
+
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from dataclasses import dataclass
 import socket
 import threading
 import time
 
-_guard=threading.RLock()
-_io=threading.RLock()
-_entry=None
-_lease_until=0.0
-_thread=None
-_state={'connected':False,'mode':'on_demand','error':None,'last_rx':None}
-_words={}
-_readings={}
-_source=None
+from backend.bus_locks import endpoint_lock
+from backend.diagnostics import log_event
+from backend.register_cache import RegisterCache
+from backend.settings import Endpoint, warmlink_config, warmlink_endpoint
+from backend.warmlink_protocol import WarmlinkSession
 
 
-def select_source(endpoint):
-    global _source
-    with _guard:
-        if _source != endpoint:
-            _words.clear()
-            _readings.clear()
-            _state['last_rx']=None
-            _source=endpoint
+@dataclass
+class Connection:
+    endpoint: Endpoint
+    session: WarmlinkSession
 
 
-def record_read(endpoint, start, words):
-    with _guard:
-        if _source != endpoint:return
-        now=time.time()
-        for i,raw in enumerate(words):_readings[start+i]=(raw,now)
+class BusConnectionManager:
+    def __init__(
+        self,
+        *,
+        cache=None,
+        endpoint_provider=warmlink_endpoint,
+        config_provider=warmlink_config,
+        socket_factory=None,
+        session_factory=WarmlinkSession,
+    ):
+        self.cache = cache if cache is not None else RegisterCache()
+        self._endpoint_provider = endpoint_provider
+        self._config_provider = config_provider
+        self._socket_factory = socket_factory or socket.create_connection
+        self._session_factory = session_factory
+        self._state_lock = threading.RLock()
+        self._io = threading.RLock()
+        self._connection: Connection | None = None
+        self._lease_until = 0.0
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._stopped = False
+        self._state = {
+            "connected": False,
+            "mode": "on_demand",
+            "error": None,
+            "last_rx": None,
+        }
 
+    @property
+    def connected(self) -> bool:
+        with self._state_lock:
+            return self._state["connected"]
 
-def public_value(reg):
-    # Each 90-word packet starts with private identification/header words.
-    from backend.catalog import load_registers
-    starts=(1001,1091,1181,1271,1361,1451,2001,2091)
-    if not any(start+10 <= reg < start+90 for start in starts):return False
-    entry=load_registers().get(str(reg))
-    return entry is not None and str(entry.get('type','')).upper() not in ('ASCII','BLOCK')
+    def wanted(self, mode: str, now: float | None = None) -> bool:
+        with self._state_lock:
+            return mode == "permanent" or (
+                mode == "browser"
+                and (time.monotonic() if now is None else now) < self._lease_until
+            )
 
+    def lease(self) -> dict:
+        with self._state_lock:
+            self._lease_until = time.monotonic() + 90
+        self.start()
+        return self.status()
 
-def register_values(endpoint):
-    from backend.catalog import load_registers,format_raw,register_group
-    with _guard:
-        if endpoint is None or _source != endpoint:return {}
-        observed=dict(_words);active=dict(_readings);connected=_state['connected']
-    definitions=load_registers()
-    result={}
-    for reg in observed.keys()|active.keys():
-        if not public_value(reg):continue
-        raw,stamp=observed.get(reg,(None,0));quality='observed'
-        if reg in active and active[reg][1]>=stamp:
-            raw,stamp=active[reg];quality='fresh'
-        if time.time()-stamp>300 or (quality=='observed' and not connected):quality='stale'
-        value,unit=format_raw(raw,definitions[str(reg)])
-        result[str(reg)]={'register':reg,'raw':raw,'value':value,'unit':unit,'quality':quality,
-                          'timestamp':datetime.fromtimestamp(stamp,timezone.utc).isoformat(),'transport':'warmlink_raw',
-                          'code':definitions[str(reg)].get('code') or '',
-                          'name':definitions[str(reg)].get('name') or f'Register {reg}',
-                          'group':register_group(definitions[str(reg)],str(reg))}
-    return result
+    def status(self) -> dict:
+        with self._state_lock:
+            connection = self._connection
+            state = {
+                **self._state,
+                "lease_seconds": max(0, round(self._lease_until - time.monotonic())),
+            }
+        client = connection.session if connection else None
+        pending = client.foreign_pending if client else None
+        state["pending_read"] = (
+            {
+                "register": pending[0],
+                "count": pending[1],
+                "age_seconds": round(time.monotonic() - client.foreign_since, 1),
+                "ambiguous": client.foreign_ambiguous,
+            }
+            if pending
+            else None
+        )
+        return state
 
+    def _new_session(self, endpoint: Endpoint) -> WarmlinkSession:
+        if self.cache.select_source(endpoint):
+            with self._state_lock:
+                self._state["last_rx"] = None
+        sock = self._socket_factory(
+            (endpoint.host, endpoint.port), timeout=endpoint.timeout
+        )
 
-def wanted(mode,now=None):
-    return mode=='permanent' or (mode=='browser' and (time.monotonic() if now is None else now)<_lease_until)
+        def observe(frames):
+            self.cache.observe_frames(endpoint, frames)
+            if frames:
+                with self._state_lock:
+                    self._state["last_rx"] = time.time()
 
-
-def lease():
-    global _lease_until
-    with _guard:_lease_until=time.monotonic()+90
-    start()
-    return status()
-
-
-def status():
-    entry=_entry
-    client=entry[1] if entry else None
-    pending=client.foreign_pending if client else None
-    with _guard:return {**_state,'lease_seconds':max(0,round(_lease_until-time.monotonic())),
-        'pending_read':({'register':pending[0],'count':pending[1],
-                         'age_seconds':round(time.monotonic()-client.foreign_since,1),
-                         'ambiguous':client.foreign_ambiguous} if pending else None)}
-
-
-def observe_read(endpoint,start,words):
-    with _guard:
-        if _source != endpoint:return
-        now=time.time()
-        for i,word in enumerate(words):_words[start+i]=(word,now)
-
-
-def observe(frames, endpoint=None):
-    with _guard:
-        if endpoint is not None and endpoint != _source:return
-        for frame in frames:
-            slave,func,start,count,payload,*_=frame
-            if func==16 and frame[9] == 'word-frame' and slave in (0,99):
-                data=payload[1:]
-                if len(data)!=count*2:continue
-                now=time.time()
-                for i in range(count):_words[start+i]=(int.from_bytes(data[i*2:i*2+2],'big'),now)
-            _state['last_rx']=time.time()
-
-
-def observed_words():
-    with _guard:return {str(reg):{'raw':raw,'age_seconds':round(time.time()-stamp,1),'quality':'observed'} for reg,(raw,stamp) in _words.items() if public_value(reg)}
-
-
-def observed_metrics(fields, endpoint):
-    """Decode only catalog-backed MAIN values from this configured source.
-
-    A broadcast is an observation, never a write acknowledgement. Preserve its
-    arrival timestamp so HTTP refreshes cannot make old bus data fresh again.
-    """
-    values=register_values(endpoint)
-    def metric(reg):
-        row=values.get(str(reg))
-        return {k:row[k] for k in ('value','unit','raw','timestamp','quality')} if row else None
-    result = {name: item for name, reg in fields.items() if (item := metric(reg)) is not None}
-    selected = metric(2014)
-    if selected and selected['quality'] != 'stale' and isinstance(selected['value'], (float, int)) and 5 <= selected['value'] <= 80:
-        result['target'] = {**selected, 'source_code': '2014', 'label': 'Aktueller Wassersollwert'}
-    elif 'target' in result:
-        result['target'].update(source_code='R02', label='Heizungs-Basissollwert')
-    return result
-
-
-def bus_lock(endpoint):
-    from backend.rtu import _bus_guard,_bus_locks
-    with _bus_guard:return _bus_locks.setdefault((endpoint.host,endpoint.port),threading.Lock())
-
-
-def close():
-    global _entry
-    if _entry:
-        _entry[1].sock.close()
-        _entry=None
-    with _guard:_state['connected']=False
-
-
-def connect(endpoint):
-    global _entry
-    from backend.warmlink import WarmlinkSession
-    if _entry and _entry[0]!=endpoint:close()
-    select_source(endpoint)
-    if _entry is None:
-        sock=socket.create_connection((endpoint.host,endpoint.port),timeout=endpoint.timeout)
-        _entry=(endpoint,WarmlinkSession(sock,endpoint))
-    with _guard:_state.update(connected=True,error=None)
-    return _entry[1]
-
-
-@contextmanager
-def operation(endpoint):
-    with _io, bus_lock(endpoint):
-        client=connect(endpoint)
-        try:yield client
-        except (OSError,ValueError):
-            from backend.cloud_state import log_event
-            log_event('lte-error','LTE-Abfrage auf gemeinsamer Verbindung abgebrochen; kein automatischer Retry')
-            close()
+        try:
+            return self._session_factory(
+                sock,
+                endpoint,
+                on_frames=observe,
+                on_read=lambda start, words: self.cache.record(endpoint, start, words),
+                on_observed_read=lambda start, words: self.cache.record(
+                    endpoint, start, words, observed=True
+                ),
+            )
+        except BaseException:
+            sock.close()
             raise
+
+    def _close(self) -> None:
+        """Caller owns _io; never hold the state lock across socket operations."""
+        with self._state_lock:
+            connection, self._connection = self._connection, None
+            self._state["connected"] = False
+        if connection:
+            connection.session.sock.close()
+
+    def _connect(self, endpoint: Endpoint) -> WarmlinkSession:
+        if self._connection and self._connection.endpoint != endpoint:
+            self._close()
+        if self._connection is None:
+            session = self._new_session(endpoint)
+            with self._state_lock:
+                self._connection = Connection(endpoint, session)
+        with self._state_lock:
+            self._state.update(connected=True, error=None)
+        return self._connection.session
+
+    @contextmanager
+    def operation(self, endpoint: Endpoint):
+        """Use the shared socket; discard ambiguous sessions without replay."""
+        with self._io, endpoint_lock(endpoint):
+            if self._stopped:
+                raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
+            client = self._connect(endpoint)
+            try:
+                yield client
+            except (OSError, ValueError):
+                log_event(
+                    "lte-error",
+                    "LTE-Abfrage auf gemeinsamer Verbindung abgebrochen; kein automatischer Retry",
+                )
+                self._close()
+                raise
+            finally:
+                if client.poisoned:
+                    self._close()
+
+    @contextmanager
+    def open(self, endpoint: Endpoint):
+        if self._stopped:
+            raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
+        mode = self._config_provider().get("connection_mode", "on_demand")
+        if mode != "on_demand" or self.connected:
+            self.start()
+            with self.operation(endpoint) as client:
+                yield client
+            return
+        with self._io, endpoint_lock(endpoint):
+            if self._stopped:
+                raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
+            client = self._new_session(endpoint)
+            log_event("lte", "LTE TCP verbunden; bedarfsgesteuerte Sitzung")
+            try:
+                yield client
+            except (OSError, ValueError) as error:
+                log_event(
+                    "lte-error", "LTE-Abfrage abgebrochen: " + type(error).__name__
+                )
+                raise
+            finally:
+                client.sock.close()
+                log_event("lte", "LTE TCP-Sitzung beendet")
+
+    def _receive_once(self) -> float:
+        """Return interruptible backoff; never transmit from the background."""
+        endpoint = self._endpoint_provider()
+        mode = self._config_provider().get("connection_mode", "on_demand")
+        with self._state_lock:
+            self._state["mode"] = mode
+            previous = self._connection.endpoint if self._connection else None
+        target = previous or endpoint
+        if target is None or not self._io.acquire(timeout=0.1):
+            return 0.15
+        lock = endpoint_lock(target)
+        if not lock.acquire(timeout=0.1):
+            self._io.release()
+            return 0.15
+        try:
+            if (
+                not endpoint
+                or not self.wanted(mode)
+                or (previous and endpoint != previous)
+            ):
+                self._close()
+            if endpoint and self.wanted(mode):
+                self._connect(endpoint).receive(0.15)
+            return 0.15
+        except (OSError, ValueError):
+            self._close()
+            with self._state_lock:
+                self._state["error"] = (
+                    "LTE-Verbindung unterbrochen; erneuter Verbindungsversuch"
+                )
+            log_event("lte-error", "Dauerverbindung unterbrochen; kein Schreib-Retry")
+            return 2.0
         finally:
-            if client.poisoned:close()
+            lock.release()
+            self._io.release()
+
+    def _run(self) -> None:
+        try:
+            while not self._stop.is_set():
+                self._stop.wait(self._receive_once())
+        finally:
+            with self._io:
+                self._close()
+
+    def start(self) -> None:
+        with self._state_lock:
+            if self._thread and self._thread.is_alive():
+                return
+            self._stop.clear()
+            self._stopped = False
+            self._thread = threading.Thread(
+                target=self._run, daemon=True, name="lte-connection"
+            )
+            self._thread.start()
+
+    def stop(self, timeout: float = 2.0) -> bool:
+        """Stop receiving; close the socket only after the active operation."""
+        self._stopped = True
+        self._stop.set()
+        with self._state_lock:
+            thread = self._thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout)
+            if thread.is_alive():
+                return False
+        if not self._io.acquire(timeout=timeout):
+            return False
+        try:
+            self._close()
+            return True
+        finally:
+            self._io.release()
 
 
-def run():
-    from backend.settings import warmlink_config,warmlink_endpoint
-    from backend.cloud_state import log_event
-    while True:
-        endpoint=warmlink_endpoint()
-        mode=warmlink_config().get('connection_mode','on_demand')
-        with _guard:_state['mode']=mode
-        previous=_entry[0] if _entry else None
-        target=previous or endpoint
-        if target is not None:
-            lock=bus_lock(target)
-            if not _io.acquire(timeout=.1):
-                time.sleep(.15)
-                continue
-            if lock.acquire(timeout=.1):
-                try:
-                    if not endpoint or not wanted(mode) or (previous and endpoint!=previous):close()
-                    if endpoint and wanted(mode):
-                        client=connect(endpoint)
-                        client.receive(.15)
-                except (OSError,ValueError):
-                    close()
-                    with _guard:_state['error']='LTE-Verbindung unterbrochen; erneuter Verbindungsversuch'
-                    log_event('lte-error','Dauerverbindung unterbrochen; kein Schreib-Retry')
-                    time.sleep(2)
-                finally:lock.release();_io.release()
-            else:_io.release()
-        time.sleep(.15)
+# One owner per application process; facades retain the stable HTTP API.
+manager = BusConnectionManager()
 
 
 def start():
-    global _thread
-    with _guard:
-        if _thread is None or not _thread.is_alive():
-            _thread=threading.Thread(target=run,daemon=True,name='lte-connection')
-            _thread.start()
+    manager.start()
+
+
+def stop():
+    return manager.stop()
+
+
+def status():
+    return manager.status()
+
+
+def lease():
+    return manager.lease()
+
+
+def observed_words():
+    return manager.cache.observed_words()
+
+
+def register_values(endpoint):
+    return manager.cache.values(endpoint, connected=manager.connected)
+
+
+def observed_metrics(fields, endpoint):
+    return manager.cache.metrics(fields, endpoint, connected=manager.connected)
