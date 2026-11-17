@@ -390,7 +390,11 @@ a{color:inherit}
 
 .compressor-fill{height:100%;transition:width .4s ease}.power-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.power-summary>div{background:#f6f7f9;border-radius:12px;padding:12px;text-align:center}.power-summary strong{display:block;font-size:20px}.power-summary small{display:block;color:#777f89;margin-top:5px}@media(prefers-reduced-motion:reduce){.compressor-fill{transition:none}}
 
-.compressor-badge{position:absolute;left:40%;bottom:-30px;width:max-content;border-radius:6px;background:#ffffffd9;color:#34423c;box-shadow:0 2px 8px #0001;overflow:hidden}.compressor-reading{display:block;padding:5px 9px;font-size:14px;font-weight:700;line-height:18px}.compressor-badge .compressor-track{height:5px;margin:0;border-radius:0;background:#c9cdd2}.compressor-badge .compressor-fill{border-radius:0}
+.compressor-badge{position:absolute;left:40%;bottom:-18px;width:max-content;border-radius:6px;background:#ffffffd9;color:#34423c;box-shadow:0 2px 8px #0001;overflow:hidden}.compressor-reading{display:block;padding:5px 9px;font-size:14px;font-weight:700;line-height:18px}.compressor-badge .compressor-track{height:5px;margin:0;border-radius:0;background:#c9cdd2}.compressor-badge .compressor-fill{border-radius:0}
 .parameter-description{white-space:pre-line;line-height:1.65;overflow-wrap:anywhere}
 
 .parameter-description-title{font-size:14px;margin:22px 0 8px}
+
+.unit.illustrated-unit:before{content:none}
+
+.special-control-scroll{min-height:0;overflow:auto;padding:4px 8px 16px}.special-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.special-control-card{min-width:0;padding:18px;border:1px solid #e7eaee;border-radius:16px;background:#fafbfc}.special-control-card h3{font-size:15px;margin:10px 0}.special-current{font-size:24px;font-weight:700;margin:12px 0}.special-current small{font-size:13px}.special-control-card details{font-size:12px;color:#68717c}.special-control-card .cloud-write-panel{padding:12px;margin-top:14px;background:#fff}.special-control-card .settings-input{width:100%;min-width:0}.special-control-card .main-action{width:100%;font-size:12px}.curve-panel{background:#f8fafc;border:1px solid #e8edf1;border-radius:16px;padding:14px;margin:8px 0 18px}.curve-panel h3{margin:0}.curve-panel p{font-size:13px;color:#68717c}.curve-panel svg{width:100%;max-height:280px;font:12px sans-serif;fill:#66717f}@media(max-width:600px){.special-card-grid{grid-template-columns:1fr}.special-control-scroll{padding:4px 1px 12px}}

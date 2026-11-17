@@ -16,14 +16,17 @@ import ConnectionSettingsDialog from './components/ConnectionSettingsDialog.vue'
 import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
+import SpecialControls from './components/SpecialControls.vue'
 import type { Page } from './types/navigation'
 import { useRegisterFavorites } from './composables/useRegisterFavorites'
 import { useRegisterCatalog } from './composables/useRegisterCatalog'
 import { useLteConnection } from './composables/useLteConnection'
+import { useBrowserConnection } from './composables/useBrowserConnection'
 import { api, writeValueText } from './api'
 import { fanIsRunning } from './telemetry'
 import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
+const { browserOnline } = useBrowserConnection()
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
 const storedId = window.localStorage.getItem('foxair.lastTransport') as TransportId
 const selectedTransport = ref<TransportId>(validIds.includes(storedId) ? storedId : 'cloud')
@@ -147,7 +150,7 @@ function operationValueLabel(code:FirstWriteCode){
 }
 function canWrite(code: FirstWriteCode): boolean {
   const source = writeSource(code)
-  return secureAdminContext && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
+  return browserOnline.value && secureAdminContext && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
     !writeBusy.value && !writeReading.value && !!source && source.value !== null && ['fresh', 'cached'].includes(source.quality)
 }
 async function submitCloudWrite(code: FirstWriteCode) {
@@ -465,13 +468,15 @@ async function refreshSelectedSpecial() {
       const codes = new Set(selectedSpecial.value?.codes || [])
       const rows = cloudRows.value.filter(row => codes.has(row.code) && row.register != null && row.register <= 65535 && row.confidence === 'confirmed')
       if (!rows.length) { specialMessage.value = 'Keine bestätigten lokalen Register für diesen Dialog.'; return }
-      const fresh: CloudRow[] = []
-      for (const row of rows) {
-        const result = await api.read(row.register!, transport)
-        if (selectedTransport.value !== transport || specialDialog.value !== id) return
-        fresh.push({...row, value:result.value, unit:result.unit, timestamp:result.timestamp, quality:result.quality, display_value:null})
-        specialLocalRows.value = [...fresh]
-      }
+      const result = await api.refreshParameters(transport, rows.map(row=>row.register!))
+      if (selectedTransport.value !== transport || specialDialog.value !== id) return
+      sharedValues.value = result.values
+      if (transport === 'warmlink_raw') await refreshSnapshot()
+      const fresh = rows.map(row=>{
+        const value = result.values[String(row.register)]
+        return value ? {...row,value:value.value,unit:value.unit,timestamp:value.timestamp,quality:value.quality,display_value:value.display_value || null} : row
+      })
+      specialLocalRows.value = fresh
       specialMessage.value = fresh.length + ' Werte über ' + transportLabel.value + ' aktualisiert'
       return
     }
@@ -595,6 +600,7 @@ onBeforeUnmount(() => {
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
     <main>
+      <aside v-if="!browserOnline" class="notice" role="status">Offline – die Oberfläche ist verfügbar. Messwerte und Änderungen benötigen eine Verbindung zum Server.</aside>
       <template v-if="page === 'home'">
         <section class="heat-hero" :class="{ 'heat-hero-off': powerText === 'Aus' }">
           <div class="room-illustration" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -835,7 +841,7 @@ onBeforeUnmount(() => {
               <p class="description parameter-description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
+              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated && browserOnline" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </section>
@@ -873,8 +879,8 @@ onBeforeUnmount(() => {
           <p class="section-hint">Livepoll mit app_heartbeat=23205 und nachfolgendem Datenabruf. Kein regelmäßiges Polling in inaktiven Tabs.</p>
         </section>
 
-        <CloudInsights mode="device" :admin="adminAuthenticated&&secureAdminContext" />
-        <UpdatePanel :admin="adminAuthenticated" :secure="secureAdminContext" />
+        <CloudInsights mode="device" :admin="adminAuthenticated&&secureAdminContext&&browserOnline" />
+        <UpdatePanel :admin="adminAuthenticated && browserOnline" :secure="secureAdminContext" />
         <section class="settings-panel panel">
           <div class="section-head">
             <div><span class="section-caption">DIAGNOSE</span><h2>Verbindungsprotokoll</h2></div>
@@ -897,7 +903,7 @@ onBeforeUnmount(() => {
     <dialog ref="historyDialogElement" class="connection-dialog panel" aria-labelledby="history-dialog-title" @close="historyOpen=false" @cancel="historyOpen=false">
       <div class="connection-dialog-content">
         <header class="connection-dialog-header"><div><span class="section-caption">VERLAUF</span><h2 id="history-dialog-title">Verlauf &amp; Diagramme</h2></div><button class="outlined-action" aria-label="Verlauf schließen" @click="historyOpen=false">Schließen</button></header>
-        <CloudInsights v-if="historyOpen" mode="history" :admin="adminAuthenticated&&secureAdminContext" />
+        <CloudInsights v-if="historyOpen" mode="history" :admin="adminAuthenticated&&secureAdminContext&&browserOnline" />
       </div>
     </dialog>
     <ConnectionSettingsDialog v-model="connectionSettingsOpen" v-model:admin-password="cloudAdminPassword"
@@ -929,9 +935,9 @@ onBeforeUnmount(() => {
             <p>{{ selectedSpecial?.description }}</p></div>
           <button type="button" class="outlined-action" aria-label="Dialog schließen" @click="specialDialog = null">Schließen</button>
         </div>
-        <TimerEditor v-if="specialDialog==='timer'||specialDialog==='silent'" :key="specialDialog" :transport="selectedTransport" :admin="adminAuthenticated&&secureAdminContext" :silent="specialDialog==='silent'" />
+        <TimerEditor v-if="specialDialog==='timer'||specialDialog==='silent'" :key="specialDialog" :transport="selectedTransport" :admin="adminAuthenticated&&secureAdminContext&&browserOnline" :silent="specialDialog==='silent'" />
         <template v-else>
-        <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Nur die WP-Betriebsart und R02 sind für Admins schreibbar. SG-/AT- und Störungsfunktionen bleiben lesend.</p>
+        <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Bekannte Einstellungen sind für Administratoren bearbeitbar. Jeder Wert wird vor dem Schreiben geprüft und danach zurückgelesen. Störungswerte bleiben lesend.</p>
         <div class="special-toolbar">
           <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
@@ -941,31 +947,8 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
-        <section v-if="selectedSpecial?.id === 'wp'" class="cloud-write-panel">
-          <h3>Steuerung (Admin)</h3>
-          <p class="section-hint">Nur Mode und R02 sind freigegeben. Werteprüfung vor dem Senden und Readback über die ausgewählte Verbindung danach.</p>
-          <div class="cloud-write-grid">
-            <div>
-              <label class="field-label">Betriebsart (Mode)</label>
-              <button type="button" class="outlined-action" :disabled="writeReading || writeBusy" @click="refreshWriteSources">Ausgangswerte neu lesen</button>
-              <select class="settings-input" v-model="writeDrafts.Mode">
-                <option value="0">Warmwasser</option><option value="1">Heizen</option>
-                <option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option>
-                <option value="4">Warmwasser + Kühlen</option>
-              </select>
-              <button type="button" class="outlined-action" :disabled="!canWrite('Mode')" @click="submitCloudWrite('Mode')">Mode schreiben</button>
-            </div>
-            <div>
-              <label class="field-label">Heizungs-Basissollwert R02 (°C)</label>
-              <input type="number" step="0.1" min="5" max="70" class="settings-input" v-model="writeDrafts.R02" />
-              <button type="button" class="outlined-action" :disabled="!canWrite('R02')" @click="submitCloudWrite('R02')">Sollwert schreiben</button>
-            </div>
-          </div>
-          <p v-if="!adminAuthenticated" class="section-hint">Schreiben erfordert die Admin-Anmeldung oben rechts.</p>
-          <p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
-          <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p>
-        </section>
-        <div class="special-rows">
+        <SpecialControls v-if="selectedSpecial && ['at','sg','wp'].includes(selectedSpecial.id)" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
+        <div v-if="!selectedSpecial || !['at','sg','wp'].includes(selectedSpecial.id)" class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
             :class="{ 'is-stale': entry.quality === 'stale' }">
             <span class="register-code">{{ entry.register ?? entry.code }}</span>

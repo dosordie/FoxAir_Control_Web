@@ -30,6 +30,14 @@ class CloudFirstWriteTests(unittest.TestCase):
         for p in reversed(self.patches):
             p.stop()
 
+    def test_curve_point_cloud_write_obeys_fresh_target_limits(self):
+        grant={"code":"CP1-1","register":1250,"write_allowed":True,"write_code":"CP1-1"}
+        self.reader.read_codes.return_value={"CP1-1":{"value":"40"},"R10":{"value":"20"},"R11":{"value":"55"},"H36":{"value":"2"}}
+        with patch("backend.cloud_state.catalog",return_value=[grant]):
+            with self.assertRaisesRegex(WriteValidationError,"R10/R11"):
+                cloud_write.write_control("CP1-1","60","40")
+        self.reader._post.assert_not_called()
+
     def test_mode_writes_once_with_readback(self):
         self.reader.read_codes.side_effect = [
             {"Mode": {"value": "0"}},

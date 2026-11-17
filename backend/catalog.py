@@ -70,7 +70,10 @@ def register_description(entry: dict) -> str:
         for source in (entry, knowledge):
             text = str(source.get(field) or "").strip()
             if text and text not in seen:
-                parts.append(f"{label}: {text}" if label else text)
+                heading = label
+                if field == "description" and source is knowledge and "Alternative/ältere" in str(entry.get("description")):
+                    heading = "Ältere Metadaten"
+                parts.append(f"{heading}: {text}" if heading else text)
                 seen.add(text)
     return "\n\n".join(parts)
 

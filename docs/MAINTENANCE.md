@@ -123,3 +123,23 @@ Die kompakte Hz-Anzeige nutzt Frequenz/90 als Balkenanteil (28 Hz rund 31 %, 0 H
 Dies ist ein Frequenzanteil, keine elektrische oder thermische Leistungsangabe. Der Lüfterstatus
 verwendet gültige Drehzahlen, ersatzweise Kompressor-/Ein-Aus-Werte, statt den Gesamtstatus
 aller Messwerte als Voraussetzung zu verwenden.
+
+
+## PWA und Spezialdialoge
+
+Der Produktionsbuild erzeugt `sw.js` mit einer aus den statischen Dateien abgeleiteten
+Cache-Version. Nur die öffentliche Oberfläche wird gespeichert. API-Abfragen, fremde
+Origins und alle POSTs werden nie durch den Service Worker beantwortet oder wiederholt.
+Eine Offline-Navigation zeigt die Oberfläche mit Offlinehinweis; die API blockiert POSTs
+schon vor dem Senden, wenn der Browser ausdrücklich offline ist. Neue Worker erzwingen
+keinen Reload während einer Bearbeitung. Beim Aktivieren werden nur alte FoxAir-Shellcaches
+entfernt. Die Installation erfolgt ausschließlich im sicheren Kontext (HTTPS/Loopback).
+Ein physisches iPhone/Safari-Homescreen bleibt eine gesonderte Geräteabnahme.
+
+`SpecialControls.vue` stellt SG, AT und WP als bearbeitbare Karten dar. Es verwendet den
+bestehenden Parametereditor und dessen individuelle Preflight-/Readback-Prüfung; es sendet
+keine implizite Folge mehrerer Parameter. Die AT-Grafik zeigt gespeicherte Werte mit R10/R11-
+Begrenzung. Der 0-°C-Stützpunkt ist 1235, nicht ein angenommener CP1-4-Code. Die sieben
+Stützstellen stammen aus `core/at_compensation.py` des festgelegten Desktop-Standes.
+Änderungen an Kurvenpunkten werden auch serverseitig gegen aktuelle R10/R11 geprüft.
+Virtueller SG-Eingang 8801 bleibt dem bestätigten direkten Standard-Modbus vorbehalten.

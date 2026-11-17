@@ -143,6 +143,29 @@ class ParameterWriteTests(unittest.TestCase):
         self.assertTrue(result["confirmed"])
         client.write_one.assert_called_once_with(1105, 25)
 
+    def test_curve_point_checks_current_target_limits_before_any_write(self):
+        endpoint = Endpoint("192.168.1.50", 2001, timeout=5)
+        client = Mock()
+        client.read_holding.side_effect = [[400], [200, 550]]
+        with (
+            patch("backend.settings.warmlink_endpoint", return_value=endpoint),
+            patch(
+                "backend.warmlink.open_warmlink", side_effect=lambda _: self.bus(client)
+            ),
+            patch("backend.parameter_write._last_write", {}),
+        ):
+            with self.assertRaisesRegex(WriteValidationError, "R10/R11"):
+                write(1250, "warmlink_raw", "60", "400")
+        client.write_one.assert_not_called()
+
+    def test_virtual_sg_input_is_not_forwarded_to_lte(self):
+        with patch("backend.warmlink.open_warmlink") as connection:
+            with self.assertRaisesRegex(
+                WriteValidationError, "direkten Standard-Modbus"
+            ):
+                write(8801, "warmlink_raw", "2", "1")
+        connection.assert_not_called()
+
     def test_changed_baseline_never_writes(self):
         client = Mock()
         client.read_holding.return_value = [11]

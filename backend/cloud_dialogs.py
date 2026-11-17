@@ -47,10 +47,13 @@ def definitions() -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for slug, name, description, candidate_codes in _BASE_DIALOGS:
         rows = [known[code] for code in candidate_codes if code in known]
+        from backend.register_definitions import AT_CURVE_POINTS
         result.append({
+            "curve_points": [{"outdoor":at,"register":register} for at,register in AT_CURVE_POINTS] if slug == "at" else [],
             "id": slug, "title": name, "description": description,
             "codes": [row["code"] for row in rows],
-            "read_only": slug not in ("wp", "timer", "silent"), "count": len(rows),
+            "read_only": slug == "fault", "count": len(rows),
+            "registers": list(dict.fromkeys(row["register"] for row in rows if isinstance(row.get("register"),int) and row["register"] <= 65535 and (row.get("confidence") == "confirmed" or row.get("write_allowed")))),
         })
     return result
 

@@ -50,6 +50,8 @@ export type UpdateStatus = {
   last_result: string | null
 }
 export type SpecialDialog = {
+  registers?: number[]
+  curve_points?: {outdoor:number;register:number}[]
   id: string
   title: string
   description: string
@@ -129,6 +131,7 @@ export function writeValueText(value: string | number): string {
 }
 
 async function post<T>(path: string, body: object): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Offline: Anfrage nicht gesendet. Bitte zuerst die Verbindung wiederherstellen.')
   const response = await fetch(path, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-FoxAir-Admin': '1' },
     body: JSON.stringify(body), cache: 'no-store', credentials: 'same-origin'

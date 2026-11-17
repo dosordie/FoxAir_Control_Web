@@ -37,3 +37,20 @@ test('GET and POST both format structured failures', async () => {
     await assert.rejects(api.cloudAccount(''), /Ungültiger Wert/)
   } finally { globalThis.fetch = original }
 })
+
+
+test('offline POSTs fail before sending and are never queued', async () => {
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'navigator')
+  const originalFetch=globalThis.fetch
+  let calls=0
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:false}})
+  globalThis.fetch=async()=>{calls++;return new Response('{}')}
+  try {
+    await assert.rejects(api.cloudWrite('R02','35.5','35'),/Offline/)
+    assert.equal(calls,0)
+  } finally {
+    globalThis.fetch=originalFetch
+    if(descriptor)Object.defineProperty(globalThis,'navigator',descriptor)
+    else delete globalThis.navigator
+  }
+})

@@ -1,5 +1,7 @@
 name: Propose upstream register snapshot
 on:
+  schedule:
+    - cron: '17 6 * * 1'
   workflow_dispatch:
     inputs:
       upstream_ref:
@@ -28,6 +30,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Resolve scheduled proposal revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$UPSTREAM_REF" ]]; then
+            UPSTREAM_REF="$(gh api repos/dosordie/FoxAir_Control/commits/main --jq .sha)"
+          fi
+          [[ "$UPSTREAM_REF" =~ ^[0-9a-f]{40}$ ]]
+          printf 'UPSTREAM_REF=%s\n' "$UPSTREAM_REF" >> "$GITHUB_ENV"
       - name: Download and validate complete snapshot
         run: |
           python scripts/sync_registers.py --ref "$UPSTREAM_REF"
@@ -42,6 +53,10 @@ jobs:
             exit 0
           fi
           branch="sync/registers-$UPSTREAM_REF"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Review branch for this exact revision already exists."
+            exit 0
+          fi
           git switch -c "$branch"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'

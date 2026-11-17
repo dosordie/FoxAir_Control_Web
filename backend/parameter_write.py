@@ -194,6 +194,18 @@ def write(register, transport, requested, expected, *, expected_transport=None):
         register, entry, expected, expected_transport, transport
     )
     word = encode(requested, entry)
+    if register == 1234 and not -20 <= _number(requested) <= 20:
+        raise WriteValidationError("AT-Steigung muss zwischen -20 und 20 liegen")
+    if register == 1235 and not -100 <= _number(requested) <= 100:
+        raise WriteValidationError("AT-Offset muss zwischen -100 und 100 °C liegen")
+    if register in (1338, 1339, 1340) and not -50 <= _number(requested) <= 25:
+        raise WriteValidationError(
+            "SG-Temperaturänderung muss zwischen -50 und 25 °C liegen"
+        )
+    if register == 8801 and transport != "standard_modbus":
+        raise WriteValidationError(
+            "Virtueller SG-Eingang ist nur am direkten Standard-Modbus bestätigt"
+        )
     if (
         entry.get("interface") == "direct_user_modbus"
         and transport != "standard_modbus"
@@ -264,6 +276,15 @@ def write(register, transport, requested, expected, *, expected_transport=None):
             if mode not in (3, 7) or word not in range(1, 4 if mode == 7 else 5):
                 raise WriteValidationError(
                     "SG-Eingang passt nicht zur aktuellen SG01-Konfiguration"
+                )
+        curve_point = register in (1250, 1251, 1252, 1253, 1254, 1255)
+        if register == 1235 and previous != word:
+            curve_point = client.read_holding(1236, 1)[0] == 2
+        if curve_point and previous != word:
+            low, high = client.read_holding(1164, 2)
+            if not 50 <= low <= high <= 700 or not low <= word <= high:
+                raise WriteValidationError(
+                    "AT-Kurvenpunkt außerhalb der aktuellen R10/R11-Grenzen"
                 )
         if register in (1157, 1158, 1159):
             first = {1157: 1176, 1158: 1164, 1159: 1162}[register]

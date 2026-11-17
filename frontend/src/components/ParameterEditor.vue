@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch, useId } from 'vue'
 import { api, type Register, type RegisterValue, type TransportId } from '../api'
 
 const props = defineProps<{
@@ -9,6 +9,7 @@ const props = defineProps<{
   value?: RegisterValue | null
 }>()
 const emit = defineEmits<{ updated: []; read: [RegisterValue] }>()
+const fieldId = 'parameter-draft-' + useId()
 const baseline = ref<RegisterValue | null>(null)
 const draft = ref<string | number>('')
 const busy = ref(false)
@@ -145,10 +146,10 @@ async function submit() {
       Wert aktualisieren
     </button>
     <template v-if="baseline">
-      <label class="field-label" for="parameter-draft">Neuer Wert {{ register.unit }}</label>
+      <label class="field-label" :for="fieldId">Neuer Wert {{ register.unit }}</label>
       <select
         v-if="Object.keys(register.value_map).length"
-        id="parameter-draft"
+        :id="fieldId"
         class="settings-input"
         v-model="draft"
         :disabled="busy"
@@ -160,7 +161,7 @@ async function submit() {
       </select>
       <input
         v-else
-        id="parameter-draft"
+        :id="fieldId"
         class="settings-input"
         v-model="draft"
         :disabled="busy"

@@ -10,7 +10,7 @@ class CloudDialogTests(unittest.TestCase):
     def setUp(self):
         cloud_dialogs._last_read.clear()
 
-    def test_defs_include_all_special_groups_and_are_read_only(self):
+    def test_defs_include_editable_controls_and_read_only_faults(self):
         catalog = [
             {"code": "SG01"}, {"code": "SG Status"}, {"code": "H36"},
             {"code": "CP1-1"}, {"code": "TimerMuteOnHour"},
@@ -20,9 +20,12 @@ class CloudDialogTests(unittest.TestCase):
             dialogs = cloud_dialogs.definitions()
         self.assertEqual({row["id"] for row in dialogs},
                          {"wp", "at", "sg", "silent", "timer", "fault"})
-        self.assertEqual({row["id"] for row in dialogs if row["read_only"]}, {"sg", "at", "fault"})
+        self.assertEqual({row["id"] for row in dialogs if row["read_only"]}, {"fault"})
         sg = next(row for row in dialogs if row["id"] == "sg")
         self.assertEqual(sg["codes"], ["SG01", "SG Status"])
+        at = next(row for row in dialogs if row["id"] == "at")
+        self.assertEqual([point["register"] for point in at["curve_points"]],[1250,1251,1252,1235,1253,1254,1255])
+        self.assertNotIn(1250,at["registers"])  # Missing mapping grants are not guessed.
 
     def test_cannot_trigger_unknown_dynamic_code(self):
         with patch("backend.cloud_dialogs.catalog", return_value=[]):

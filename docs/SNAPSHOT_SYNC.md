@@ -25,3 +25,13 @@ Eine vollständige Ablösung aller bestätigten Backend-Mappings durch einen
 gemeinsamen generierten Resolver sowie der in Issue #2 genannte Abgleich der
 Lizenzkennzeichnungen bleiben offen. Die Dateien werden weiterhin aus dem
 bereits verwendeten Stand übernommen; keine Lizenzkennzeichnung wird geändert.
+
+
+Der Review-Ablauf prüft zusätzlich montags automatisch den aktuellen Upstream-Commit.
+Er löst zuerst dessen vollständige SHA auf und verwendet danach ausschließlich diese
+Revision. Pro Revision wird höchstens ein Review-Branch erzeugt; vorhandene Vorschläge
+werden nicht überschrieben. Der Zeitplan installiert und merged weiterhin nichts.
+
+Lizenzabgleich am eingebundenen Stand: `LICENSE` enthält MIT, `README.md` verlinkt dieselbe
+Datei mit dem Text GPLv3. Dieser Widerspruch ist tatsächlich noch vorhanden und wird durch
+keine Änderung im Web-Repository als geklärt ausgegeben.

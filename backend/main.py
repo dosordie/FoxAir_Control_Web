@@ -522,7 +522,7 @@ if FRONTEND_DIST.is_dir():
             raise HTTPException(status_code=404)
         file = (FRONTEND_DIST / path).resolve()
         if path and file.is_file() and file.is_relative_to(FRONTEND_DIST.resolve()):
-            return FileResponse(file)
+            return FileResponse(file, headers={"Cache-Control":"no-cache"} if path == "sw.js" else None)
         return FileResponse(FRONTEND_DIST / "index.html")
 else:
     @app.get("/", include_in_schema=False)

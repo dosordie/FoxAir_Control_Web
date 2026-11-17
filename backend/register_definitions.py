@@ -32,3 +32,15 @@ DASHBOARD_FIELDS = {
     "thermal_power": 2059,
     "cop": 2060,
 }
+
+# core/at_compensation.py in the reviewed desktop source. The 0 °C point
+# shares MAIN 1235 with the linear offset; CP1-4 is not that point.
+AT_CURVE_POINTS = (
+    (-20, 1250),
+    (-10, 1251),
+    (-5, 1252),
+    (0, 1235),
+    (5, 1253),
+    (10, 1254),
+    (20, 1255),
+)

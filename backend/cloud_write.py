@@ -83,6 +83,9 @@ def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
         client = _reader()
         limits = {"R01": ("R36", "R37"), "R02": ("R10", "R11"), "R03": ("R08", "R09")}
         codes = [code, *limits[code]] if code in limits else [code]
+        curve_point = code in ("CP1-1","CP1-2","CP1-3","CP1-5","CP1-6","CP1-7")
+        if curve_point or code == "compensate_offset":
+            codes = list(dict.fromkeys([*codes,"H36","R10","R11"]))
         preflight = client.read_codes(codes)
         current = preflight.get(code)
         if not current:
@@ -95,6 +98,14 @@ def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
             minimum, maximum = _limit(preflight.get(low), low), _limit(preflight.get(high), high)
             if minimum > maximum or not minimum <= desired <= maximum:
                 raise WriteValidationError(f"{code}: außerhalb der aktuellen {low}/{high}-Grenzen")
+        if code == "compensate_offset" and desired != previous:
+            if "H36" not in preflight:
+                raise WriteValidationError("AT-Kurvenmodus nicht lesbar")
+            curve_point = _number(preflight["H36"]["value"]) == 2
+        if curve_point and desired != previous:
+            low, high = _limit(preflight.get("R10"),"R10"), _limit(preflight.get("R11"),"R11")
+            if low > high or not low <= desired <= high:
+                raise WriteValidationError("AT-Kurvenpunkt außerhalb der aktuellen R10/R11-Grenzen")
         if credentials() != account:
             raise WriteConflictError("Cloud-Konto während der Prüfung gewechselt")
         if desired == previous:
