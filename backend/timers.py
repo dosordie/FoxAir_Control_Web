@@ -13,7 +13,8 @@ from backend.cloud_config import credentials
 from backend.cloud_read import _reader, _cloud_lock, CloudError
 from backend.cloud_state import merge, log_event
 from backend.cloud_write import WriteValidationError, WriteConflictError
-from backend.settings import warmlink_endpoint
+from backend.settings import warmlink_endpoint, standard_endpoint
+from backend.rtu import open_rtu
 from backend.warmlink import open_warmlink
 
 SILENT = dict(zip(range(1244, 1250), ('Timer_Mute_On_En', 'TimerMuteOnHour', 'TimerMuteOnMinute', 'Timer_Mute_Off_En', 'TimerMuteOffHour', 'TimerMuteOffMinute')))
@@ -122,12 +123,17 @@ def connection(transport):
             raise WriteValidationError('LTE-Anschluss nicht eingerichtet')
         with open_warmlink(endpoint) as client:
             yield client, endpoint
+    elif transport == 'standard_modbus':
+        endpoint = standard_endpoint()
+        if endpoint is None: raise WriteValidationError('Standard-Modbus nicht eingerichtet')
+        with open_rtu(endpoint) as client:
+            yield client, endpoint
     else:
-        raise WriteValidationError('Timer derzeit nur über Cloud oder LTE verfügbar')
+        raise WriteValidationError('Verbindung unterstützt keine Timer')
 
 
 def check_connection(transport, identity):
-    if (credentials() if transport == 'cloud' else warmlink_endpoint()) != identity:
+    if (credentials() if transport == 'cloud' else standard_endpoint() if transport == 'standard_modbus' else warmlink_endpoint()) != identity:
         raise WriteConflictError('Verbindung während der Timerprüfung geändert')
 
 

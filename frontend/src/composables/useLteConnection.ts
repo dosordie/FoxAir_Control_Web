@@ -66,7 +66,7 @@ export function useLteConnection(
         shown.quality = 'stale'
     }
     const fresh = Object.values(current.metrics).filter(
-      (item) => item && item.quality !== 'stale',
+      (item) => item && ['fresh', 'observed'].includes(item.quality),
     ).length
     current.status =
       fresh === Object.keys(current.metrics).length ? 'online' : fresh ? 'partial' : 'unavailable'

@@ -25,7 +25,8 @@ def load_registers() -> dict[str, dict[str, Any]]:
         knowledge = json.loads(extra.read_text(encoding="utf-8"))
         for number, item in knowledge.items():
             if number in result and isinstance(item, dict):
-                result[number].setdefault("description", item.get("description", ""))
+                if not result[number].get("description"):
+                    result[number]["description"] = item.get("description", "")
     return result
 
 
@@ -68,7 +69,7 @@ def public_register(number: str, entry: dict) -> dict:
         "type": entry.get("type") or "RAW",
         "mode": entry.get("mode") or "read",
         "value_map": entry.get("value_map") if isinstance(entry.get("value_map"), dict) else {},
-        "write_available": False,  # Write availability is controlled per code in API.
+        "write_available": entry.get("mode") == "r/w" and 0 <= int(number) <= 65535,
     }
 
 

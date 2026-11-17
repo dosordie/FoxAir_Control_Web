@@ -27,10 +27,14 @@ from cloud.warmlink_codes import (
 )
 from cloud.warmlink_ios308_catalog import WARMLINK_IOS308_CODE_SET
 from cloud.register_resolver import resolve_cloud_projection_register
+from cloud.cloud_write_helpers import cloud_code_for_register, cloud_code_is_write_candidate
+from cloud.warmlink_codes import cloud_hint
+from cloud.metadata import resolve_cloud_range
 
 registers_path = upstream / "data" / "foxair_phnix_registers.json"
 registers = json.loads(registers_path.read_text(encoding="utf-8"))
 rows = []
+write_codes = {}
 for code in WARMLINK_644_DISCOVERY_CODES:
     meta = merged_cloud_metadata(code)
     reg = resolve_cloud_projection_register(code, meta, registers)
@@ -47,7 +51,16 @@ for code in WARMLINK_644_DISCOVERY_CODES:
         cloud_type = "live"
     confidence = str(meta.get("confidence") or "")
     unit = str(meta.get("unit") or local.get("unit") or "")
+    hint = cloud_hint(code)
+    bounds = resolve_cloud_range(code, hint, {})
+    if reg is not None and reg not in write_codes:
+        write_codes[reg] = cloud_code_for_register(reg, require_write_allowed=True)
     rows.append({
+        "write_allowed": cloud_code_is_write_candidate(code, hint),
+        "write_code": write_codes.get(reg),
+        "write_values": hint.get("write_values") or {},
+        "write_min": bounds.minimum if bounds.confirmed and bounds.minimum != "" else None,
+        "write_max": bounds.maximum if bounds.confirmed and bounds.maximum != "" else None,
         "code": code,
         "name": name or code,
         "register": reg,

@@ -77,6 +77,37 @@ class ConnectionTests(unittest.TestCase):
         create.return_value.close.assert_called_once()
         self.assertTrue(owner.stop())
 
+    def test_custom_browser_lease_and_idle_session_expire(self):
+        endpoint = Endpoint("private", 2001)
+        config = {
+            "connection_mode": "on_demand",
+            "idle_timeout_seconds": 45,
+            "browser_timeout_seconds": 120,
+        }
+        owner = bus.BusConnectionManager(
+            config_provider=lambda: config, socket_factory=Mock()
+        )
+        with (
+            patch.object(owner, "start"),
+            patch("backend.bus_connection.time.monotonic", return_value=100),
+        ):
+            owner.lease()
+            with owner.open(endpoint):
+                pass
+        self.assertTrue(owner.wanted("browser", 219))
+        self.assertFalse(owner.wanted("browser", 220))
+        self.assertTrue(owner.wanted("on_demand", 144))
+        self.assertFalse(owner.wanted("on_demand", 145))
+        with (
+            patch.object(owner, "start"),
+            patch("backend.bus_connection.time.monotonic", return_value=130),
+        ):
+            with owner.open(endpoint):
+                pass
+        self.assertTrue(owner.wanted("on_demand", 174))
+        self.assertFalse(owner.wanted("on_demand", 175))
+        owner.stop()
+
     def test_observed_block_is_distinct_from_write_intent(self):
         from backend.register_cache import RegisterCache
 

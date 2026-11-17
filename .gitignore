@@ -19,3 +19,6 @@ config.local.json
 .vscode/
 .idea/
 .DS_Store
+
+# Exported from the pinned desktop catalog during CI
+frontend/public/cloud_catalog.json

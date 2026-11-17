@@ -2,7 +2,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { api, type Register, type TransportId } from '../api'
 import type { Page } from '../types/navigation'
 
-/** Catalog navigation has no authority to start Modbus reads or write values. */
+const GROUP_ORDER = ['A', 'H', 'F', 'D', 'E', 'R', 'P', 'G', 'C', 'Z', 'SG', 'T']
+const groupRank = (group: string) => {
+  const rank = GROUP_ORDER.indexOf(group)
+  return rank < 0 ? 99 : rank
+}
+
+/** Load metadata, then ask the server to refresh stale visible values. */
 export function useRegisterCatalog(
   transport: Ref<TransportId>,
   page: Ref<Page>,
@@ -20,9 +26,7 @@ export function useRegisterCatalog(
     registerGroups.value
       .filter((entry) => !['DIAG', 'ENG'].includes(entry.group.toUpperCase()))
       .sort(
-        (a, b) =>
-          Number(a.group.length !== 1) - Number(b.group.length !== 1) ||
-          a.group.localeCompare(b.group, 'de'),
+        (a, b) => groupRank(a.group) - groupRank(b.group) || a.group.localeCompare(b.group, 'de'),
       ),
   )
   let requestNumber = 0
@@ -41,6 +45,27 @@ export function useRegisterCatalog(
         source === 'cloud' ? row : { ...row, cloud: null },
       )
       catalogSize.value = result.catalog_size
+      if (
+        selectedGroup.value &&
+        registers.value.length &&
+        ['cloud', 'warmlink_raw', 'standard_modbus'].includes(source)
+      ) {
+        try {
+          const refreshed = await api.refreshParameters(
+            source,
+            registers.value.map((row) => row.register),
+          )
+          if (disposed || request !== requestNumber || source !== transport.value) return
+          registers.value = registers.value.map((row) => ({
+            ...row,
+            last: refreshed.values[String(row.register)] || row.last,
+          }))
+        } catch (error) {
+          if (!disposed && request === requestNumber)
+            catalogError.value =
+              error instanceof Error ? error.message : 'Gruppe nicht aktualisiert'
+        }
+      }
     } catch (error) {
       if (disposed || request !== requestNumber) return
       catalogError.value =

@@ -230,6 +230,7 @@ class CacheTests(unittest.TestCase):
         with (
             patch("backend.routes.lte.warmlink_endpoint", return_value=None),
             patch.object(bus, "manager", owner),
+            patch("backend.last_values.store.values", return_value={}),
         ):
             self.assertEqual(lte_snapshot()["values"], {})
         create.assert_not_called()

@@ -58,6 +58,20 @@ class RtuReadSession:
         return [int.from_bytes(frame[3 + i:5 + i], "big") for i in range(0, count * 2, 2)]
 
 
+    def write_one(self, register: int, raw: int):
+        if not 0 <= register <= 65535 or not 0 <= raw <= 65535:
+            raise ValueError("Ungültiges Registerwort")
+        body = bytes((self.slave, 16)) + register.to_bytes(2, "big") + b"\x00\x01\x02" + raw.to_bytes(2, "big")
+        self.sock.sendall(with_crc(body))
+        header = read_exact(self.sock, 2)
+        frame = header + read_exact(self.sock, 3 if header[1] & 128 else 6)
+        if crc16(frame[:-2]) != int.from_bytes(frame[-2:], "little"):
+            raise ValueError("CRC-Fehler im Schreib-ACK")
+        expected = bytes((self.slave, 16)) + register.to_bytes(2, "big") + b"\x00\x01"
+        if frame[:-2] != expected:
+            raise ValueError("Modbus-Schreibantwort nicht bestätigt")
+
+
 @contextmanager
 def open_rtu(endpoint: Endpoint):
     """Exactly one client/operation at a time; socket always closes on exit."""

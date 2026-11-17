@@ -1,9 +1,6 @@
-"""Source-backed PHNIX controls: Power, Mode, H22 and R02.
+"""Source-granted PHNIX controls with preflight, limits and readback.
 
-Requires admin session at the API boundary. All mutations use one reviewed
-control endpoint and exactly one attempt, never generic register writes.
-A fresh read-before-write, optimistic expected-value comparison, hardware
-limits for R02, and readback gate protect concurrent UIs and unexpected modes.
+Exactly one control attempt; transport failures never replay a mutation.
 """
 from __future__ import annotations
 
@@ -56,7 +53,8 @@ def _format_value(code: str, requested: Any) -> tuple[Decimal, str]:
         if not Decimal("5") <= number <= Decimal("70"):
             raise WriteValidationError("R02: Wert außerhalb des allgemeinen sicheren Bereichs")
         return number, format(number, "f")
-    raise WriteValidationError("Cloud-Schreibcode nicht freigegeben")
+    from backend.parameter_write import cloud_format
+    return cloud_format(code, requested)
 
 
 def _limit(row: dict[str, Any] | None, name: str) -> Decimal:
@@ -70,8 +68,7 @@ def _limit(row: dict[str, Any] | None, name: str) -> Decimal:
 
 def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
     global _LAST_WRITE
-    # The API's literal code allowlist must not derive from a caller-supplied
-    # register or metadata (never allow arbitrary cloud writes).
+    # Legacy controls or grants exported from the pinned desktop source only.
     desired, wire_value = _format_value(code, requested)
     expected_value = _number(expected)
     account = credentials()
@@ -84,7 +81,8 @@ def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
         if _LAST_WRITE and time.monotonic() - _LAST_WRITE < MIN_WRITE_GAP:
             raise WriteConflictError("Nächster Schreibvorgang frühestens nach fünf Sekunden")
         client = _reader()
-        codes = [code, "R10", "R11"] if code == "R02" else [code]
+        limits = {"R01": ("R36", "R37"), "R02": ("R10", "R11"), "R03": ("R08", "R09")}
+        codes = [code, *limits[code]] if code in limits else [code]
         preflight = client.read_codes(codes)
         current = preflight.get(code)
         if not current:
@@ -92,15 +90,16 @@ def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
         previous = _number(current["value"])
         if previous != expected_value:
             raise WriteConflictError("Wert wurde inzwischen geändert; bitte neu laden")
-        if code == "R02":
-            minimum, maximum = _limit(preflight.get("R10"), "R10"), _limit(preflight.get("R11"), "R11")
+        if code in limits:
+            low, high = limits[code]
+            minimum, maximum = _limit(preflight.get(low), low), _limit(preflight.get(high), high)
             if minimum > maximum or not minimum <= desired <= maximum:
-                raise WriteValidationError("R02: außerhalb der aktuellen R10/R11-Grenzen")
+                raise WriteValidationError(f"{code}: außerhalb der aktuellen {low}/{high}-Grenzen")
         if credentials() != account:
             raise WriteConflictError("Cloud-Konto während der Prüfung gewechselt")
         if desired == previous:
             return {"status": "unchanged", "confirmed": True, "code": code,
-                    "value": float(desired) if code == "R02" else int(desired)}
+                    "value": float(desired)}
         if not client.token:
             raise CloudError("Keine authentifizierte Cloud-Verbindung")
         payload = {
@@ -149,7 +148,7 @@ def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
         if actual is not None and abs(actual - desired) <= (Decimal("0.05") if code == "R02" else 0):
             log_event("write", "Cloud-Schreibwert per Readback bestätigt")
             return {"status": "confirmed", "confirmed": True, "code": code,
-                    "value": float(actual) if code == "R02" else int(actual)}
+                    "value": float(actual)}
         log_event("warn", "Cloud-Readback weicht vom angeforderten Wert ab")
         return {"status": "unconfirmed", "confirmed": False, "code": code,
                 "message": "Cloud-Readback abweichend; Gerät nicht erneut beschreiben"}

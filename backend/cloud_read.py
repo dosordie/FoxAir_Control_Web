@@ -42,6 +42,9 @@ CLOUD_REGISTERS: dict[int, str] = {
 
     1158: "R02",
     1030: "H22",
+    2054: "2054",
+    2059: "2059",
+    2060: "2060",
     2072: "T31",  # Actual compressor frequency, not T30 requested frequency
 }
 
@@ -57,6 +60,9 @@ DASHBOARD_MAPPING = {
     "selected_target": 2014,
     "compressor_frequency": 2072,
     "silent": 1030,
+    "electrical_power": 2054,
+    "thermal_power": 2059,
+    "cop": 2060,
 }
 
 
@@ -538,6 +544,9 @@ def project_dashboard(values: dict[str, dict[str, Any]],
 def read_register(register: int) -> dict[str, Any]:
     from backend.cloud_state import catalog, merge
     code = CLOUD_REGISTERS.get(register)
+    from backend.timers import SCHEMAS
+    timer_code = next((schema[register] for schema in SCHEMAS.values() if register in schema), None)
+    code = timer_code or code
     if not code:
         # Only confirmed register mappings may be requested this way.
         matches = [c for c in catalog() if c.get("register") == register
@@ -545,17 +554,31 @@ def read_register(register: int) -> dict[str, Any]:
         if matches:
             # Prefer the matching local code where multiple Cloud aliases exist.
             local_code = str(load_registers().get(str(register), {}).get("code") or "")
-            chosen = next((c for c in matches if c["code"] == local_code), matches[0])
+            preferred = next((c.get("write_code") for c in matches if c.get("write_code")), None)
+            chosen = next((c for c in matches if c["code"] == (preferred or local_code)), matches[0])
             code = chosen["code"]
     if not code:
         raise CloudError("Keine bestätigte Cloud-Zuordnung für dieses Register")
     with _cloud_lock:
+        account = credentials()
         row = _reader().read_codes([code]).get(code)
+        if credentials() != account:
+            raise CloudError("Cloud-Konto während des Lesens gewechselt")
     if not row:
         raise CloudError("Cloud liefert für dieses Register keinen Wert")
-    merge({code: row})
+    merge({code: row}, source=account)
     definition = load_registers().get(str(register), {})
+    edit_value = row["value"]
+    from backend.parameter_write import timer_kind
+    if timer_kind(register):
+        from backend.timers import cloud_word, scaled
+        word = cloud_word(register, row["value"])
+        if str(definition.get("type")).upper() == "TIME_HHMM":
+            edit_value = f"{word >> 8:02d}:{word & 255:02d}"
+        elif not scaled(register):
+            edit_value = word
     return {
+        "edit_value": edit_value,
         "value": row["value"],
         "raw": None,
         "unit": row.get("unit") or definition.get("unit") or

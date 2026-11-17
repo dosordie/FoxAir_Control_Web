@@ -35,7 +35,7 @@ class ApiTests(unittest.TestCase):
     def test_cloud_unconfigured_has_no_values(self):
         from unittest.mock import patch
         with patch.dict("os.environ", {"FOXAIR_CLOUD_USER": "", "FOXAIR_CLOUD_PASSWORD": "",
-                                       "FOXAIR_CLOUD_DEVICE_CODE": ""}):
+                                       "FOXAIR_CLOUD_DEVICE_CODE": ""}), patch("backend.last_values.store.values", return_value={}):
             data = self.client.get("/api/dashboard?transport=cloud").json()
         self.assertEqual(data["status"], "unavailable")
         self.assertTrue(all(value is None for value in data["metrics"].values()))
@@ -60,6 +60,13 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/api/registers?query=D14")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(any(row["code"] == "D14" for row in response.json()["items"]))
+
+    def test_parameter_write_requires_admin_before_transport_access(self):
+        from unittest.mock import patch
+        with patch("backend.parameter_write.write") as writer:
+            result = self.client.post("/api/parameters/1105/write", json={"transport":"warmlink_raw","value":"2.5","expected":"10"})
+        self.assertIn(result.status_code, (401,403))
+        writer.assert_not_called()
 
     def test_no_write_endpoint(self):
         response = self.client.post("/api/registers/1158/write", json={"value": 35})

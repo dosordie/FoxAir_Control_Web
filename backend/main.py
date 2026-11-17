@@ -24,6 +24,8 @@ from backend.register_definitions import (
     STANDARD_DASHBOARD_BLOCKS as READ_BLOCKS,
 )
 from backend.routes.lte import router as lte_router
+from backend.routes.parameters import router as parameter_router
+from backend.last_values import store as last_values, remember_words, fill_dashboard
 from backend.rtu import open_rtu
 from backend.settings import standard_endpoint, warmlink_endpoint, warmlink_config, save_warmlink, transport_info, TRANSPORTS
 from backend.warmlink import open_warmlink, write_control as write_warmlink_control
@@ -44,6 +46,7 @@ app = FastAPI(title="FoxAir Control Web", version="0.1.0", docs_url=None, redoc_
 
 VALID_TRANSPORTS = set(TRANSPORTS)
 app.include_router(lte_router)
+app.include_router(parameter_router)
 
 
 def now_iso() -> str:
@@ -92,6 +95,8 @@ class AdminLogin(BaseModel):
 
 
 class WarmlinkConfigUpdate(CloudAdminAction):
+    idle_timeout_seconds: int = Field(default=0, ge=0, le=3600)
+    browser_timeout_seconds: int = Field(default=90, ge=30, le=3600)
     connection_mode: Literal["on_demand", "browser", "permanent"] = "on_demand"
     host: str = Field(min_length=1, max_length=64)
     port: int = Field(ge=1, le=65535)
@@ -108,7 +113,7 @@ def get_warmlink_config(payload: CloudAdminAction, request: Request):
 def update_warmlink_config(payload: WarmlinkConfigUpdate, request: Request):
     require_admin(request, payload.admin_password)
     try:
-        return save_warmlink(payload.host, payload.port, payload.enabled, payload.connection_mode)
+        return save_warmlink(payload.host, payload.port, payload.enabled, payload.connection_mode, payload.idle_timeout_seconds, payload.browser_timeout_seconds)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except OSError:
@@ -353,7 +358,7 @@ def registers(query: str = "", group: str = Query("", max_length=18),
         by_reg: dict[int, dict] = {}
         for cloud_row in cloud_snapshot.get("items", []):
             reg = cloud_row.get("register")
-            if not isinstance(reg, int) or cloud_row.get("value") is None:
+            if not isinstance(reg, int) or cloud_row.get("value") is None or cloud_row.get("confidence") != "confirmed":
                 continue
             old = by_reg.get(reg)
             if old is None or (cloud_row.get("confidence") == "confirmed"
@@ -368,6 +373,9 @@ def registers(query: str = "", group: str = Query("", max_length=18),
                 "quality": match["quality"],
                 "display_value": match.get("display_value"),
             } if match else None
+    shared = last_values.values()
+    for row in items:
+        row["last"] = shared.get(str(row["register"]))
     return {"items": items, "catalog_size": len(load_registers())}
 
 
@@ -397,6 +405,7 @@ def register_read(register: int, transport: str = "cloud"):
             raw = session.read_holding(register, 1)[0]
     except (OSError, ConnectionError, TimeoutError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="Modbus-Lesefehler: " + str(exc)) from exc
+    remember_words(endpoint, register, [raw], transport=transport)
     value, unit = format_raw(raw, entry)
     return {"register": register, "raw": raw, "value": value, "unit": unit,
             "transport": transport, "timestamp": now_iso(), "quality": "fresh"}
@@ -424,7 +433,7 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
         fresh = sum(item['quality'] == 'observed' for item in metrics.values())
         snapshot['status'] = 'online' if fresh == len(DASHBOARD_FIELDS) else ('partial' if fresh else 'unavailable')
         snapshot['error'] = connection_status()['error']
-        return snapshot  # No socket creation or active read in this path.
+        return fill_dashboard(snapshot)  # No socket creation or active read in this path.
     if transport == "cloud":
         try:
             metrics = cloud_dashboard(live=live)
@@ -450,14 +459,14 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
             snapshot["error"] = str(exc) + " · letzte bekannte Werte (veraltet)"
             snapshot["status"] = "unavailable"
         snapshot["device_name"] = get_name()
-        return snapshot
+        return fill_dashboard(snapshot)
     if transport not in ("standard_modbus", "warmlink_raw"):
         snapshot["error"] = "Adapter noch nicht implementiert; keine simulierten Gerätewerte"
-        return snapshot
+        return fill_dashboard(snapshot)
     endpoint = warmlink_endpoint() if transport == "warmlink_raw" else standard_endpoint()
     if endpoint is None:
         snapshot["error"] = "Modbus-Anschluss noch nicht konfiguriert"
-        return snapshot
+        return fill_dashboard(snapshot)
     words: dict[int, int] = {}
     errors: list[str] = []
     try:
@@ -466,6 +475,7 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
                 try:
                     values = session.read_holding(start, count)
                     words.update({start + i: raw for i, raw in enumerate(values)})
+                    remember_words(endpoint, start, values, transport=transport)
                 except (OSError, ConnectionError, TimeoutError, ValueError) as exc:
                     errors.append(f"{start}: {exc}")
                     # A failed/incomplete RTU response can desynchronize the stream.
@@ -496,7 +506,7 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
     snapshot["status"] = "online" if len(words) > 0 and not errors else ("partial" if words else "unavailable")
     if errors:
         snapshot["error"] = "Modbus-Abfrage nicht vollständig: " + "; ".join(errors)
-    return snapshot
+    return fill_dashboard(snapshot)
 
 
 # In production: use Vite-built frontend, served from the same origin as the API.

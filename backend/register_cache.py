@@ -25,8 +25,9 @@ def is_public_register(register: int) -> bool:
 
 
 class RegisterCache:
-    def __init__(self, clock: Callable[[], float] = time.time):
+    def __init__(self, clock: Callable[[], float] = time.time, on_record=None):
         self._clock = clock
+        self._on_record = on_record
         self._lock = threading.RLock()
         self._source: Endpoint | None = None
         self._observed: dict[int, tuple[int, float]] = {}
@@ -56,6 +57,8 @@ class RegisterCache:
             now = self._clock()
             for offset, word in enumerate(words):
                 destination[start + offset] = (word, now)
+            if self._on_record:
+                self._on_record(endpoint, start, words, timestamp=now)
 
     def observe_frames(self, endpoint: Endpoint, frames: list[tuple]) -> None:
         for frame in frames:

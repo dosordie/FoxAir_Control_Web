@@ -29,6 +29,8 @@ export function useConnectionSettings(
     enabled: false,
     slave: 99,
     connection_mode: 'on_demand',
+    idle_timeout_seconds: 0,
+    browser_timeout_seconds: 90,
   })
   const lteBusy = ref(false),
     lteMessage = ref(''),
@@ -49,6 +51,8 @@ export function useConnectionSettings(
       enabled: false,
       slave: 99,
       connection_mode: 'on_demand',
+      idle_timeout_seconds: 0,
+      browser_timeout_seconds: 90,
     }
     cloudMessage.value = ''
     cloudError.value = ''

@@ -11,7 +11,7 @@ STANDARD_DASHBOARD_BLOCKS = (
     (1030, 1),
     (1158, 1),
     (2012, 3),
-    (2035, 14),
+    (2035, 26),
     (2072, 1),
     (2077, 1),
 )
@@ -28,4 +28,7 @@ DASHBOARD_FIELDS = {
     "base_target": 1158,
     "compressor_frequency": 2072,
     "silent": 1030,
+    "electrical_power": 2054,
+    "thermal_power": 2059,
+    "cop": 2060,
 }

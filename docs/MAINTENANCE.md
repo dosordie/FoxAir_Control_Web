@@ -76,3 +76,30 @@ Telegramme, Socket-Besitz, parallele Aufträge und Shutdown. Hardwareabnahme ble
 separat. Formatierung wird für die ausgegliederten Module mit Prettier/Ruff
 geprüft; ältere Dateien werden schrittweise migriert, um funktionale Änderungen
 im Review nicht unter rein kosmetischen Diffs zu verstecken.
+
+
+## Gemeinsame letzte Werte und Parameterbearbeitung
+
+`backend/last_values.py` speichert Engineering-Werte mit Ursprungsquelle und unverändertem
+Zeitstempel in der privaten SQLite-Datei `last-register-values.sqlite` im State-Verzeichnis.
+Cloud und lokale Busse teilen diesen Speicher; ein Wechsel der konfigurierten Geräteidentität
+verwendet einen getrennten Bereich. Zwischengespeicherte Werte beweisen keine aktive Verbindung
+und sind keine Schreibberechtigung. Cloud-Zahlen werden nicht erneut wie Modbus-Rohwörter skaliert.
+
+`routes/parameters.py` prüft beim Öffnen einer Gruppe die sichtbaren Register. Werte derselben
+Verbindung, die höchstens 60 Sekunden alt sind, werden weiterverwendet. Veraltete benachbarte
+Register werden in FC03-Abfragen mit maximal 90 Wörtern gelesen. Während einer laufenden
+LTE-Initialisierung übernimmt deren vorhandener Live-Stream die Aktualisierung.
+
+`parameter_write.py` verwendet die Schreibrechte und Datentypen des MAIN-Katalogs. Cloud-Grants,
+Enums und bestätigte Grenzen werden durch `export_cloud_catalog.py` aus dem festgelegten
+Desktop-Stand exportiert. Fehlende Cloud-Zuordnungen werden nicht geraten; hierfür ist Modbus
+zu verwenden. Direkte Engineering-Register erfordern Standard-Modbus. Timerbearbeitung nutzt
+auch aus den Parameterdetails die vollständigen Timer-Prüfungen und Freigabestufen.
+Jeder Auftrag prüft den Ausgangswert frisch, schreibt einmal und bestätigt per Readback.
+R01/R02/R03 berücksichtigen die aktuell gelesenen Sollwertgrenzen.
+
+LTE-Verbindungseinstellungen bieten zusätzlich `idle_timeout_seconds` (0–3600, Standard 0)
+und `browser_timeout_seconds` (30–3600, Standard 90). Im Bedarfsmodus verlängert jede
+abgeschlossene Operation die Leerlaufzeit; passives Empfangen verlängert sie nicht.
+Der Dauermodus bleibt unabhängig davon offen.

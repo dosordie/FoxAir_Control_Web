@@ -118,9 +118,38 @@ const {
             <option value="permanent">Dauerhaft – auch ohne Browser</option>
           </select>
           <p class="section-hint">
-            Browser-Modus: Schließen spätestens 90 Sekunden nach dem letzten Lebenszeichen.
-            Dauerhaftes Mithören sendet keine eigenen Lese- oder Schreibbefehle.
+            Browser-Modus: Schließen nach der eingestellten Zeit ohne Lebenszeichen. Dauerhaftes
+            Mithören sendet keine eigenen Lese- oder Schreibbefehle.
           </p>
+          <template v-if="lteConfig.connection_mode === 'on_demand'">
+            <label class="field-label" for="lte-idle"
+              >TCP-Sitzung nach einer Abfrage offen halten (Sekunden)</label
+            >
+            <input
+              id="lte-idle"
+              class="settings-input"
+              type="number"
+              min="0"
+              max="3600"
+              v-model.number="lteConfig.idle_timeout_seconds"
+              required
+            />
+            <p class="section-hint">0 = sofort schließen. Weitere Abfragen verlängern die Zeit.</p>
+          </template>
+          <template v-if="lteConfig.connection_mode === 'browser'">
+            <label class="field-label" for="lte-browser"
+              >Nach letztem Browser-Lebenszeichen schließen (Sekunden)</label
+            >
+            <input
+              id="lte-browser"
+              class="settings-input"
+              type="number"
+              min="30"
+              max="3600"
+              v-model.number="lteConfig.browser_timeout_seconds"
+              required
+            />
+          </template>
           <p role="status">
             TCP: {{ busState?.connected ? 'Verbunden' : 'Geschlossen' }} · Modus:
             {{

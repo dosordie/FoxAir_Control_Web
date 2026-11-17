@@ -9,6 +9,13 @@ from backend.register_definitions import DASHBOARD_FIELDS
 router = APIRouter()
 
 
+@router.get("/api/last-values")
+def last_known_values():
+    from backend.last_values import store
+
+    return {"values": store.values()}
+
+
 @router.get("/api/warmlink/connection")
 def bus_connection_state():
     from backend.bus_connection import status, observed_words
@@ -21,10 +28,16 @@ def lte_snapshot():
     from backend.register_scan import status as scan_status
 
     endpoint = warmlink_endpoint()
+    from backend.last_values import store, fill_dashboard
+
+    values = {**store.values(), **register_values(endpoint)}
+    metrics = fill_dashboard({"metrics": observed_metrics(DASHBOARD_FIELDS, endpoint)})[
+        "metrics"
+    ]
     return {
         "connection": status(),
-        "values": register_values(endpoint),
-        "metrics": observed_metrics(DASHBOARD_FIELDS, endpoint),
+        "values": values,
+        "metrics": metrics,
         "scan": scan_status(),
     }
 

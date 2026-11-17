@@ -150,6 +150,8 @@ def merge(rows: dict[str, dict[str, Any]], *, source: tuple[str, str, str] | Non
             if "value" not in item:
                 continue
             _ROWS[code] = {**item, "timestamp": stamp, "quality": "fresh", "supported": True}
+        from backend.last_values import remember_cloud
+        remember_cloud({code: _ROWS[code] for code in rows if code in _ROWS}, account)
         if rows and (not _LAST_SAVED or time.monotonic() - _LAST_SAVED >= 60):
             _save_cache(account, _ROWS)
             _LAST_SAVED = time.monotonic()

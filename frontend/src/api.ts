@@ -6,7 +6,7 @@ export type Dashboard = {
   timestamp: string
   error: string | null
   device_name?: string
-  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency', Metric>
+  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency' | 'electrical_power' | 'thermal_power' | 'cop', Metric>
   live_supported: boolean
 }
 export type Transport = { id: TransportId; name: string; configured: boolean; read_supported: boolean; reason: string }
@@ -21,9 +21,10 @@ export type Register = {
   mode: string
   write_available: boolean
   value_map: Record<string,string>
+  last?: RegisterValue | null
   cloud?: {code:string;value:string|number;unit:string;timestamp:string;quality:string;display_value?:string|null}|null
 }
-export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string;display_value?:string|null;code?:string;name?:string;group?:string }
+export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string;edit_value?:string|number;display_value?:string|null;code?:string;name?:string;group?:string }
 export type LteScan = {status:'idle'|'running'|'complete'|'partial'|'error';completed:number;total:number;error:string|null}
 export type ConnectionState = {connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number;pending_read?:{register:number;count:number;age_seconds:number;ambiguous:boolean}|null}
 export type LteSnapshot = {values:Record<string,RegisterValue>;metrics:Partial<Dashboard['metrics']>;connection:ConnectionState;scan:LteScan;removed?:string[];reset?:boolean}
@@ -152,9 +153,12 @@ async function get<T>(path: string): Promise<T> {
     clearTimeout(timer)
   }
 }
-export type WarmlinkConfig = {connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
+export type WarmlinkConfig = {idle_timeout_seconds?:number;browser_timeout_seconds?:number;connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
 export const api = {
+  writeParameter:(register:number,transport:TransportId,value:string,expected:string)=>post<CloudWriteResult>('/api/parameters/'+register+'/write',{transport,value,expected}),
+  refreshParameters:(transport:TransportId,registers:number[])=>post<{values:Record<string,RegisterValue>;updated:number;status:string}>('/api/parameters/refresh',{transport,registers}),
+  lastValues:()=>get<{values:Record<string,RegisterValue>}>('/api/last-values'),
   lteSnapshot:()=>get<LteSnapshot>('/api/warmlink/state'),
   lteScan:()=>post<LteScan>('/api/warmlink/scan',{}),
   cloudEnum: (key:string)=>post<{items:Record<string,string>[]}>('/api/cloud/service-enum',{key}),

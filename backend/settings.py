@@ -10,11 +10,14 @@ WARMLINK_FILE = STATE_DIR / "warmlink.json"
 def warmlink_config() -> dict:
     row = _read_json(WARMLINK_FILE)
     return {"host": row.get("host", "192.168.1.50"), "port": row.get("port", 2001),
+            "idle_timeout_seconds": row.get("idle_timeout_seconds", 0), "browser_timeout_seconds": row.get("browser_timeout_seconds", 90),
             "enabled": row.get("enabled") is True, "slave": 99, "connection_mode": row.get("connection_mode", "on_demand")}
 
 
-def save_warmlink(host: str, port: int, enabled: bool, connection_mode: str = "on_demand") -> dict:
+def save_warmlink(host: str, port: int, enabled: bool, connection_mode: str = "on_demand", idle_timeout_seconds: int = 0, browser_timeout_seconds: int = 90) -> dict:
     import ipaddress
+    if not 0 <= idle_timeout_seconds <= 3600 or not 30 <= browser_timeout_seconds <= 3600:
+        raise ValueError("Sitzungsdauer: 0–3600 Sekunden; Browser: 30–3600 Sekunden")
     if connection_mode not in ("on_demand", "browser", "permanent"):
         raise ValueError("Unbekannter Verbindungsmodus")
     # Explicit raw TCP endpoint only; no URLs, paths, credentials or DNS rebinding.
@@ -24,7 +27,7 @@ def save_warmlink(host: str, port: int, enabled: bool, connection_mode: str = "o
         raise ValueError("Bitte eine gültige lokale IP-Adresse eingeben") from None
     if not address.is_private or address.is_loopback or address.is_unspecified or address.is_multicast or not 1 <= port <= 65535:
         raise ValueError("Lokale IP-Adresse und TCP-Port 1–65535 erforderlich")
-    _atomic_json(WARMLINK_FILE, {"host": str(address), "port": port, "enabled": enabled, "connection_mode": connection_mode})
+    _atomic_json(WARMLINK_FILE, {"host": str(address), "port": port, "enabled": enabled, "connection_mode": connection_mode, "idle_timeout_seconds": idle_timeout_seconds, "browser_timeout_seconds": browser_timeout_seconds})
     return warmlink_config()
 
 

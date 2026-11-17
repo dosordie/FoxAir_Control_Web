@@ -2,6 +2,7 @@
 
 :root{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#292c32;background:#f4f5f7;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}
+html,body{background:#f4f5f7;color-scheme:light}
 body{margin:0;min-width:320px}
 button,input,select{font:inherit}button{cursor:pointer}
 button:disabled{cursor:not-allowed;opacity:.6}
@@ -386,3 +387,5 @@ a{color:inherit}
 .cloud-extra-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0}.cloud-extra-controls label{display:grid;gap:8px;flex:1;min-width:150px}.history-chart{width:100%;height:auto}.history-points{max-height:300px;overflow:auto;margin:12px 0}.history-points>div{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;padding:10px;border-bottom:1px solid #edf0f3;font-size:13px}
 
 .register-favorites{margin:12px 0}.favorite-button{display:inline-grid;place-items:center;flex:none;min-width:44px;min-height:44px;border:1px solid #e5e8ec;border-radius:12px;background:#fff;color:#939ba7}.favorite-button.selected{background:#fff3df;color:#c37a0b;border-color:#f5c974}.register-favorites button[aria-pressed="true"]{background:#fff3df;border-color:#f5c974}
+
+.compressor-gauge{position:absolute;bottom:-48px;left:15%;width:70%;color:#303842;text-align:center;font-size:12px}.compressor-track{height:9px;border-radius:8px;background:#ffffffa6;overflow:hidden;margin:5px 0}.compressor-fill{height:100%;border-radius:8px;transition:width .4s ease}.compressor-gauge small{color:inherit}.illustrated-unit .compressor-hz{bottom:-20px}.hero-main{margin-bottom:55px}.power-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.power-summary>div{background:#f6f7f9;border-radius:12px;padding:12px;text-align:center}.power-summary strong{display:block;font-size:20px}.power-summary small{display:block;color:#777f89;margin-top:5px}@media(prefers-reduced-motion:reduce){.compressor-fill{transition:none}}

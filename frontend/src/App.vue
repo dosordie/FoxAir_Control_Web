@@ -13,6 +13,9 @@ import { useAdminSession } from './composables/useAdminSession'
 import AppHeader from './components/AppHeader.vue'
 import UpdatePanel from './components/UpdatePanel.vue'
 import ConnectionSettingsDialog from './components/ConnectionSettingsDialog.vue'
+import ParameterEditor from './components/ParameterEditor.vue'
+import CompressorGauge from './components/CompressorGauge.vue'
+import PowerSummary from './components/PowerSummary.vue'
 import type { Page } from './types/navigation'
 import { useRegisterFavorites } from './composables/useRegisterFavorites'
 import { useRegisterCatalog } from './composables/useRegisterCatalog'
@@ -258,7 +261,7 @@ const filteredCloudRows = computed(() => {
 const cloudByRegister = computed(() => {
   const result = new Map<number, CloudRow>()
   for (const item of cloudRows.value) {
-    if (item.register == null || item.value === null) continue
+    if (item.register == null || item.value === null || item.confidence !== 'confirmed') continue
     const current = result.get(item.register)
     if (!current || (item.confidence === 'confirmed' && current.confidence !== 'confirmed')) {
       result.set(item.register, item)
@@ -266,15 +269,26 @@ const cloudByRegister = computed(() => {
   }
   return result
 })
-function currentRegisterValue(register: number) {
-  if(selectedTransport.value==='warmlink_raw'){
-    const cached=localValues.value[String(register)]
-    const read=currentValue.value
-    return read?.register===register && (!cached||Date.parse(read.timestamp)>Date.parse(cached.timestamp))?read:cached||null
-  }
-  if (selectedTransport.value !== 'cloud') return null
-  return cloudByRegister.value.get(register) || null
+const sharedValues = ref<Record<string, RegisterValue>>({})
+async function loadLastValues() {
+  try { sharedValues.value = (await api.lastValues()).values } catch { /* Keep values until the server is reachable. */ }
 }
+function currentRegisterValue(register: number): RegisterValue | null {
+  const direct = currentValue.value?.register === register && currentValue.value.transport === selectedTransport.value ? currentValue.value : null
+  const local = selectedTransport.value === 'warmlink_raw' ? localValues.value[String(register)] : null
+  const cloud = selectedTransport.value === 'cloud' ? cloudByRegister.value.get(register) : null
+  const cloudValue = cloud?.timestamp && cloud.value != null ? {...cloud, register, raw:null, transport:'cloud', timestamp:cloud.timestamp, value:cloud.value} : null
+  const last = sharedValues.value[String(register)]
+  const groupValue = registers.value.find(r=>r.register===register)?.last
+  return [direct, local, cloudValue, last, groupValue].filter((v):v is RegisterValue=>!!v)
+    .sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp))[0] || null
+}
+function valueSource(register: number) {
+  const row = currentRegisterValue(register)
+  return row ? ({cloud:'Cloud', warmlink_raw:'Modbus (LTE)', standard_modbus:'Modbus'}[row.transport] || row.transport) : 'Noch kein Wert'
+}
+watch(selectedTransport, () => void loadLastValues())
+onMounted(() => void loadLastValues())
 function textValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—'
   return String(value)
@@ -313,8 +327,8 @@ const readings = computed(() => [
   { key: 'flow', label: 'Durchfluss', icon: Waves, unit: 'm³/h' },
   { key: 'tank', label: 'Warmwasser', icon: Thermometer, unit: '°C' },
   { key: 'outdoor', label: 'Außen', icon: Sun, unit: '°C' },
-  { key: 'return', label: 'Rücklauf', icon: ArrowDownLeft, unit: '°C' },
-  { key: 'supply', label: 'Vorlauf', icon: ArrowUpRight, unit: '°C' },
+  { key: 'return', label: 'Eintritt', icon: ArrowDownLeft, unit: '°C' },
+  { key: 'supply', label: 'Austritt', icon: ArrowUpRight, unit: '°C' },
 ] as const)
 
 function displayMetric(metric: Metric, fallback = '—'): string {
@@ -363,6 +377,7 @@ async function loadDashboard(live = false) {
     const data = await api.dashboard(source, live && source === 'cloud')
     if (source !== selectedTransport.value) return
     snapshot.value = data
+    void loadLastValues()
     if (data.error) error.value = data.error
     if (source === 'cloud') void loadCloudValues()
   } catch (err) {
@@ -399,6 +414,7 @@ function scheduleValueRefresh() {
 }
 async function loadCloudValues() {
   try {
+    void loadLastValues()
     cloudOverview.value = await api.cloudValues()
     cloudRows.value = cloudOverview.value.items
     for (const code of ['Mode', 'R02'] as FirstWriteCode[]) {
@@ -490,23 +506,24 @@ function selectRegister(item: Register) {
   writeFeedback.value = ''
   writeError.value = ''
 }
+let parameterReadGeneration = 0
 async function readRegister() {
-  if (!selectedRegister.value) return
+  const register = selectedRegister.value?.register
+  if (!register) return
+  const source = selectedTransport.value
+  const generation = ++parameterReadGeneration
+  const current = () => generation === parameterReadGeneration && selectedRegister.value?.register === register && selectedTransport.value === source
   reading.value = true
   readError.value = ''
-  currentValue.value = null
   try {
-    currentValue.value = await api.read(selectedRegister.value.register, selectedTransport.value)
-    if (selectedTransport.value === 'cloud') await loadCloudValues()
-    if (selectedTransport.value === 'warmlink_raw' && writableRegisterCode.value) {
-      const value = writableRegisterCode.value !== 'R02' ? currentValue.value.raw ?? currentValue.value.value : currentValue.value.value
-      lteWriteSources.value[writableRegisterCode.value] = {...currentValue.value, value}
-      writeDrafts.value[writableRegisterCode.value] = String(value)
-    }
+    const row = await api.read(register, source)
+    if (!current()) return
+    currentValue.value = row
+    void loadLastValues()
   } catch (err) {
-    readError.value = err instanceof Error ? err.message : 'Lesefehler'
+    if (current()) readError.value = err instanceof Error ? err.message : 'Lesefehler'
   } finally {
-    reading.value = false
+    if (generation === parameterReadGeneration) reading.value = false
   }
 }
 watch(selectedTransport, (value) => {
@@ -581,7 +598,7 @@ onBeforeUnmount(() => {
                   <div class="fan-ring integrated-fan" :class="{ 'fan-running': fanRunning }" :aria-label="fanRunning?'Lüfter dreht':'Lüfter steht'">
                     <svg class="fan-rotor" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="rotor-metal" x2="1" y2="1"><stop stop-color="#a6a9ac"/><stop offset=".5" stop-color="#343b40"/><stop offset="1" stop-color="#717a80"/></linearGradient></defs><g fill="url(#rotor-metal)" stroke="#1b2024" stroke-width=".6"><path v-for="rotation in [0,90,180,270]" :key="rotation" :transform="'rotate('+rotation+' 50 50)'" d="M49 48 C27 46 14 34 21 18 C35 8 52 19 56 37 L54 48Z"/></g><circle cx="50" cy="50" r="10" fill="#50585e" stroke="#828a90"/><circle cx="50" cy="50" r="3" fill="#252b30"/></svg>
                   </div>
-                  <span class="compressor-hz" :class="{ 'is-stale': snapshot?.metrics.compressor_frequency?.quality === 'stale' }" aria-label="Kompressor-Istfrequenz">{{ metric('compressor_frequency') }} Hz</span>
+                  <CompressorGauge :metric="snapshot?.metrics.compressor_frequency || null" />
 
                 </div>
                 <span class="unit-ground"></span>
@@ -662,6 +679,7 @@ onBeforeUnmount(() => {
 
             <section class="panel operating-panel">
               <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div><span class="soft-tag">Antippen zum Einstellen</span></div>
+              <PowerSummary :metrics="snapshot?.metrics" />
               <div class="operation-row">
                 <button type="button" class="operation operation-button" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
                 <button type="button" class="operation operation-button" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
@@ -784,7 +802,7 @@ onBeforeUnmount(() => {
                 <span>MAIN-Zuordnung <strong>{{ cloudCodeSelected.register ?? 'nicht bestätigt' }}</strong></span>
                 <span>Cloud-Kategorie <strong>{{ cloudCodeSelected.kind }}</strong></span>
                 <span>Mapping-Confidence <strong>{{ cloudCodeSelected.confidence || 'unbekannt' }}</strong></span>
-                <span>Unterstützung <strong>{{ cloudCodeSelected.supported ? 'Wert vorhanden' : 'kein Wert' }}</strong></span>
+                <span>Quelle <strong>Cloud</strong></span><span>Unterstützung <strong>{{ cloudCodeSelected.supported ? 'Wert vorhanden' : 'kein Wert' }}</strong></span>
               </div>
               <p class="section-hint">Cloud-Originalwert in API-Skalierung; keine Umrechnung anhand lokaler Modbus-Rohwerte.</p>
             </template>
@@ -792,36 +810,15 @@ onBeforeUnmount(() => {
               <span class="section-caption">PARAMETERDETAILS</span>
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><button type="button" class="favorite-button" :class="{selected:isFavorite(selectedRegister.register)}" :aria-pressed="isFavorite(selectedRegister.register)" :aria-label="isFavorite(selectedRegister.register)?'Favorit entfernen':'Als Favorit merken'" @click="toggleFavorite(selectedRegister.register)"><Star :size="23" :fill="isFavorite(selectedRegister.register)?'currentColor':'none'" /></button></div>
               <div class="detail-value"><span>Aktueller Wert</span>
-                <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentValue?.value ?? currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
-                  <small>{{ currentValue?.unit || currentRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
+                <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
+                  <small>{{ currentRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
                 <p>{{ relativeTimestamp(currentRegisterValue(selectedRegister.register)?.timestamp ?? currentValue?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
               </div>
-              <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span></div>
+              <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span><span>Quelle <strong>{{ valueSource(selectedRegister.register) }}</strong></span></div>
               <p class="description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <section v-if="writableRegisterCode && ['cloud','warmlink_raw'].includes(selectedTransport)" class="cloud-write-panel">
-                <strong>Steuerung: {{ operationLabels[writableRegisterCode] }}</strong>
-                <p class="section-hint">Nur für angemeldete Administratoren. Der vorhandene Wert wird vor dem Schreiben erneut geprüft; ohne Readback keine Bestätigung.</p>
-                <button type="button" class="outlined-action" :disabled="writeReading || writeBusy" @click="refreshWriteSources">Ausgangswerte neu lesen</button>
-                <label class="field-label" for="register-write-value">Neuer Wert</label>
-                <select v-if="writableRegisterCode === 'Mode'" id="register-write-value" class="settings-input" v-model="writeDrafts.Mode">
-                  <option value="0">Warmwasser</option><option value="1">Heizen</option>
-                  <option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option>
-                  <option value="4">Warmwasser + Kühlen</option>
-                </select>
-                <select v-else-if="writableRegisterCode!=='R02'" id="register-write-value" class="settings-input" v-model="writeDrafts[writableRegisterCode]"><option value="0">Aus</option><option value="1">Ein</option></select>
-                <input v-else id="register-write-value" class="settings-input" type="number" min="5" max="70" step="0.1" v-model="writeDrafts.R02" />
-                <button type="button" class="main-action" :disabled="!canWrite(writableRegisterCode)"
-                  @click="submitCloudWrite(writableRegisterCode)">
-                  <ShieldCheck :size="17" /> {{ writeBusy ? 'Prüfe und schreibe …' : 'Wert mit Readback schreiben' }}
-                </button>
-                <p v-if="!adminAuthenticated" class="section-hint">Für Schreibzugriff oben rechts als Admin anmelden.</p>
-                <p v-else-if="writeSource(writableRegisterCode)?.quality !== 'fresh'" class="section-hint">Zuerst Ausgangswerte neu lesen.</p>
-                <p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
-                <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p>
-              </section>
-              <p v-else class="section-hint">Für diesen Parameter sind Schreibzugriffe nicht freigegeben. {{ selectedTransportInfo?.read_supported ? '' : selectedTransportInfo?.reason || '' }}</p>
+              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated" @updated="readRegister" @read="currentValue=$event" />
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </section>

@@ -42,6 +42,7 @@ class BusConnectionManager:
         self._io = threading.RLock()
         self._connection: Connection | None = None
         self._lease_until = 0.0
+        self._idle_until = 0.0
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._stopped = False
@@ -59,14 +60,23 @@ class BusConnectionManager:
 
     def wanted(self, mode: str, now: float | None = None) -> bool:
         with self._state_lock:
-            return mode == "permanent" or (
-                mode == "browser"
-                and (time.monotonic() if now is None else now) < self._lease_until
+            return (
+                (
+                    mode == "on_demand"
+                    and (time.monotonic() if now is None else now) < self._idle_until
+                )
+                or mode == "permanent"
+                or (
+                    mode == "browser"
+                    and (time.monotonic() if now is None else now) < self._lease_until
+                )
             )
 
     def lease(self) -> dict:
         with self._state_lock:
-            self._lease_until = time.monotonic() + 90
+            self._lease_until = time.monotonic() + self._config_provider().get(
+                "browser_timeout_seconds", 90
+            )
         self.start()
         return self.status()
 
@@ -157,13 +167,23 @@ class BusConnectionManager:
             finally:
                 if client.poisoned:
                     self._close()
+                elif self._connection:
+                    with self._state_lock:
+                        self._idle_until = (
+                            time.monotonic()
+                            + self._config_provider().get("idle_timeout_seconds", 0)
+                        )
 
     @contextmanager
     def open(self, endpoint: Endpoint):
         if self._stopped:
             raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
         mode = self._config_provider().get("connection_mode", "on_demand")
-        if mode != "on_demand" or self.connected:
+        if (
+            mode != "on_demand"
+            or self.connected
+            or self._config_provider().get("idle_timeout_seconds", 0) > 0
+        ):
             self.start()
             with self.operation(endpoint) as client:
                 yield client
@@ -259,7 +279,9 @@ class BusConnectionManager:
 
 
 # One owner per application process; facades retain the stable HTTP API.
-manager = BusConnectionManager()
+from backend.last_values import remember_words
+
+manager = BusConnectionManager(cache=RegisterCache(on_record=remember_words))
 
 
 def start():
