@@ -779,7 +779,7 @@ onBeforeUnmount(() => {
                     'is-stale': currentRegisterValue(entry.register)?.quality === 'stale' }"
                   :title="relativeTimestamp(currentRegisterValue(entry.register)?.timestamp)">
                   {{ currentRegisterValue(entry.register)?.display_value ?? entry.cloud?.display_value ?? textValue(currentRegisterValue(entry.register)?.value ?? entry.cloud?.value) }}
-                  <small>{{ currentRegisterValue(entry.register)?.unit || entry.cloud?.unit || '' }}</small>
+                  <small>{{ currentRegisterValue(entry.register)?.unit ?? entry.cloud?.unit ?? '' }}</small>
                   <small v-if="currentRegisterValue(entry.register)?.quality === 'stale'">veraltet</small>
                 </span>
                 <ChevronRight :size="16" />
@@ -824,7 +824,7 @@ onBeforeUnmount(() => {
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><button type="button" class="favorite-button" :class="{selected:isFavorite(selectedRegister.register)}" :aria-pressed="isFavorite(selectedRegister.register)" :aria-label="isFavorite(selectedRegister.register)?'Favorit entfernen':'Als Favorit merken'" @click="toggleFavorite(selectedRegister.register)"><Star :size="23" :fill="isFavorite(selectedRegister.register)?'currentColor':'none'" /></button></div>
               <div class="detail-value"><span>Aktueller Wert</span>
                 <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
-                  <small>{{ currentRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
+                  <small>{{ currentRegisterValue(selectedRegister.register)?.unit ?? selectedRegister.cloud?.unit ?? '' }}</small></strong>
                 <p>{{ relativeTimestamp(currentRegisterValue(selectedRegister.register)?.timestamp ?? currentValue?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
               </div>
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span><span>Quelle <strong>{{ valueSource(selectedRegister.register) }}</strong></span></div>

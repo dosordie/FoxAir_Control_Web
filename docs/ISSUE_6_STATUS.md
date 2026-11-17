@@ -134,3 +134,38 @@ Browser-Livezustand, Admin-Sitzung, private Verbindungseinstellungen und Registe
 Erster Stand f804ee0 live geprüft: acht von acht LTE-Blöcken, 501 bekannte Werte, SSE aktiv, Admin-Sitzung erhalten. Ausgelagerter Verbindungsdialog lädt den vorhandenen Anschluss; Passwort bleibt leer/verborgen. Keine Betriebswerte oder Zugangsdaten verändert.
 
 Favoriten aus Issue 4: Stern in Parameterdetails merkt/entfernt die Register-ID im Browser; „Nur Favoriten“ filtert den gesamten Katalog vor dem Trefferlimit. Suche/Gruppe lassen sich weiter kombinieren. Ein leerer Favoritenfilter zeigt keine Ersatztreffer. Katalogfilter löst keine Busabfrage aus. Reale Schreibfreigaben bleiben unverändert. Lokale Prüfung: 139 Backendtests sowie 15 Frontendtests, Typecheck/Build und Formatprüfung erfolgreich. Favoriten-Liveabnahme folgt nach CI/Installation.
+
+
+## Gemeinsame Werte, Parametereditor und Übersicht
+
+Backend `last_values.py`: private SQLite-Datenbank für letzte Cloud-/Modbus-Werte mit
+Originalzeitstempel und tatsächlicher Quelle. Verbindungswechsel erhalten Werte; alte
+Antworten dürfen neue Anzeigegenerationen nicht überschreiben. Offlinewerte erzeugen keinen
+Onlinezustand und werden nicht als Schreibbaseline verwendet.
+
+- Gruppenfolge A H F D E R P G C Z SG T. Beim Öffnen einer Gruppe werden fehlende oder
+  über 60 Sekunden alte Werte der gewählten Verbindung gezielt aktualisiert; FC03 bündelt
+  benachbarte Register bis 90 Wörter. Laufende Initialisierung wird weiterverwendet.
+- Quelle und vorhandene Beschreibung in Parameterdetails; ein allgemeiner Parametereditor
+  ersetzt die Beschränkung auf vier Steuerwerte. MAIN-r/w-Rechte, Engineering-Skalierung,
+  Enum-Auswahl, frischer Ausgangswert und Readback bleiben verbindlich. Cloud verwendet
+  ausschließlich die aus dem gepinnten Desktop-Katalog exportierten Schreibcodes (244 Grants).
+  Ohne bestätigte Cloud-Zuordnung bleibt Modbus erforderlich. Nur am direkten Bus verfügbare
+  Engineering-Register werden nicht auf den LTE-Transport umgedeutet.
+- Timerwörter aus Parameterdetails verwenden den bestehenden vollständigen Timerablauf.
+  Standard-Modbus besitzt nun ebenfalls FC16 mit geprüftem ACK; bleibt ohne explizite
+  Serverkonfiguration deaktiviert. R01/R02/R03 lesen ihre Sollwertgrenzen frisch.
+- Startseite: Eintritt/Austritt, elektrische/thermische Leistung und COP sowie farbiger
+  28–90-Hz-Prozentbalken. Äußerer HTML-/Body-Hintergrund explizit grau, Betriebsfläche bleibt
+  orange bei eingeschalteter Anlage. Lokaler und öffentlicher Browser hatten beim direkten
+  Vergleich denselben Hintergrund; eine abweichende alte Darstellung wurde nicht reproduziert.
+- Verbindungseinstellungen: einstellbare TCP-Leerlaufzeit und Browser-Lease-Dauer;
+  Dauermodus bleibt unabhängig von diesen Fristen.
+
+Prüfung: 153 Backendtests, 16 Frontendtests, Formatkontrollen und Typecheck/Build grün.
+6f8712b erfolgreich durch CI und auf dem Server installiert. Live: acht LTE-Blöcke vollständig,
+D-Gruppe korrekt, Beschreibung und Quelle sichtbar; D01 über LTE und Cloud frisch gelesen
+und jeweils unveränderten Auftrag geprüft (kein Geräteschreibbefehl). Cloud-/Modbuswerte
+erscheinen im gemeinsamen Speicher. Weitere Änderung: Startseitenwerte bleiben auch während
+der neuen Transportabfrage sichtbar. Tatsächlich ändernde neue Schreibfälle sind mit Mocks
+abgedeckt, nicht als geänderte Betriebsparameter an der Wärmepumpe getestet.

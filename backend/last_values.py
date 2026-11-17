@@ -171,14 +171,17 @@ def remember_cloud(rows, account):
         if not mapping or row.get("value") is None:
             continue
         register = mapping["register"]
+        label = display_label(register, row["value"])
         values[str(register)] = {
             **row,
             "register": register,
             "raw": None,
-            "unit": row.get("unit") or mapping.get("unit") or "",
+            "unit": ""
+            if label is not None
+            else row.get("unit") or mapping.get("unit") or "",
             "transport": "cloud",
             "code": code,
-            "display_value": display_label(register, row["value"]),
+            "display_value": label,
         }
     store.remember(values, scope=scope)
 
