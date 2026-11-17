@@ -172,7 +172,11 @@ export const api = {
   transports: () => get<{ items: Transport[]; live_supported: boolean }>('/api/transports'),
   dashboard: (transport: TransportId, live = false) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport) + (live ? '&live=true' : '')),
   registerGroups: () => get<{ items: { group: string; count: number }[] }>('/api/register-groups'),
-  registers: (query: string, group = '') => get<{ items: Register[]; catalog_size: number }>('/api/registers?query=' + encodeURIComponent(query) + '&group=' + encodeURIComponent(group) + '&limit=200'),
+  registers: (query: string, group = '', favorites?: number[]) => {
+    const parameters = new URLSearchParams({query,group,limit:'200'})
+    if(favorites!==undefined){parameters.set('favorites_only','true');for(const id of favorites)parameters.append('favorite',String(id))}
+    return get<{items:Register[];catalog_size:number}>('/api/registers?'+parameters)
+  },
   adminSession: () => get<{ authenticated: boolean; role: string }>('/api/admin/session'),
   adminLogin: (admin_password: string) =>
     post<{ authenticated: boolean; role: string }>('/api/admin/login', { admin_password }),

@@ -4,6 +4,19 @@ from backend.main import app
 
 
 class ApiTests(unittest.TestCase):
+    def test_favorites_filter_applies_before_the_catalog_limit_without_bus_access(self):
+        from unittest.mock import patch
+        with patch('backend.main.open_warmlink') as active:
+            response=self.client.get('/api/registers?favorites_only=true&favorite=1158&favorite=2077&favorite=99999&limit=1')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(len(response.json()['items']),1)
+        self.assertIn(response.json()['items'][0]['register'],(1158,2077))
+        active.assert_not_called()
+
+    def test_empty_favorites_are_empty_and_invalid_or_excessive_ids_are_rejected(self):
+        self.assertEqual(self.client.get('/api/registers?favorites_only=true').json()['items'],[])
+        self.assertEqual(self.client.get('/api/registers?favorites_only=true&favorite=invalid').status_code,422)
+        self.assertEqual(self.client.get('/api/registers?favorites_only=true'+('&favorite=1158'*1001)).status_code,422)
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)

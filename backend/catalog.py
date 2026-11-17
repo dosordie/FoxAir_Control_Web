@@ -72,7 +72,7 @@ def public_register(number: str, entry: dict) -> dict:
     }
 
 
-def search_registers(query: str = "", limit: int = 80, group: str = "") -> list[dict]:
+def search_registers(query: str = "", limit: int = 80, group: str = "", register_ids: set[int] | None = None) -> list[dict]:
     term = query.strip().casefold()
     out = []
     def code_key(item):
@@ -80,6 +80,8 @@ def search_registers(query: str = "", limit: int = 80, group: str = "") -> list[
         return (not bool(code), [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", code)], int(item[0]))
 
     for number, definition in sorted(load_registers().items(), key=code_key):
+        if register_ids is not None and int(number) not in register_ids:
+            continue
         row = public_register(number, definition)
         if group and row["group"].upper() != group.upper():
             continue

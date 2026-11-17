@@ -342,8 +342,9 @@ def cloud_extra(kind: Literal["ota","metadata","ai"], payload: CloudAdminAction,
 
 @app.get("/api/registers")
 def registers(query: str = "", group: str = Query("", max_length=18),
-              limit: int = Query(80, ge=1, le=200)):
-    items = search_registers(query, limit, group=group)
+              limit: int = Query(80, ge=1, le=200),
+              favorites_only: bool = False, favorite: list[int] = Query(default=[], max_length=1000)):
+    items = search_registers(query, limit, group=group, register_ids=set(favorite) if favorites_only else None)
     if group.upper() == "CLOUD":
         # Cloud-only entries are queried via /api/cloud/values instead.
         return {"items": [], "catalog_size": len(load_registers())}

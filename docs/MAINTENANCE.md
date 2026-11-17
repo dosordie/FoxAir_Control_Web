@@ -45,6 +45,12 @@ statt globale Registerwörter zu manipulieren.
   Passwortentwurf. Keine Speicherung des Passworts im Browser.
 - `useConnectionSettings`: private Verbindungsdaten. Abmeldung/Unmount beendet
   die gültige Anfragegeneration und leert private Felder.
+- `useRegisterCatalog`: Suche, Gruppen, Ladefehler und Anfragenummern. Alte
+  Suchantworten dürfen neue Ergebnisse nicht überschreiben. Katalogabfragen
+  starten keine Modbus-Leseaufträge.
+- `useRegisterFavorites`: speichert ausschließlich Register-IDs pro Browser.
+  Der Katalogfilter greift vor dem Trefferlimit; auch Favoriten außerhalb der
+  ersten 200 Standardtreffer bleiben auffindbar. Keine impliziten Schreibrechte.
 - `AppHeader`, `UpdatePanel`, `ConnectionSettingsDialog`: eigene UI-Zuständigkeiten.
   Die Hauptkomponente koordiniert weiterhin Übersicht, Parameter und Bedienaktionen;
   sie ist noch kein vollständig abgeschlossener Umbau aller Ansichten.

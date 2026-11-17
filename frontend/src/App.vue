@@ -14,6 +14,8 @@ import AppHeader from './components/AppHeader.vue'
 import UpdatePanel from './components/UpdatePanel.vue'
 import ConnectionSettingsDialog from './components/ConnectionSettingsDialog.vue'
 import type { Page } from './types/navigation'
+import { useRegisterFavorites } from './composables/useRegisterFavorites'
+import { useRegisterCatalog } from './composables/useRegisterCatalog'
 import { useLteConnection } from './composables/useLteConnection'
 import { api, writeValueText } from './api'
 import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
@@ -26,9 +28,6 @@ const page = ref<Page>('home')
 const snapshot = ref<Dashboard | null>(null)
 const refreshing = ref(false)
 const error = ref('')
-const search = ref('')
-const selectedGroup = ref('')
-const registerGroups = ref<{ group: string; count: number }[]>([])
 const cloudRows = ref<CloudRow[]>([])
 const cloudOverview = ref<CloudValues | null>(null)
 const cloudLogs = ref<CloudLog[]>([])
@@ -185,14 +184,19 @@ const liveActive = computed(() => page.value === 'home' && selectedTransport.val
   liveEnabled.value && !document.hidden)
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 let unmounted = false
-const registers = ref<Register[]>([])
-const catalogSize = ref(0)
-const registerLoading = ref(false)
+const { favoriteIds, favoritesOnly, isFavorite, toggleFavorite } = useRegisterFavorites()
+const activeFavorites = computed(() => favoritesOnly.value ? favoriteIds.value : undefined)
+function toggleFavoriteFilter() {
+  favoritesOnly.value = !favoritesOnly.value
+  selectedGroup.value = ''; search.value = ''
+}
+const { search, selectedGroup, registers, catalogSize, registerLoading, catalogError, orderedGroups } = useRegisterCatalog(
+  selectedTransport, page, () => { selectedRegister.value = null }, activeFavorites,
+)
 const selectedRegister = ref<Register | null>(null)
 const reading = ref(false)
 const currentValue = ref<RegisterValue | null>(null)
 const readError = ref('')
-let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 const selectedTransportInfo = computed(() => transports.value.find(t => t.id === selectedTransport.value))
 const transportLabel = computed(() => selectedTransportInfo.value?.name || 'PHNIX-Cloud')
@@ -225,13 +229,6 @@ const waterSpread = computed(() => {
 function deltaText(value: number | null): string {
   return value === null ? '—' : (value > 0 ? '+' : '') + value.toLocaleString('de-DE', {maximumFractionDigits:1})
 }
-const orderedGroups = computed(() => registerGroups.value
-  .filter(entry => !['DIAG', 'ENG'].includes(entry.group.toUpperCase()))
-  .sort((a, b) => {
-    const specialA = a.group.length === 1 ? 0 : 1
-    const specialB = b.group.length === 1 ? 0 : 1
-    return specialA - specialB || a.group.localeCompare(b.group, 'de')
-  }))
 const mainRegisterOpen = ref(false)
 const mainRegisterGroup = ref('T')
 const mainRegisterSearch = ref('')
@@ -346,7 +343,6 @@ function navigate(target: Page, term = '') {
   window.location.hash = target === 'home' ? '#/' : '#/' + target
   syncRoute()
   if (target === 'parameters') {
-    void loadRegisters()
     void loadCloudValues()
   }
 }
@@ -487,19 +483,6 @@ async function reloadTransportOptions(source: TransportId) {
     if(source==='cloud'&&selectedTransport.value==='cloud')void loadDashboard()
   } catch { error.value = 'Verbindungsübersicht konnte nicht aktualisiert werden.' }
 }
-async function loadRegisters() {
-  registerLoading.value = true
-  try {
-    const result = await api.registers(search.value, selectedGroup.value)
-    registers.value = result.items.map(row => selectedTransport.value === 'cloud' ? row : {...row, cloud: null})
-    catalogSize.value = result.catalog_size
-  } catch (err) {
-    readError.value = err instanceof Error ? err.message : 'Registerkatalog nicht erreichbar'
-    registers.value = []
-  } finally {
-    registerLoading.value = false
-  }
-}
 function selectRegister(item: Register) {
   selectedRegister.value = item
   currentValue.value = null
@@ -534,7 +517,6 @@ watch(selectedTransport, (value) => {
   operationSources.value = {}
   operationCode.value = null
   if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
-  void loadRegisters()
   clearTimeout(refreshTimer)
   snapshot.value = null
   void loadDashboard()
@@ -546,14 +528,6 @@ watch([liveEnabled, liveInterval], () => {
   window.localStorage.setItem('foxair.cloudLiveEnabled', String(liveEnabled.value))
   window.localStorage.setItem('foxair.cloudLiveInterval', String(liveInterval.value))
   scheduleRefresh()
-})
-watch(selectedGroup, () => {
-  selectedRegister.value = null
-  if (page.value === 'parameters') void loadRegisters()
-})
-watch(search, () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => { if (page.value === 'parameters') void loadRegisters() }, 240)
 })
 onMounted(async () => {
   syncRoute()
@@ -568,8 +542,6 @@ onMounted(async () => {
   }
   await Promise.all([loadDashboard(), loadCloudValues(), checkAdminSession()])
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
-  try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
-  if (page.value === 'parameters') await loadRegisters()
   if (page.value === 'settings') await loadCloudLogs()
   scheduleRefresh()
   scheduleValueRefresh()
@@ -579,7 +551,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('hashchange', syncRoute)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   document.removeEventListener('keydown', closeSpecialOnEscape)
-  clearTimeout(searchTimer)
   clearTimeout(refreshTimer)
   clearTimeout(valuesTimer)
   cloudAdminPassword.value = ''
@@ -749,6 +720,9 @@ onBeforeUnmount(() => {
               </div>
               <button type="button" class="outlined-action" @click="loadCloudValues"><RefreshCw :size="15" /> Cache aktualisieren</button>
             </div>
+            <div v-if="!cloudView" class="register-favorites">
+              <button type="button" class="outlined-action" :aria-pressed="favoritesOnly" @click="toggleFavoriteFilter"><Star :size="16" />{{ favoritesOnly?'Alle Parameter anzeigen':'Nur Favoriten' }} ({{ favoriteIds.length }})</button>
+            </div>
             <div v-if="!cloudView" class="parameter-groups" aria-label="Parametergruppen">
               <button v-for="group in orderedGroups" :key="group.group" type="button"
                 class="group-chip" :class="{ active: selectedGroup === group.group }"
@@ -765,6 +739,7 @@ onBeforeUnmount(() => {
               <span v-else>Einmalig beim Öffnen: acht Blöcke mit je 90 Registern. Andere Browser teilen dieselbe Abfrage.</span>
               <button class="outlined-action" :disabled="scanStarting||lteScan.status==='running'" @click="startLteScan">Alle LTE-Register erneut lesen</button>
             </div>
+            <p v-if="!cloudView&&catalogError" role="alert" class="read-error">{{ catalogError }}</p>
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
@@ -815,7 +790,7 @@ onBeforeUnmount(() => {
             </template>
             <template v-else-if="!cloudView && selectedRegister">
               <span class="section-caption">PARAMETERDETAILS</span>
-              <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><Star :size="23" class="star-muted" /></div>
+              <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><button type="button" class="favorite-button" :class="{selected:isFavorite(selectedRegister.register)}" :aria-pressed="isFavorite(selectedRegister.register)" :aria-label="isFavorite(selectedRegister.register)?'Favorit entfernen':'Als Favorit merken'" @click="toggleFavorite(selectedRegister.register)"><Star :size="23" :fill="isFavorite(selectedRegister.register)?'currentColor':'none'" /></button></div>
               <div class="detail-value"><span>Aktueller Wert</span>
                 <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentValue?.value ?? currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
                   <small>{{ currentValue?.unit || currentRegisterValue(selectedRegister.register)?.unit || selectedRegister.cloud?.unit || '' }}</small></strong>
