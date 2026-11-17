@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
-  ChevronRight, Clock3, Cloud, Gauge, HeartPulse, House,
+  ChevronRight, Clock3, Gauge, HeartPulse, House,
   Power, RadioTower, RefreshCw, Search,
   Settings2, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
@@ -12,10 +12,11 @@ import CloudInsights from './CloudInsights.vue'
 import { useAdminSession } from './composables/useAdminSession'
 import AppHeader from './components/AppHeader.vue'
 import UpdatePanel from './components/UpdatePanel.vue'
+import ConnectionSettingsDialog from './components/ConnectionSettingsDialog.vue'
 import type { Page } from './types/navigation'
 import { useLteConnection } from './composables/useLteConnection'
 import { api, writeValueText } from './api'
-import type { CloudConfigStatus, CloudDevice, CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, WarmlinkConfig, Transport, TransportId } from './api'
+import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
 const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
 const storedId = window.localStorage.getItem('foxair.lastTransport') as TransportId
@@ -28,8 +29,6 @@ const error = ref('')
 const search = ref('')
 const selectedGroup = ref('')
 const registerGroups = ref<{ group: string; count: number }[]>([])
-const cloudStatus = ref<CloudConfigStatus | null>(null)
-const cloudDevices = ref<CloudDevice[]>([])
 const cloudRows = ref<CloudRow[]>([])
 const cloudOverview = ref<CloudValues | null>(null)
 const cloudLogs = ref<CloudLog[]>([])
@@ -57,23 +56,9 @@ const specialRows = computed(() => {
 const cloudView = ref(false)
 const cloudKind = ref('')
 const cloudCodeSelected = ref<CloudRow | null>(null)
-const accountLoading = ref(false)
-const accountLoaded = ref(false)
-const cloudScanLoading = ref(false)
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
-const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
-const cloudStatusLoading = ref(false)
-const cloudUsername = ref('')
-const cloudPassword = ref('')
-const cloudDeviceCode = ref('')
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
-const { secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession(
-  () => Promise.all([loadStoredAccount(), loadLteConfig()]),
-  () => {
-    cloudUsername.value = ''; cloudDeviceCode.value = ''; cloudPassword.value = ''
-    accountLoaded.value = false; cloudDevices.value = []; selectedCloudStatus.value = {}
-  },
-)
+const { secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
@@ -108,9 +93,7 @@ async function openOperation(code:'Power'|'Mode'|'H22'){
   writeFeedback.value='';writeError.value='';operationSources.value={};operationCode.value=code
   await refreshOperation()
 }
-const lteConfig = ref<WarmlinkConfig>({host:'192.168.1.50',port:2001,enabled:false,slave:99,connection_mode:'on_demand'})
 const connectionSettingsOpen = ref(false)
-const connectionDialogElement = ref<HTMLDialogElement | null>(null)
 const historyOpen=ref(false)
 const historyDialogElement=ref<HTMLDialogElement|null>(null)
 watch(historyOpen, async opened=>{
@@ -119,33 +102,10 @@ watch(historyOpen, async opened=>{
   if(opened && dialog && !dialog.open)dialog.showModal()
   else if(!opened && dialog?.open)dialog.close()
 })
-watch(connectionSettingsOpen, opened => {
-  const dialog = connectionDialogElement.value
-  if (!dialog) return
-  if (opened && !dialog.open) dialog.showModal()
-  else if (!opened && dialog.open) dialog.close()
-})
+
 const { busState, localValues, lteScan, pushConnected, scanStarting, startLteScan, refreshSnapshot } = useLteConnection(
   selectedTransport, snapshot, () => { currentValue.value = null; lteWriteSources.value = {} },
 )
-const lteBusy = ref(false)
-const lteMessage = ref('')
-const lteError = ref('')
-async function loadLteConfig() {
-  if (!adminAuthenticated.value) return
-  try { lteConfig.value = await api.warmlinkConfig() }
-  catch(e) { lteError.value = e instanceof Error ? e.message : 'LTE-Einstellungen nicht verfügbar' }
-}
-async function saveLteConfig() {
-  lteBusy.value = true; lteError.value = ''; lteMessage.value = ''
-  try {
-    lteConfig.value = await api.saveWarmlinkConfig(lteConfig.value)
-    transports.value = (await api.transports()).items
-    lteWriteSources.value = {}
-    lteMessage.value = 'LTE-Anschluss gespeichert. Die Verbindung kann jetzt ausgewählt und geprüft werden.'
-  } catch(e) { lteError.value = e instanceof Error ? e.message : 'Speichern fehlgeschlagen' }
-  finally { lteBusy.value = false }
-}
 async function refreshWriteSources() {
   writeReading.value = true; writeError.value = ''
   const transport = selectedTransport.value
@@ -218,10 +178,6 @@ async function submitCloudWrite(code: FirstWriteCode) {
     writeBusy.value = false
   }
 }
-const cloudSaving = ref(false)
-const cloudDiscovering = ref(false)
-const cloudMessage = ref('')
-const cloudError = ref('')
 const liveEnabled = ref(window.localStorage.getItem('foxair.cloudLiveEnabled') !== 'false')
 const storedInterval = Number(window.localStorage.getItem('foxair.cloudLiveInterval') || 30)
 const liveInterval = ref(Number.isFinite(storedInterval) ? Math.max(10, Math.min(3600, storedInterval)) : 30)
@@ -383,7 +339,6 @@ function syncRoute() {
   scheduleValueRefresh()
   if (page.value === 'settings') {
     void loadCloudLogs()
-    void loadCloudStatus()
   }
 }
 function navigate(target: Page, term = '') {
@@ -521,89 +476,16 @@ async function loadCloudLogs() {
   try { cloudLogs.value = (await api.cloudLogs()).items }
   catch { /* Logs are optional and must not block operation */ }
 }
-async function loadStoredAccount() {
-  accountLoading.value = true
-  cloudError.value = ''
-  try {
-    const result = await api.cloudAccount('')
-    cloudUsername.value = result.username
-    cloudDeviceCode.value = result.device_code
-    accountLoaded.value = true
-    cloudMessage.value = 'Aktuelle Cloud-E-Mail und Gerätekennung geladen.'
-  } catch (e) {
-    cloudError.value = e instanceof Error ? e.message : 'Kontodaten konnten nicht geladen werden.'
-  } finally {
-    accountLoading.value = false
-  }
-}
-async function rescanCloud() {
-  cloudScanLoading.value = true
-  cloudError.value = ''
-  try {
-    const result = await api.cloudScan('')
-    cloudMessage.value = result.started ? 'Cloud-Vollscan gestartet.' : 'Cloud-Vollscan läuft bereits.'
-    await loadCloudValues()
-  } catch (e) {
-    cloudError.value = e instanceof Error ? e.message : 'Scan konnte nicht gestartet werden'
-  } finally {
-    cloudScanLoading.value = false
-  }
-}
 
-async function loadCloudStatus() {
-  try { cloudStatus.value = await api.cloudStatus() }
-  catch { cloudStatus.value = null }
-}
 
-async function saveCloudSettings() {
-  if (!secureAdminContext) {
-    cloudError.value = 'Cloud-Konfiguration nur über HTTPS oder einen lokalen SSH-Tunnel.'
-    return
-  }
-  cloudSaving.value = true
-  cloudError.value = ''
-  cloudMessage.value = ''
-  try {
-    cloudStatus.value = await api.cloudSave(
-      '', cloudUsername.value, cloudPassword.value, cloudDeviceCode.value
-    )
-    cloudPassword.value = ''
-    cloudMessage.value = 'Cloud-Einstellungen gespeichert. Verbindungsdaten werden nur auf dem Server abgelegt.'
-    const list = await api.transports()
-    transports.value = list.items
-    if (selectedTransport.value === 'cloud') void loadDashboard()
-  } catch (e) {
-    cloudError.value = e instanceof Error ? e.message : 'Einstellungen konnten nicht gespeichert werden.'
-  } finally {
-    cloudSaving.value = false
-  }
-}
 
-async function queryCloudDeviceStatus() {
-  cloudStatusLoading.value = true
-  cloudError.value = ''
-  try {
-    selectedCloudStatus.value = (await api.cloudDeviceStatus('')).status
-  } catch (e) {
-    cloudError.value = e instanceof Error ? e.message : 'Gerätestatus nicht verfügbar'
-  } finally {
-    cloudStatusLoading.value = false
-  }
-}
 
-async function discoverCloudDevices() {
-  cloudDiscovering.value = true
-  cloudError.value = ''
-  cloudMessage.value = ''
+async function reloadTransportOptions(source: TransportId) {
+  lteWriteSources.value = {}
   try {
-    const result = await api.cloudDevices('')
-    cloudDevices.value = result.items
-    cloudMessage.value = result.count ? result.count + ' Cloud-Geräte gefunden.' : 'Keine Geräte gefunden.'
-  } catch (e) {
-    cloudError.value = e instanceof Error ? e.message : 'Geräteabfrage fehlgeschlagen'
-  } finally {
-    cloudDiscovering.value = false
-  }
+    transports.value = (await api.transports()).items
+    if(source==='cloud'&&selectedTransport.value==='cloud')void loadDashboard()
+  } catch { error.value = 'Verbindungsübersicht konnte nicht aktualisiert werden.' }
 }
 async function loadRegisters() {
   registerLoading.value = true
@@ -684,8 +566,7 @@ onMounted(async () => {
   } catch {
     // Backend not reachable; show unavailable values, never demo values.
   }
-  await Promise.all([loadDashboard(), loadCloudStatus(), loadCloudValues(), checkAdminSession()])
-  if (adminAuthenticated.value) { void loadStoredAccount(); void loadLteConfig() }
+  await Promise.all([loadDashboard(), loadCloudValues(), checkAdminSession()])
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   try { registerGroups.value = (await api.registerGroups()).items } catch { registerGroups.value = [] }
   if (page.value === 'parameters') await loadRegisters()
@@ -702,7 +583,6 @@ onBeforeUnmount(() => {
   clearTimeout(refreshTimer)
   clearTimeout(valuesTimer)
   cloudAdminPassword.value = ''
-  cloudPassword.value = ''
 })
 </script>
 
@@ -1031,101 +911,10 @@ onBeforeUnmount(() => {
         <CloudInsights v-if="historyOpen" mode="history" :admin="adminAuthenticated&&secureAdminContext" />
       </div>
     </dialog>
-    <dialog ref="connectionDialogElement" class="connection-dialog panel" aria-labelledby="connection-dialog-title"
-      @close="connectionSettingsOpen = false" @cancel="connectionSettingsOpen = false" @click.self="connectionSettingsOpen = false">
-      <div class="connection-dialog-content">
-        <header class="connection-dialog-header">
-          <div><span class="section-caption">VERBINDUNG</span><h2 id="connection-dialog-title">Verbindungseinstellungen</h2></div>
-          <button class="outlined-action" type="button" aria-label="Verbindungseinstellungen schließen" @click="connectionSettingsOpen = false">Schließen</button>
-        </header>
-        <p class="section-hint">Cloud-Zugang und lokaler LTE-Anschluss. Die aktive Verbindung wählst du auf der Einstellungsseite.</p>
-<section class="connection-section">
-          <div class="section-heading"><div><span class="section-caption">LTE / WARMLINK</span><h2>Lokaler LTE-Bus</h2></div></div>
-          <p class="section-hint">Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.</p>
-          <p v-if="!adminAuthenticated" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
-          <form v-else @submit.prevent="saveLteConfig" class="cloud-form">
-            <label class="field-label" for="lte-host">IP-Adresse</label>
-            <input id="lte-host" class="settings-input" v-model="lteConfig.host" required />
-            <label class="field-label" for="lte-port">TCP-Port</label>
-            <input id="lte-port" class="settings-input" type="number" min="1" max="65535" v-model.number="lteConfig.port" required />
-            <label class="field-label" for="connection-mode">Verbindung offen halten</label>
-            <select id="connection-mode" class="settings-input" v-model="lteConfig.connection_mode"><option value="on_demand">Nur bei einer Abfrage</option><option value="browser">Solange ein Browser geöffnet ist</option><option value="permanent">Dauerhaft – auch ohne Browser</option></select>
-            <p class="section-hint">Browser-Modus: Schließen spätestens 90 Sekunden nach dem letzten Lebenszeichen. Dauerhaftes Mithören sendet keine eigenen Lese- oder Schreibbefehle.</p>
-            <p role="status">TCP: {{ busState?.connected?'Verbunden':'Geschlossen' }} · Modus: {{ {on_demand:'Bei Bedarf',browser:'Browser geöffnet',permanent:'Dauerhaft'}[busState?.mode as 'on_demand'|'browser'|'permanent'] || 'Bei Bedarf' }}<span v-if="busState?.error"> · {{ busState.error }}</span></p>
-            <label><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Verbindung mit Lesen und freigegebenen Schreibfunktionen aktivieren</label>
-            <button class="main-action" :disabled="lteBusy">{{ lteBusy ? 'Speichert …' : 'LTE-Anschluss speichern' }}</button>
-          </form>
-          <p v-if="lteMessage" class="section-hint" role="status">{{ lteMessage }}</p>
-          <p v-if="lteError" class="read-error" role="alert">{{ lteError }}</p>
-        </section>
-<section class="connection-section cloud-panel">
-          <div class="section-head"><div><span class="section-caption">PHNIX / WARMLINK</span><h2>Cloud-Zugang & Geräte</h2></div><Cloud :size="24" /></div>
-          <p>Cloud: <strong>{{ cloudStatus?.configured ? 'eingerichtet' : 'nicht vollständig' }}</strong> · Benutzer {{ cloudStatus?.username_configured ? 'vorhanden' : 'fehlt' }} · Gerätekennung {{ cloudStatus?.device_configured ? 'vorhanden' : 'fehlt' }}</p>
-          <p v-if="!cloudStatus?.admin_enabled" class="read-error">Web-Administration lokal einrichten: <code>python3 scripts/setup_web_admin.py</code></p>
-          <p v-else-if="!secureAdminContext" class="read-error">Für die Cloud-Bearbeitung HTTPS oder einen lokalen SSH-Tunnel verwenden. Über unverschlüsseltes LAN-HTTP bleibt sie gesperrt.</p>
-          <div class="admin-session">
-            <p><strong>Zugriff: {{ adminAuthenticated ? 'Administrator' : 'Lesender Gast' }}</strong> — Werte sind ohne Anmeldung sichtbar.</p>
-            <form v-if="!adminAuthenticated" @submit.prevent="loginAsAdmin" class="admin-login-form">
-              <label class="field-label" for="admin-password">Web-Administrationspasswort</label>
-              <input id="admin-password" class="settings-input" v-model="cloudAdminPassword" type="password" autocomplete="current-password" placeholder="Admin-Anmeldung" :disabled="!secureAdminContext" />
-              <button type="submit" class="outlined-action" :disabled="!secureAdminContext || adminBusy || !cloudAdminPassword">
-                <ShieldCheck :size="17" /> {{ adminBusy ? 'Anmeldung läuft …' : 'Als Administrator anmelden' }}
-              </button>
-              <p v-if="adminLoginError" role="alert" class="read-error">{{ adminLoginError }}</p>
-            </form>
-            <button v-else type="button" class="outlined-action" @click="logoutAsAdmin">
-              <ShieldCheck :size="17" /> Admin abmelden
-            </button>
-          </div>
-          <form class="cloud-form" @submit.prevent="saveCloudSettings">
-            <button type="button" class="outlined-action account-load" :disabled="accountLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="loadStoredAccount">
-              <ShieldCheck :size="17" /> {{ accountLoading ? 'Prüfe Adminzugang …' : 'Aktuelle E-Mail und Gerätekennung anzeigen' }}
-            </button>
-            <p v-if="accountLoaded" class="success-text">Gespeicherter Benutzer und deviceCode wurden in die beiden Felder unten übernommen. Das Cloud-Passwort bleibt verborgen.</p>
-            <label class="field-label" for="cloud-username">WarmLink-Benutzername</label>
-            <input id="cloud-username" class="settings-input" v-model="cloudUsername" autocomplete="off" placeholder="Leer = bisherigen Benutzer behalten" :disabled="!secureAdminContext" />
-            <label class="field-label" for="cloud-password">Cloud-Passwort</label>
-            <input id="cloud-password" class="settings-input" v-model="cloudPassword" type="password" autocomplete="new-password" placeholder="Leer = bisheriges Passwort behalten" :disabled="!secureAdminContext" />
-            <label class="field-label" for="cloud-device">Gerätekennung (deviceCode)</label>
-            <input id="cloud-device" class="settings-input" v-model="cloudDeviceCode" placeholder="Leer = bisherige Kennung behalten" :disabled="!secureAdminContext" />
-            <button class="main-action" type="submit" :disabled="cloudSaving || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated">{{ cloudSaving ? 'Speichert …' : 'Cloud-Einstellungen speichern' }}</button>
-          </form>
-          <div class="cloud-discovery">
-            <button class="outlined-action" type="button" :disabled="cloudDiscovering || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="discoverCloudDevices">
-              <Search :size="17" /> {{ cloudDiscovering ? 'Suche läuft …' : 'Cloud-Geräte und Informationen abrufen' }}
-            </button>
-            <div v-if="cloudDevices.length" class="device-list">
-              <button v-for="device in cloudDevices" :key="device.deviceCode" type="button" class="device-card" @click="cloudDeviceCode = device.deviceCode">
-                <strong>{{ device.deviceNickName || device.deviceName || 'PHNIX-Gerät' }}</strong>
-                <span>Modell: {{ device.model || device.custModel || '—' }}</span>
-                <span>Status: {{ device.deviceStatus ?? '—' }} · Fehler: {{ device.isFault === undefined ? '—' : device.isFault ? 'Ja' : 'Nein' }}</span>
-                <span>DTU-Version: {{ device.dtuSoftwareVer || '—' }} · Signal: {{ device.dtuSignalIntensity ?? '—' }}</span>
-                <span v-if="device.houseName">Haus: {{ device.houseName }}</span>
-                <small>Auswählen</small>
-              </button>
-            </div>
-          </div>
-          <div class="cloud-discovery">
-            <button type="button" class="outlined-action" :disabled="cloudStatusLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="queryCloudDeviceStatus">
-              <Activity :size="17" /> {{ cloudStatusLoading ? 'Frage Gerätestatus ab …' : 'Status des ausgewählten Cloud-Geräts abrufen' }}
-            </button>
-            <div v-if="Object.keys(selectedCloudStatus).length" class="device-status">
-              <div v-for="(value, key) in selectedCloudStatus" :key="key"><span>{{ key }}</span><strong>{{ value ?? '—' }}</strong></div>
-            </div>
-          </div>
-          <p v-if="cloudMessage" role="status" class="success-text">{{ cloudMessage }}</p>
-          <p v-if="cloudError" role="alert" class="read-error">{{ cloudError }}</p>
-          <div class="cloud-discovery">
-            <button type="button" class="outlined-action" :disabled="cloudScanLoading || !cloudStatus?.admin_enabled || !secureAdminContext || !adminAuthenticated" @click="rescanCloud">
-              <RefreshCw :size="17" :class="{ spinning: cloudScanLoading }" /> Vollständigen Cloud-Katalog erneut abfragen
-            </button>
-            <p class="section-hint">{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Cloud-Codes mit Wert · Scanstatus: {{ cloudOverview?.status || 'unbekannt' }}</p>
-          </div>
-          <p class="section-hint">Geräteinformationen stammen aus Geräteliste und Hauszuordnungen. Cloud-Passwort und Token werden nicht aus dem Server ausgelesen.</p>
-        </section>
-        <section class="connection-section"><h2>Weitere lokale Busse</h2><p class="section-hint">Standard-Modbus wird derzeit serverseitig eingerichtet. Display-Modbus ist noch nicht implementiert.</p></section>
-      </div>
-    </dialog>
+    <ConnectionSettingsDialog v-model="connectionSettingsOpen" v-model:admin-password="cloudAdminPassword"
+      :admin="adminAuthenticated" :secure="secureAdminContext" :admin-busy="adminBusy" :admin-login-error="adminLoginError"
+      :bus-state="busState" :cloud-overview="cloudOverview" @login="loginAsAdmin" @logout="logoutAsAdmin"
+      @connections-changed="reloadTransportOptions" @refresh-cloud="loadCloudValues" />
 
     <dialog ref="operationDialogElement" class="operation-dialog panel" aria-labelledby="operation-title" @close="operationCode=null" @cancel="operationCode=null">
       <div class="special-top"><h2 id="operation-title">{{ operationCode?operationLabels[operationCode]:'' }}</h2><button class="outlined-action" aria-label="Betriebsdialog schließen" @click="operationCode=null">Schließen</button></div>

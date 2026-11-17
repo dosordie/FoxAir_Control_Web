@@ -1,7 +1,10 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { api } from '../api'
 
-export function useAdminSession(onLogin: () => Promise<unknown>, onLogout: () => void) {
+export function useAdminSession(
+  onLogin: () => Promise<unknown> = async () => {},
+  onLogout: () => void = () => {},
+) {
   const secureAdminContext =
     window.location.protocol === 'https:' ||
     ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
