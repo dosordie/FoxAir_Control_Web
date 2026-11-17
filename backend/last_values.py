@@ -191,8 +191,16 @@ def fill_dashboard(snapshot):
 
     values = store.values()
     for name, register in DASHBOARD_FIELDS.items():
-        if snapshot["metrics"].get(name) is None and str(register) in values:
-            snapshot["metrics"][name] = values[str(register)]
+        last = values.get(str(register))
+        current = snapshot["metrics"].get(name)
+        if last and (
+            current is None
+            or (
+                current.get("quality") in ("cached", "stale")
+                and last["timestamp"] > current["timestamp"]
+            )
+        ):
+            snapshot["metrics"][name] = last
     selected = values.get("2014")
     target = snapshot["metrics"].get("target")
     if (

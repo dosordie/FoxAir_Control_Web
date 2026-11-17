@@ -50,6 +50,18 @@ class SharedValuesTests(unittest.TestCase):
         self.scope = "different-device"
         self.assertEqual(self.store.values(), {})
 
+    def test_newer_bus_value_replaces_old_cloud_cache_without_claiming_online(self):
+        from backend.last_values import fill_dashboard
+
+        old = {**self.row("cloud", 3600), "quality": "stale"}
+        new = {**self.row("warmlink_raw"), "quality": "cached"}
+        snapshot = {"status": "unavailable", "metrics": {"supply": old}}
+        with patch("backend.last_values.store.values", return_value={"2046": new}):
+            result = fill_dashboard(snapshot)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["metrics"]["supply"]["transport"], "warmlink_raw")
+        self.assertEqual(result["metrics"]["supply"]["timestamp"], new["timestamp"])
+
     def test_nonfinite_value_does_not_break_telemetry(self):
         self.store.remember({"2046": {**self.row(), "value": float("nan")}})
         self.assertEqual(self.store.values(), {})
