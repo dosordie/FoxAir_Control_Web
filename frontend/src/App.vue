@@ -73,7 +73,7 @@ const cloudKind = ref('')
 const cloudCodeSelected = ref<CloudRow | null>(null)
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
-const { secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
+const { ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
@@ -606,7 +606,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <AppHeader :page="page" :authenticated="adminAuthenticated" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
+    <AppHeader :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="adminAuthenticated" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
     <main>

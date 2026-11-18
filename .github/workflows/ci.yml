@@ -21,7 +21,7 @@ jobs:
       - name: Run backend tests
         run: python -m unittest discover -s backend/tests -v
       - name: Check refactored transport formatting
-        run: python -m ruff format --check backend/bus_connection.py backend/bus_locks.py backend/register_cache.py backend/register_definitions.py backend/register_scan.py backend/warmlink_protocol.py backend/warmlink.py backend/diagnostics.py backend/routes
+        run: python -m ruff format --check backend/bus_connection.py backend/bus_locks.py backend/register_cache.py backend/register_definitions.py backend/register_scan.py backend/warmlink_protocol.py backend/warmlink.py backend/diagnostics.py backend/admin_session.py backend/proxy_sso.py backend/server.py backend/routes
       - name: Verify register catalogue snapshot
         run: |
           python scripts/sync_registers.py --check

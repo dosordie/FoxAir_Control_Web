@@ -5,7 +5,7 @@ set -euo pipefail
 if (( EUID != 0 )); then echo "Bitte als root ausführen." >&2; exit 1; fi
 unit=/etc/systemd/system/foxair-web.service
 if [[ ! -f "$unit" ]]; then exit 0; fi
-if ! grep -q 'uvicorn backend.main:app' "$unit"; then
+if ! grep -Eq '(uvicorn backend.main:app|backend\.server)' "$unit"; then
   echo "Unerwarteter FoxAir-Startbefehl; Stream-Konfiguration nicht geändert." >&2
   exit 1
 fi

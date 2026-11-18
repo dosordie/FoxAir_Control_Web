@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { api } from '../../src/api'
 import { useAdminSession } from '../../src/composables/useAdminSession'
 
-vi.mock('../../src/api', () => ({ api: { adminLogin: vi.fn(), adminLogout: vi.fn(), adminSession: vi.fn() } }))
+vi.mock('../../src/api', () => ({ api: { adminSsoLogin: vi.fn(), adminLogin: vi.fn(), adminLogout: vi.fn(), adminSession: vi.fn() } }))
 let cleanup: (() => void) | undefined
 function mount() {
   const onLogin = vi.fn().mockResolvedValue(undefined)
@@ -35,4 +35,22 @@ it('clears private client data even if the logout request fails', async () => {
   expect(state.adminAuthenticated.value).toBe(false)
   expect(state.cloudAdminPassword.value).toBe('')
   expect(onLogout).toHaveBeenCalledOnce()
+})
+
+
+it('accepts server-confirmed SSO without collecting a local password and can resume after logout',async()=>{
+  vi.mocked(api.adminSession).mockResolvedValue({authenticated:true,role:'admin',sso_available:true})
+  vi.mocked(api.adminLogout).mockResolvedValue({authenticated:false,role:'reader'})
+  vi.mocked(api.adminSsoLogin).mockResolvedValue({authenticated:true,role:'admin',sso_available:true})
+  const {state,onLogin}=mount()
+  await state.checkAdminSession()
+  expect(state.adminAuthenticated.value).toBe(true)
+  expect(state.ssoAvailable.value).toBe(true)
+  expect(state.cloudAdminPassword.value).toBe('')
+  await state.logoutAsAdmin()
+  expect(state.adminAuthenticated.value).toBe(false)
+  await state.loginWithSso()
+  expect(api.adminSsoLogin).toHaveBeenCalledOnce()
+  expect(state.adminAuthenticated.value).toBe(true)
+  expect(onLogin).toHaveBeenCalledOnce()
 })

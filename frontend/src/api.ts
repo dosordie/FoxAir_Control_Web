@@ -185,7 +185,8 @@ export const api = {
     if(favorites!==undefined){parameters.set('favorites_only','true');for(const id of favorites)parameters.append('favorite',String(id))}
     return get<{items:Register[];catalog_size:number}>('/api/registers?'+parameters)
   },
-  adminSession: () => get<{ authenticated: boolean; role: string }>('/api/admin/session'),
+  adminSession: () => get<{ authenticated: boolean; role: string; sso_available?: boolean }>('/api/admin/session'),
+  adminSsoLogin: () => post<{ authenticated: boolean; role: string; sso_available?: boolean }>('/api/admin/sso/login', {}),
   adminLogin: (admin_password: string) =>
     post<{ authenticated: boolean; role: string }>('/api/admin/login', { admin_password }),
   adminLogout: () =>

@@ -31,7 +31,7 @@ User=foxair-web
 Group=foxair-web
 WorkingDirectory=/opt/foxair-web/app
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/opt/foxair-web/venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8081
+ExecStart=/opt/foxair-web/venv/bin/python -m backend.server --host 127.0.0.1 --port 8081
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

@@ -194,3 +194,6 @@ Andere Codes, Spezialdialoge und lokale Modbus-Transporte bleiben
 Mehrbenutzerkontenverwaltung. Bestehende private System- und
 Cloud-Konfigurationen werden nicht in das öffentliche Repository
 übertragen.
+
+
+Optionales Authelia-SSO (standardmäßig deaktiviert): [Konfiguration und Sicherheitsgrenzen](docs/AUTHELIA_SSO.md). Vorhandene Passwortanmeldung und LAN-Lesezugriff bleiben erhalten.

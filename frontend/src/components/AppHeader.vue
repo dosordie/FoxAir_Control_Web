@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { Settings2, ShieldCheck } from 'lucide-vue-next'
 import type { Page } from '../types/navigation'
-defineProps<{ page: Page; authenticated: boolean; busy: boolean; secure: boolean; error: string }>()
+defineProps<{
+  page: Page
+  authenticated: boolean
+  ssoAvailable?: boolean
+  busy: boolean
+  secure: boolean
+  error: string
+}>()
 const password = defineModel<string>('password', { required: true })
 const loginOpen = defineModel<boolean>('loginOpen', { required: true })
-const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: [] }>()
+const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLogin: [] }>()
 </script>
 <template>
   <header class="shell-header">
@@ -46,6 +53,15 @@ const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: [] }>()
             Abmelden
           </button>
           <form v-else @submit.prevent="emit('login')">
+            <button
+              v-if="ssoAvailable"
+              type="button"
+              class="outlined-action"
+              :disabled="!secure || busy"
+              @click="emit('ssoLogin')"
+            >
+              Mit Authelia anmelden
+            </button>
             <label class="field-label" for="header-password">Admin-Passwort</label>
             <input
               id="header-password"

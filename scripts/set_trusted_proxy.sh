@@ -25,7 +25,7 @@ unit=/etc/systemd/system/foxair-web.service
 if [[ ! -f "$unit" ]]; then
   echo "FoxAir-Dienst nicht eingerichtet" >&2; exit 1
 fi
-if ! grep -q 'backend.main:app' "$unit"; then
+if ! grep -Eq '(backend\.main:app|backend\.server)' "$unit"; then
   echo "Unerwarteter Dienst; nichts geändert" >&2; exit 1
 fi
 dropin=/etc/systemd/system/foxair-web.service.d

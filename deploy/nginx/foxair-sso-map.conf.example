@@ -1,0 +1,6 @@
+# Include once inside nginx http {}, alongside the other maps.
+# Only the status of the Authelia auth_request subrequest confirms identity.
+map $foxair_auth_status $foxair_sso_verified {
+    default "";
+    ~^2[0-9][0-9]$ "1";
+}

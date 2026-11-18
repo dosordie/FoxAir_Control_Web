@@ -46,7 +46,7 @@ PY
 fi
 
 # Refuse to alter an unexpected unit. The override affects only the FoxAir command.
-if ! grep -q 'uvicorn backend.main:app' "$UNIT_FILE"; then
+if ! grep -Eq '(uvicorn backend.main:app|backend\.server)' "$UNIT_FILE"; then
   echo "Die FoxAir-Dienstdatei hat nicht den erwarteten Uvicorn-Startbefehl." >&2
   exit 1
 fi
@@ -62,7 +62,7 @@ trap cleanup EXIT
 cat > "$tmp" <<EOF
 [Service]
 ExecStart=
-ExecStart=/opt/foxair-web/venv/bin/python -m uvicorn backend.main:app --host $HOST --port 8081
+ExecStart=/opt/foxair-web/venv/bin/python -m backend.server --host $HOST --port 8081
 EOF
 chmod 0644 "$tmp"
 

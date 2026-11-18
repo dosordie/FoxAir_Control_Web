@@ -10,6 +10,7 @@ export function useAdminSession(
     ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
   const adminAuthenticated = ref(false)
   const adminBusy = ref(false)
+  const ssoAvailable = ref(false)
   const loginOpen = ref(false)
   const cloudAdminPassword = ref('')
   const adminLoginError = ref('')
@@ -18,7 +19,10 @@ export function useAdminSession(
   async function checkAdminSession() {
     try {
       const result = await api.adminSession()
-      if (!disposed) adminAuthenticated.value = result.authenticated
+      if (!disposed) {
+        adminAuthenticated.value = result.authenticated
+        ssoAvailable.value = result.sso_available === true
+      }
     } catch {
       if (!disposed) adminAuthenticated.value = false
     }
@@ -44,6 +48,26 @@ export function useAdminSession(
     }
   }
 
+  async function loginWithSso() {
+    if (!secureAdminContext || adminBusy.value || !ssoAvailable.value) return
+    adminBusy.value = true
+    adminLoginError.value = ''
+    try {
+      const result = await api.adminSsoLogin()
+      if (disposed) return
+      adminAuthenticated.value = result.authenticated
+      cloudAdminPassword.value = ''
+      loginOpen.value = false
+      if (result.authenticated) await onLogin()
+    } catch (error) {
+      if (!disposed)
+        adminLoginError.value =
+          error instanceof Error ? error.message : 'SSO-Anmeldung fehlgeschlagen'
+    } finally {
+      if (!disposed) adminBusy.value = false
+    }
+  }
+
   async function logoutAsAdmin() {
     try {
       await api.adminLogout()
@@ -61,6 +85,8 @@ export function useAdminSession(
   })
   return {
     secureAdminContext,
+    ssoAvailable,
+    loginWithSso,
     adminAuthenticated,
     adminBusy,
     loginOpen,

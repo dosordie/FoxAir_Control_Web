@@ -166,3 +166,8 @@ Wert. Die mobile Registerliste ist mindestens 560 Pixel hoch (zuvor höchstens 2
 - The app uses system fonts without render-blocking external font CSS and includes an inline loading placeholder before JavaScript mounts.
 - Shell navigation tries the network first but falls back to already cached public HTML after 1.5 seconds, continuing the update in the background. With no cached shell it still requires a network response. Prompt 401 responses remain authentication challenges. Same-origin credentials permit shell installation behind Basic Auth. API responses and write requests are never cached or queued.
 - iOS standalone cold-start timing and Basic Auth prompts still require verification on a physical iPhone. Changing the reverse-proxy login mechanism is a separate deployment decision; the app admin login only protects writes/admin endpoints, not all telemetry reads.
+
+
+### Optional proxy SSO
+
+See [AUTHELIA_SSO.md](AUTHELIA_SSO.md) for the architecture audit, disabled-by-default JSON configuration, backend entry point, private secret handling, separate Nginx snippets, logout semantics and rollout limits. SSO must never trust rewritten client IPs; only `backend.server` preserves the TCP peer. Do not bypass `is_admin_session` with the token-storage helper `authenticated`, which only checks whether a stored token exists.

@@ -2,6 +2,7 @@
 
 HttpOnly/SameSite cookies and same-origin POST checks remain required.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -15,7 +16,7 @@ import time
 
 _COOKIE = "foxair_admin_session"
 _TTL = 30 * 24 * 3600
-_SESSIONS: dict[str, float] = {}
+_SESSIONS: dict[str, float | dict] = {}
 _LOCK = threading.Lock()
 _MAX_SESSIONS = 32
 
@@ -23,44 +24,50 @@ _MAX_SESSIONS = 32
 def _restore():
     rows = _read_json(SESSION_FILE)
     _SESSIONS.clear()
-    _SESSIONS.update({key: value for key, value in rows.items()
-                      if isinstance(value, (int, float)) and value > time.time()})
+    for key, value in rows.items():
+        expiry = value.get("expires") if isinstance(value, dict) else value
+        if isinstance(expiry, (int, float)) and expiry > time.time():
+            if not isinstance(value, dict) or isinstance(value.get("identity"), dict):
+                _SESSIONS[key] = value
 
 
 def _save():
     _atomic_json(SESSION_FILE, _SESSIONS)
 
 
-def login() -> str:
+def login(identity: dict | None = None) -> str:
     token = secrets.token_urlsafe(32)
     now = time.time()
     with _LOCK:
         _restore()
-        expired = [key for key, limit in _SESSIONS.items() if limit < now]
-        for key in expired:
-            _SESSIONS.pop(key, None)
         if len(_SESSIONS) >= _MAX_SESSIONS:
-            oldest = min(_SESSIONS, key=_SESSIONS.get)
+            oldest = min(_SESSIONS, key=lambda key: _expiry(_SESSIONS[key]))
             _SESSIONS.pop(oldest, None)
-        _SESSIONS[hashlib.sha256(token.encode()).hexdigest()] = now + _TTL
+        _SESSIONS[hashlib.sha256(token.encode()).hexdigest()] = (
+            {"expires": now + _TTL, "identity": identity} if identity else now + _TTL
+        )
         _save()
     return token
 
 
-def authenticated(token: str | None) -> bool:
+def _expiry(value: float | dict) -> float:
+    return value["expires"] if isinstance(value, dict) else value
+
+
+def session_identity(token: str | None) -> dict | None:
+    """None means absent/expired; {} is a legacy password-authenticated session."""
     if not token or len(token) > 128:
-        return False
-    now = time.time()
+        return None
     with _LOCK:
         _restore()
-        token = hashlib.sha256(token.encode()).hexdigest()
-        expiry = _SESSIONS.get(token)
-        if expiry is None:
-            return False
-        if expiry <= now:
-            del _SESSIONS[token]
-            return False
-        return True
+        value = _SESSIONS.get(hashlib.sha256(token.encode()).hexdigest())
+        if value is None or _expiry(value) <= time.time():
+            return None
+        return dict(value["identity"]) if isinstance(value, dict) else {}
+
+
+def authenticated(token: str | None) -> bool:
+    return session_identity(token) is not None
 
 
 def logout(token: str | None) -> None:
