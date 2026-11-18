@@ -109,4 +109,8 @@ Vue 3 und TypeScript bilden das Frontend, FastAPI das Python-Backend. Register u
 - [Allgemeine Deployment-Hinweise](docs/DEPLOYMENT.md)
 - [Lokale Entwicklungsumgebung](docs/INSTALLATION.md#lokal-entwickeln)
 
-Der Lizenzstatus übernommener Bestandteile ist noch zu klären; dieses Repository enthält derzeit keine eigene LICENSE-Datei.
+## Lizenz
+
+Dieses Projekt steht unter der [MIT-Lizenz](LICENSE), entsprechend der [Lizenzdatei von FoxAir_Control](https://github.com/dosordie/FoxAir_Control/blob/main/LICENSE).
+
+Copyright (c) 2026 DosOrDie.
