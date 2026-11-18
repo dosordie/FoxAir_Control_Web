@@ -17,6 +17,9 @@ import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import SpecialControls from './components/SpecialControls.vue'
+import ParameterFilters from './components/ParameterFilters.vue'
+import LteScanSummary from './components/LteScanSummary.vue'
+import ParameterValue from './components/ParameterValue.vue'
 import type { Page } from './types/navigation'
 import { useRegisterFavorites } from './composables/useRegisterFavorites'
 import { useRegisterCatalog } from './composables/useRegisterCatalog'
@@ -747,7 +750,7 @@ onBeforeUnmount(() => {
               <button type="button" :class="{ active: !cloudView }" @click="cloudView = false">Modbus-Register</button>
               <button type="button" :class="{ active: cloudView }" @click="cloudView = true">Alle Cloud-Codes <small>{{ cloudOverview?.total ?? 0 }}</small></button>
             </div>
-            <label class="search-box"><Search :size="19" /><input v-model="search" placeholder="Code, Name oder Register suchen" aria-label="Parameter suchen" /></label>
+            <ParameterFilters v-model:search="search" v-model:group="selectedGroup" :groups="orderedGroups" :show-groups="!cloudView" :favorites-only="favoritesOnly" :favorite-count="favoriteIds.length" @toggle-favorites="toggleFavoriteFilter" />
             <div v-if="cloudView" class="scan-info">
               <strong>{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Codes mit Wert</strong>
               <span>Scan: {{ cloudOverview?.status === 'running' ? 'läuft (' + cloudOverview.progress + ')' : cloudOverview?.status || 'noch nicht gestartet' }}</span>
@@ -759,25 +762,8 @@ onBeforeUnmount(() => {
               </div>
               <button type="button" class="outlined-action" @click="loadCloudValues"><RefreshCw :size="15" /> Cache aktualisieren</button>
             </div>
-            <div v-if="!cloudView" class="register-favorites">
-              <button type="button" class="outlined-action" :aria-pressed="favoritesOnly" @click="toggleFavoriteFilter"><Star :size="16" />{{ favoritesOnly?'Alle Parameter anzeigen':'Nur Favoriten' }} ({{ favoriteIds.length }})</button>
-            </div>
-            <div v-if="!cloudView" class="parameter-groups" aria-label="Parametergruppen">
-              <button v-for="group in orderedGroups" :key="group.group" type="button"
-                class="group-chip" :class="{ active: selectedGroup === group.group }"
-                @click="selectedGroup = group.group">{{ group.group }} <small>{{ group.count }}</small></button>
-              <button type="button" class="group-chip" :class="{ active: selectedGroup === '' }" @click="selectedGroup = ''">Alle</button>
-            </div>
             <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
-            <div v-if="!cloudView&&selectedTransport==='warmlink_raw'" class="scan-info" role="status">
-              <strong>LTE-Parameter · {{ lteScan.completed }} / {{ lteScan.total }} Blöcke gelesen</strong>
-              <progress v-if="lteScan.status==='running'" :value="lteScan.completed" :max="lteScan.total" aria-label="Fortschritt der LTE-Blockabfrage" />
-              <span>{{ Object.keys(localValues).length }} bekannte Register mit Wert · {{ pushConnected?'Live-Übertragung aktiv':'Live-Übertragung verbindet …' }}</span>
-              <span v-if="lteScan.error" class="read-error">{{ lteScan.error }}</span>
-              <span v-else-if="lteScan.status==='complete'">Einmalige FC3-Abfrage abgeschlossen. Weitere Buswerte werden automatisch übernommen.</span>
-              <span v-else>Einmalig beim Öffnen: acht Blöcke mit je 90 Registern. Andere Browser teilen dieselbe Abfrage.</span>
-              <button class="outlined-action" :disabled="scanStarting||lteScan.status==='running'" @click="startLteScan">Alle LTE-Register erneut lesen</button>
-            </div>
+            <LteScanSummary v-if="!cloudView&&selectedTransport==='warmlink_raw'" :scan="lteScan" :value-count="Object.keys(localValues).length" :connected="pushConnected" :starting="scanStarting" @refresh="startLteScan" />
             <p v-if="!cloudView&&catalogError" role="alert" class="read-error">{{ catalogError }}</p>
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
@@ -814,11 +800,7 @@ onBeforeUnmount(() => {
               <span class="section-caption">CLOUD-CODE</span>
               <h2>{{ cloudCodeSelected.name }}</h2>
               <span class="register-code large">{{ cloudCodeSelected.code }}</span>
-              <div class="detail-value">
-                <span>Cloud-Wert</span>
-                <strong>{{ cloudCodeSelected.display_value ?? textValue(cloudCodeSelected.value) }} <small>{{ cloudCodeSelected.unit }}</small></strong>
-                <p>{{ relativeTimestamp(cloudCodeSelected.timestamp) }} · {{ cloudCodeSelected.quality }}</p>
-              </div>
+              <ParameterValue label="Cloud-Wert" :value="cloudCodeSelected.display_value ?? cloudCodeSelected.value" :unit="cloudCodeSelected.unit" :timestamp="cloudCodeSelected.timestamp" :quality="cloudCodeSelected.quality" />
               <div class="detail-metadata">
                 <span>MAIN-Zuordnung <strong>{{ cloudCodeSelected.register ?? 'nicht bestätigt' }}</strong></span>
                 <span>Cloud-Kategorie <strong>{{ cloudCodeSelected.kind }}</strong></span>
@@ -831,11 +813,7 @@ onBeforeUnmount(() => {
             <template v-else-if="!cloudView && selectedRegister">
               <span class="section-caption">PARAMETERDETAILS</span>
               <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><button type="button" class="favorite-button" :class="{selected:isFavorite(selectedRegister.register)}" :aria-pressed="isFavorite(selectedRegister.register)" :aria-label="isFavorite(selectedRegister.register)?'Favorit entfernen':'Als Favorit merken'" @click="toggleFavorite(selectedRegister.register)"><Star :size="23" :fill="isFavorite(selectedRegister.register)?'currentColor':'none'" /></button></div>
-              <div class="detail-value"><span>Aktueller Wert</span>
-                <strong>{{ currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? textValue(currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value) }}
-                  <small>{{ currentRegisterValue(selectedRegister.register)?.unit ?? selectedRegister.cloud?.unit ?? '' }}</small></strong>
-                <p>{{ relativeTimestamp(currentRegisterValue(selectedRegister.register)?.timestamp ?? currentValue?.timestamp ?? selectedRegister.cloud?.timestamp) }}</p>
-              </div>
+              <ParameterValue :value="currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value" :unit="currentRegisterValue(selectedRegister.register)?.unit ?? selectedRegister.cloud?.unit ?? ''" :timestamp="currentRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp" :quality="currentRegisterValue(selectedRegister.register)?.quality" />
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span><span>Quelle <strong>{{ valueSource(selectedRegister.register) }}</strong></span></div>
               <h3 class="parameter-description-title">Beschreibung & Hinweise</h3>
               <p class="description parameter-description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>

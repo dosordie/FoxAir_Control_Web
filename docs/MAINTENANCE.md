@@ -143,3 +143,17 @@ Begrenzung. Der 0-°C-Stützpunkt ist 1235, nicht ein angenommener CP1-4-Code. D
 Stützstellen stammen aus `core/at_compensation.py` des festgelegten Desktop-Standes.
 Änderungen an Kurvenpunkten werden auch serverseitig gegen aktuelle R10/R11 geprüft.
 Virtueller SG-Eingang 8801 bleibt dem bestätigten direkten Standard-Modbus vorbehalten.
+
+
+## Mobile Parameteransicht
+
+`ParameterFilters.vue` besitzt nur die Darstellung von Suche, Favoriten und Gruppen;
+Katalogabfragen bleiben beim vorhandenen Composable. Auf schmalen Ansichten teilen sich
+Gruppenleiste, Suchsymbol und Stern eine Zeile. Die Suche öffnet ein fokussiertes Feld;
+Escape schließt es, ohne einen aktiven Filter unbemerkt zu löschen. Ein aktiver Suchfilter
+bleibt am hervorgehobenen Symbol erkennbar. Symbolknöpfe behalten zugängliche Namen.
+
+`LteScanSummary.vue` zeigt Fortschritt, Zahl bekannter Werte und Streamstatus kompakt.
+Erklärtexte sind entfernt, Fehler bleiben sichtbar. `ParameterValue.vue` unterscheidet
+lange Klartexte von numerischen Messwerten, erlaubt Umbruch und erhält den vollständigen
+Wert. Die mobile Registerliste ist mindestens 560 Pixel hoch (zuvor höchstens 270 Pixel).
