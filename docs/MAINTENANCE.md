@@ -170,4 +170,4 @@ Wert. Die mobile Registerliste ist mindestens 560 Pixel hoch (zuvor höchstens 2
 
 ### Optional proxy SSO
 
-See [AUTHELIA_SSO.md](AUTHELIA_SSO.md) for the architecture audit, disabled-by-default JSON configuration, backend entry point, private secret handling, separate Nginx snippets, logout semantics and rollout limits. SSO must never trust rewritten client IPs; only `backend.server` preserves the TCP peer. Do not bypass `is_admin_session` with the token-storage helper `authenticated`, which only checks whether a stored token exists.
+Generic disabled-by-default JSON and Nginx examples are under `deploy/`. Replace the documentation-only IP and example username before use. Keep deployment-specific infrastructure details and secrets outside the repository. SSO must never trust rewritten client IPs; only `backend.server` preserves the TCP peer. Do not bypass `is_admin_session` with the token-storage helper `authenticated`, which only checks whether a stored token exists.

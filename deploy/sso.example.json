@@ -1,8 +1,12 @@
 {
   "enabled": false,
   "provider": "authelia",
-  "trusted_proxy_ips": ["192.0.2.10"],
+  "trusted_proxy_ips": [
+    "192.0.2.10"
+  ],
   "username_header": "X-FoxAir-SSO-User",
   "shared_secret_env": "FOXWEB_SSO_SECRET",
-  "user_mapping": {"example-user": "admin"}
+  "user_mapping": {
+    "sso-user": "admin"
+  }
 }

@@ -196,4 +196,4 @@ Cloud-Konfigurationen werden nicht in das öffentliche Repository
 übertragen.
 
 
-Optionales Authelia-SSO (standardmäßig deaktiviert): [Konfiguration und Sicherheitsgrenzen](docs/AUTHELIA_SSO.md). Vorhandene Passwortanmeldung und LAN-Lesezugriff bleiben erhalten.
+Optionales Authelia-SSO ist standardmäßig deaktiviert. Generische Konfigurationsbeispiele liegen unter `deploy/`; Beispieladressen und Benutzernamen müssen vor der Verwendung ersetzt werden. Vorhandene Passwortanmeldung und LAN-Lesezugriff bleiben erhalten.
