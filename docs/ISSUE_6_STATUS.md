@@ -10,7 +10,7 @@
 - Soll–Vorlauf-Differenz unter dem aktuellen Sollwert; Kompressor-Istfrequenz aus T31/MAIN 2072 im WP-Symbol.
 - Cloud-Gerätename (Nickname vor Gerätename) wird serverseitig und kontogebunden gespeichert; Fallback FoxAir. Hintergrundabfrage höchstens alle 15 Minuten.
 - Browser-Titel FoxAir Control Web.
-- LTE-IP und TCP-Port als Admin einstellbar, Vorgabe 192.168.1.50:2001. Erst nach explizitem Aktivieren nutzbar. Konfiguration privat im bestehenden Zustandsverzeichnis `warmlink.json`, keine Cloud-Zugangsdaten darin.
+- LTE-IP und TCP-Port als Admin einstellbar, keine installationsspezifische IP-Vorgabe; TCP-Port standardmäßig 2001. Erst nach explizitem Aktivieren nutzbar. Konfiguration privat im bestehenden Zustandsverzeichnis `warmlink.json`, keine Cloud-Zugangsdaten darin.
 - LTE-Register-/Dashboard-Lesen sowie Mode/R02-Schreiben mit frischen Ausgangswerten, R10/R11-Grenzen, genau einem FC16-Schreibversuch und FC03-Readback. Lokale TEMP1-Werte werden auf der Leitung ×10 skaliert.
 
 ## LTE-Protokoll und praktische Grenzen

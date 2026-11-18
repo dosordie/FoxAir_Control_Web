@@ -9,7 +9,7 @@ WARMLINK_FILE = STATE_DIR / "warmlink.json"
 
 def warmlink_config() -> dict:
     row = _read_json(WARMLINK_FILE)
-    return {"host": row.get("host", "192.168.1.50"), "port": row.get("port", 2001),
+    return {"host": row.get("host", ""), "port": row.get("port", 2001),
             "idle_timeout_seconds": row.get("idle_timeout_seconds", 0), "browser_timeout_seconds": row.get("browser_timeout_seconds", 90),
             "enabled": row.get("enabled") is True, "slave": 99, "connection_mode": row.get("connection_mode", "on_demand")}
 

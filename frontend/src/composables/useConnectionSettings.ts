@@ -24,7 +24,7 @@ export function useConnectionSettings(
     cloudError = ref('')
   const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
   const lteConfig = ref<WarmlinkConfig>({
-    host: '192.168.1.50',
+    host: '',
     port: 2001,
     enabled: false,
     slave: 99,
@@ -46,7 +46,7 @@ export function useConnectionSettings(
     selectedCloudStatus.value = {}
     accountLoaded.value = false
     lteConfig.value = {
-      host: '192.168.1.50',
+      host: '',
       port: 2001,
       enabled: false,
       slave: 99,
