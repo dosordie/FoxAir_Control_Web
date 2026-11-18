@@ -3,9 +3,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import ParameterFilters from '../src/components/ParameterFilters.vue'
 import LteScanSummary from '../src/components/LteScanSummary.vue'
 import ParameterValue from '../src/components/ParameterValue.vue'
+import ParameterDetails from '../src/components/ParameterDetails.vue'
 
 let cleanup: (()=>void)|undefined
-afterEach(()=>{cleanup?.();cleanup=undefined})
+afterEach(()=>{cleanup?.();cleanup=undefined;vi.unstubAllGlobals()})
 function mount(component:Parameters<typeof createApp>[0],props?:Record<string,unknown>){
   const root=document.createElement('div');document.body.append(root)
   const app=createApp(component,props);app.mount(root)
@@ -60,4 +61,24 @@ it('shows the complete long state in the wrapping text style',()=>{
   const root=mount(ParameterValue,{value,timestamp:'2026-11-18T12:00:00Z',quality:'stale'})
   expect(root.querySelector('.text-value strong')?.textContent?.trim()).toBe(value)
   expect(root.textContent).toContain('veraltet')
+})
+
+
+it('opens mobile details explicitly and can reopen the same parameter after closing',async()=>{
+  const media=Object.assign(new EventTarget(),{matches:true})
+  vi.stubGlobal('matchMedia',()=>media)
+  let details:any
+  const root=mount(defineComponent({setup:()=>()=>h(ParameterDetails,{ref:(value:any)=>{details=value}},()=>h('p','H20 details'))}))
+  const dialog=root.querySelector('dialog')!
+  expect(dialog.open).toBe(false)
+  await details.open()
+  expect(dialog.open).toBe(true)
+  root.querySelector<HTMLButtonElement>('button')!.click()
+  expect(dialog.open).toBe(false)
+  await details.open()
+  expect(dialog.open).toBe(true)
+  expect(dialog.textContent).toContain('H20 details')
+  media.matches=false;media.dispatchEvent(new Event('change'));await nextTick()
+  expect(root.querySelector('dialog')).toBeNull()
+  expect(root.querySelector('section')?.textContent).toBe('H20 details')
 })

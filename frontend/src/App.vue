@@ -18,6 +18,7 @@ import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import SpecialControls from './components/SpecialControls.vue'
 import ParameterFilters from './components/ParameterFilters.vue'
+import ParameterDetails from './components/ParameterDetails.vue'
 import LteScanSummary from './components/LteScanSummary.vue'
 import ParameterValue from './components/ParameterValue.vue'
 import type { Page } from './types/navigation'
@@ -62,6 +63,11 @@ const specialRows = computed(() => {
   const byCode = new Map(cloudRows.value.map(row => [row.code, row]))
   return selected.codes.map(code => byCode.get(code)).filter((row): row is CloudRow => !!row)
 })
+const parameterDetails = ref<InstanceType<typeof ParameterDetails> | null>(null)
+function selectCloudParameter(entry: CloudRow) {
+  cloudCodeSelected.value = entry
+  void parameterDetails.value?.open()
+}
 const cloudView = ref(false)
 const cloudKind = ref('')
 const cloudCodeSelected = ref<CloudRow | null>(null)
@@ -516,6 +522,7 @@ async function reloadTransportOptions(source: TransportId) {
   } catch { error.value = 'Verbindungsübersicht konnte nicht aktualisiert werden.' }
 }
 function selectRegister(item: Register) {
+  void parameterDetails.value?.open()
   selectedRegister.value = item
   currentValue.value = null
   readError.value = ''
@@ -746,11 +753,12 @@ onBeforeUnmount(() => {
         <section class="page-heading"><div><span class="section-caption">FOX AIR / TECHNIK</span><h1>Parameter & Einstellungen</h1><p>Register aus dem gemeinsamen FoxAir_Control-Katalog.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <div class="work-layout">
           <section class="panel register-list">
+            <ParameterFilters v-model:search="search" v-model:group="selectedGroup" :groups="orderedGroups" :show-groups="!cloudView" :favorites-only="favoritesOnly" :favorite-count="favoriteIds.length" @toggle-favorites="toggleFavoriteFilter">
             <div class="source-tabs" role="group" aria-label="Register- oder Cloudansicht">
               <button type="button" :class="{ active: !cloudView }" @click="cloudView = false">Modbus-Register</button>
               <button type="button" :class="{ active: cloudView }" @click="cloudView = true">Alle Cloud-Codes <small>{{ cloudOverview?.total ?? 0 }}</small></button>
             </div>
-            <ParameterFilters v-model:search="search" v-model:group="selectedGroup" :groups="orderedGroups" :show-groups="!cloudView" :favorites-only="favoritesOnly" :favorite-count="favoriteIds.length" @toggle-favorites="toggleFavoriteFilter" />
+            </ParameterFilters>
             <div v-if="cloudView" class="scan-info">
               <strong>{{ cloudOverview?.supported ?? 0 }} / {{ cloudOverview?.total ?? 0 }} Codes mit Wert</strong>
               <span>Scan: {{ cloudOverview?.status === 'running' ? 'läuft (' + cloudOverview.progress + ')' : cloudOverview?.status || 'noch nicht gestartet' }}</span>
@@ -782,7 +790,7 @@ onBeforeUnmount(() => {
             </div>
             <div v-else class="register-items">
               <button v-for="entry in filteredCloudRows" :key="entry.code" class="register-item"
-                :class="{ active: cloudCodeSelected?.code === entry.code }" @click="cloudCodeSelected = entry">
+                :class="{ active: cloudCodeSelected?.code === entry.code }" @click="selectCloudParameter(entry)">
                 <span class="register-code">{{ entry.code }}</span>
                 <span class="register-title">{{ entry.name }}
                   <small>{{ entry.register ? 'MAIN ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
@@ -795,7 +803,7 @@ onBeforeUnmount(() => {
               <p v-if="!filteredCloudRows.length" class="empty-state">Keine passenden Cloud-Codes.</p>
             </div>
           </section>
-          <section class="panel register-detail">
+          <ParameterDetails ref="parameterDetails">
             <template v-if="cloudView && cloudCodeSelected">
               <span class="section-caption">CLOUD-CODE</span>
               <h2>{{ cloudCodeSelected.name }}</h2>
@@ -822,7 +830,7 @@ onBeforeUnmount(() => {
               <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated && browserOnline" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
-          </section>
+          </ParameterDetails>
         </div>
       </template>
 

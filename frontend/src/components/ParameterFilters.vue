@@ -31,6 +31,7 @@ function closeSearch() {
 
 <template>
   <div class="parameter-filters" :class="{ 'search-expanded': expanded }">
+    <slot />
     <div class="parameter-tools">
       <button
         ref="toggle"

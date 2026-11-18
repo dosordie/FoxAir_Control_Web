@@ -157,3 +157,12 @@ bleibt am hervorgehobenen Symbol erkennbar. Symbolknöpfe behalten zugängliche 
 Erklärtexte sind entfernt, Fehler bleiben sichtbar. `ParameterValue.vue` unterscheidet
 lange Klartexte von numerischen Messwerten, erlaubt Umbruch und erhält den vollständigen
 Wert. Die mobile Registerliste ist mindestens 560 Pixel hoch (zuvor höchstens 270 Pixel).
+
+
+### Mobile parameter dialogs and startup
+
+- `ParameterDetails.vue` uses the existing detail content in a native modal at widths up to 600px. Opening is explicit on every list click (including the already selected parameter). Desktop retains the side panel. Native close/Escape restores focus; closing leaves list scroll and filters intact. A breakpoint change closes the dialog before replacing its element.
+- `ParameterFilters` accepts the source tabs in its default slot. On mobile source buttons, search and favorite icons share the first row; groups have their own full-width scrolling row.
+- The app uses system fonts without render-blocking external font CSS and includes an inline loading placeholder before JavaScript mounts.
+- Shell navigation tries the network first but falls back to already cached public HTML after 1.5 seconds, continuing the update in the background. With no cached shell it still requires a network response. Prompt 401 responses remain authentication challenges. Same-origin credentials permit shell installation behind Basic Auth. API responses and write requests are never cached or queued.
+- iOS standalone cold-start timing and Basic Auth prompts still require verification on a physical iPhone. Changing the reverse-proxy login mechanism is a separate deployment decision; the app admin login only protects writes/admin endpoints, not all telemetry reads.

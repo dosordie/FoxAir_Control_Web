@@ -5,7 +5,7 @@ const PRECACHE = __PRECACHE__
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(
-    PRECACHE.map(url => new Request(url, { cache: 'reload', credentials: 'omit' })),
+    PRECACHE.map(url => new Request(url, { cache: 'reload', credentials: 'same-origin' })),
   )))
   // New versions wait for existing tabs to close; never force a reload during editing.
 })
@@ -25,16 +25,27 @@ self.addEventListener('fetch', event => {
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE)
-      try {
-        const response = await fetch(request)
-        if (response.ok && response.headers.get('content-type')?.includes('text/html')) {
-          await cache.put('/index.html', response.clone())
+      const cached = await cache.match('/index.html')
+      const network = (async () => {
+        try {
+          const response = await fetch(request)
+          if (response.ok && response.headers.get('content-type')?.includes('text/html')) {
+            await cache.put('/index.html', response.clone())
+          }
           return response
+        } catch {
+          return cached || Response.error()
         }
-        return await cache.match('/index.html') || response
-      } catch {
-        return await cache.match('/index.html') || Response.error()
-      }
+      })()
+      // Keep updating in the background if a slow connection delays startup.
+      event.waitUntil(network.then(() => {}))
+      if (!cached) return network
+      let timer
+      try {
+        return await Promise.race([network, new Promise(resolve => {
+          timer = setTimeout(() => resolve(cached), 1500)
+        })])
+      } finally { clearTimeout(timer) }
     })())
     return
   }

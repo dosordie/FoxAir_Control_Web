@@ -10,9 +10,10 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <title>FoxAir Control Web</title>
+    <style>html,body{margin:0;background:#f4f5f7}.boot-screen{min-height:100svh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font:700 26px system-ui,sans-serif;color:#333}.boot-screen span{font-size:14px;font-weight:400;color:#737b85}</style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><div class="boot-screen" role="status">FoxAir <span>Wird geladen …</span></div></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
