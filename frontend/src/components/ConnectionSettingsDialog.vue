@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocalBusSettings from './LocalBusSettings.vue'
 import { nextTick, ref, toRef, watch } from 'vue'
 import { Cloud, Search, RefreshCw } from 'lucide-vue-next'
 import type { CloudValues, ConnectionState, TransportId } from '../api'
@@ -346,13 +347,12 @@ const {
           werden nicht aus dem Server ausgelesen.
         </p>
       </section>
-      <section class="connection-section">
-        <h2>Weitere lokale Busse</h2>
-        <p class="section-hint">
-          Standard-Modbus wird derzeit serverseitig eingerichtet. Display-Modbus ist noch nicht
-          implementiert.
-        </p>
-      </section>
+      <LocalBusSettings
+        :admin="admin"
+        :secure="secure"
+        :open="connectionSettingsOpen"
+        @changed="emit('connectionsChanged', $event)"
+      />
     </div>
   </dialog>
 </template>

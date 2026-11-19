@@ -160,6 +160,14 @@ def cache_words(kind,transport,words,identity):
 
 def read(kind, transport):
     schema(kind)
+    if transport == 'display_modbus':
+        from backend.display_bus import manager
+        manager.lease()
+        available = manager.values()
+        if any(str(reg) not in available for reg in schema(kind)):
+            raise WriteValidationError('Display-Zeitprogramm noch unvollständig; alle Werte vom Bus lesen')
+        return {'values':{str(reg):available[str(reg)]['raw'] for reg in schema(kind)},'transport':transport,'kind':kind}
+
     with _lock, connection(transport) as (client, identity):
         words = read_words(kind,transport,client)
         check_connection(transport,identity)

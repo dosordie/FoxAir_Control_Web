@@ -1,4 +1,4 @@
-"""Minimal, read-only Modbus-RTU-over-raw-TCP transport for an explicit ser2net endpoint.
+"""Minimal Modbus-RTU-over-raw-TCP transport for an explicit ser2net endpoint.
 
 Intended only for a dedicated standard Modbus bus. Do NOT use this generic
 request/response client on an existing Display/LTE multi-master bus.
@@ -38,7 +38,7 @@ class RtuReadSession:
         self.slave = slave
 
     def read_holding(self, register: int, count: int = 1) -> list[int]:
-        if not 0 <= register <= 65535 or not 1 <= count <= 125:
+        if not 0 <= register <= 65535 or not 1 <= count <= 125 or register + count > 65536:
             raise ValueError("Ungültiger Registerbereich")
         request = bytes((self.slave, 0x03)) + register.to_bytes(2, "big") + count.to_bytes(2, "big")
         self.sock.sendall(with_crc(request))

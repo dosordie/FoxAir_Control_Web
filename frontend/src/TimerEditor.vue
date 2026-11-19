@@ -31,7 +31,7 @@ async function read(){
   finally{if(request===generation)busy.value=false}
 }
 async function save(){
-  if(!loaded.value || busy.value || !props.admin || invalid.value.size)return
+  if(!loaded.value || busy.value || (!props.admin || props.transport==='display_modbus') || invalid.value.size)return
   const request=++generation
   busy.value=true;error.value='';message.value=''
   try{
@@ -69,7 +69,7 @@ onMounted(read)
     <button type="button" class="outlined-action" :disabled="busy||!transportSupported" @click="read">{{ busy?'Bitte warten …':'Werte aktualisieren' }}</button>
     <template v-if="loaded">
       <div v-if="!silent" class="timer-tabs program-tabs"><button v-for="n in 6" :key="n" type="button" :disabled="busy" :class="{selected:tab===n-1}" @click="tab=n-1">{{ kind==='operating'?'M':'' }}{{ n }}</button></div>
-      <fieldset :disabled="busy||!admin" class="timer-fields">
+      <fieldset :disabled="busy||!admin||transport==='display_modbus'" class="timer-fields">
         <template v-if="silent">
           <div v-for="start in [true,false]" :key="String(start)" class="timer-time-card">
             <label><input type="checkbox" :checked="!!values[start?1244:1247]" @change="values[start?1244:1247]=($event.target as HTMLInputElement).checked?1:0" /> {{ start?'Ruhemodus einschalten':'Ruhemodus ausschalten' }}</label>
@@ -93,7 +93,7 @@ onMounted(read)
       </fieldset>
       <p class="section-hint">Aktive betroffene Programme werden vor Parameteränderungen deaktiviert und erst nach bestätigten Zwischenwerten wieder freigegeben. Bei Fehlern stoppt der Auftrag.</p>
       <p v-if="invalid.size" class="read-error">Bitte gültige Uhrzeiten und Zahlen in 0,1-Schritten eingeben.</p>
-      <button class="main-action" :disabled="busy||!admin||invalid.size>0" @click="save">Änderungen mit Readback senden</button>
+      <button class="main-action" :disabled="busy||!admin||transport==='display_modbus'||invalid.size>0" @click="save">Änderungen mit Readback senden</button>
       <p v-if="!admin" class="section-hint">Zum Ändern oben rechts als Administrator anmelden.</p>
     </template>
   </div>

@@ -29,6 +29,11 @@ def installation_key():
         lte["port"],
         (standard.host, standard.port, standard.slave) if standard else None,
     ]
+    from backend.settings import local_bus_config
+
+    display = local_bus_config("display_modbus")
+    if display["host"]:
+        identity.append(("display", display["host"], display["port"]))
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 
 
@@ -111,10 +116,14 @@ store = LastValues(STATE_DIR / "last-register-values.sqlite")
 def remember_words(endpoint, start, words, *, transport="warmlink_raw", timestamp=None):
     from backend.catalog import format_raw, load_registers
     from backend.register_cache import is_public_register
-    from backend.settings import warmlink_endpoint, standard_endpoint
+    from backend.settings import warmlink_endpoint, standard_endpoint, display_endpoint
 
     selected = (
-        warmlink_endpoint() if transport == "warmlink_raw" else standard_endpoint()
+        warmlink_endpoint()
+        if transport == "warmlink_raw"
+        else display_endpoint()
+        if transport == "display_modbus"
+        else standard_endpoint()
     )
     if selected != endpoint:
         return

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type Dashboard, type LteSnapshot, type TransportId } from '../../src/api'
 import { useLteConnection } from '../../src/composables/useLteConnection'
 
-vi.mock('../../src/api', () => ({ api: { busLease: vi.fn(), busConnection: vi.fn(), lteScan: vi.fn(), lteSnapshot: vi.fn() } }))
+vi.mock('../../src/api', () => ({ api: { busLease: vi.fn(), busConnection: vi.fn(), lteScan: vi.fn(), lteSnapshot: vi.fn(), displaySnapshot:vi.fn(),displayScan:vi.fn(),displayLease:vi.fn() } }))
 
 class Stream {
   static instances: Stream[] = []
@@ -84,4 +84,22 @@ describe('LTE connection ownership', () => {
     expect(api.busLease).toHaveBeenCalledTimes(renewals)
     expect(state.lteScan.value.status).toBe('idle')
   })
+})
+
+
+it('display selection receives values passively and synchronizes only on explicit request',async()=>{
+ vi.mocked(api.displaySnapshot).mockResolvedValue({...packet(),scan:{status:'idle',completed:0,total:6,error:null}})
+ vi.mocked(api.displayLease).mockResolvedValue({})
+ vi.mocked(api.displayScan).mockResolvedValue({status:'running',completed:0,total:6,error:null})
+ const {state,transport}=mount();await flush()
+ transport.value='display_modbus';await nextTick();await flush()
+ const stream=Stream.instances[Stream.instances.length-1]!
+ expect(api.displayScan).not.toHaveBeenCalled()
+ const row={register:2046,raw:310,value:31,unit:'°C',quality:'observed',timestamp:new Date().toISOString(),transport:'display_modbus'}
+ stream.receive({...packet(),values:{'2046':row}})
+ expect(state.localValues.value['2046']?.transport).toBe('display_modbus')
+ await state.startLteScan()
+ expect(api.displayScan).toHaveBeenCalledOnce()
+ transport.value='cloud';await nextTick()
+ expect(stream.close).toHaveBeenCalledOnce()
 })

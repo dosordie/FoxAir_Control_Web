@@ -79,7 +79,7 @@ Nur die tatsächliche einzelne Proxy-IP als vertrauenswürdig eintragen. Der Pro
 
 Zuletzt bekannte Werte können von einer anderen Quelle stammen. Die Parameterdetails zeigen Quelle und Zeitstempel. Ohne eingerichtete Verbindung gibt es keine simulierten Livewerte.
 
-Standard-Modbus benötigt eine eigene Serverkonfiguration und ist standardmäßig deaktiviert. Display-Modbus ist noch nicht freigegeben. Vor dem Aktivieren eines lokalen Anschlusses immer die Busbelegung klären.
+Standard- und Display-Modbus lassen sich ebenfalls unter **Verbindungseinstellungen** einrichten. Beide sind standardmäßig deaktiviert. Display-Modbus empfängt passiv; ausschließlich die separate Spezialfunktion fordert einen Parameter-Snapshot an. Vor dem Aktivieren immer die Busbelegung klären. Details: [Lokale Modbus-Anschlüsse](LOCAL_MODBUS.md).
 
 **iPhone:** Die HTTPS-Adresse in Safari öffnen und über das Teilen-Menü **„Zum Home-Bildschirm“** hinzufügen. Messwerte und Schreibaufträge benötigen weiterhin die Serververbindung. Nach Updates die Homescreen-App gegebenenfalls vollständig schließen und erneut öffnen.
 

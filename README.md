@@ -52,8 +52,8 @@ Die Screenshots zeigen Beispielzustände einer Anlage. Messwerte und verfügbare
 | --- | --- |
 | **PHNIX Cloud** | Zugang und Geräteauswahl über die Einstellungen; Lesen und unterstützte Schreibfunktionen. Historische Diagramme benötigen den Cloud-Zugang. |
 | **LTE-/Warmlink-Modbus über TCP** | IP und Port einstellbar; gebündeltes Lesen zusammenhängender Register, Live-Buswerte und unterstützte Schreibfunktionen. Verbindungsdauer konfigurierbar. |
-| **Standard-Modbus** | Optional über die Serverkonfiguration; standardmäßig deaktiviert. |
-| **Display-Modbus** | Noch in Entwicklung und derzeit deaktiviert. |
+| **Standard-Modbus** | RTU-over-TCP/ser2net; IP, Port und Teilnehmer in den Verbindungseinstellungen. Lesen und unterstützte Schreibfunktionen, standardmäßig deaktiviert. |
+| **Display-Modbus** | Passiver Empfang über RTU-over-TCP; manuelle Spezialfunktion „Alle Werte vom Bus lesen“. Normale Parameter-Schreibzugriffe gesperrt, standardmäßig deaktiviert. |
 
 Lokale Busse nur aktivieren, wenn Anschluss und Busbelegung geklärt sind. Ein anderer Dienst oder Bus-Master kann den Zugriff beeinflussen.
 
@@ -79,6 +79,8 @@ Ohne Admin-Anmeldung ist lesender Zugriff möglich. Die lokale Admin-Sitzung ble
 Unter **Einstellungen → Benutzer & Berechtigungen** können Administratoren lokale Konten, SSO-Zuordnungen und Sitzungen verwalten. Leser sehen Messwerte; Bediener dürfen einzeln freigegebene MAIN-Register ändern. Administratoren verwalten Verbindungen und Updates. Das bestehende Konto `admin` bleibt als Notfallzugang erhalten.
 
 Schreibaufträge erscheinen im privaten Änderungsprotokoll. Verschlüsselte Sicherungen umfassen lokale Benutzer, Cloud-Zugang und LTE-Einstellungen; Proxy-Secrets und das Notfallpasswort werden separat verwaltet. Zur Wiederherstellung ist das Sicherungspasswort erforderlich.
+
+Hinweise zur Einrichtung und zum Display-Protokoll: [Lokale Modbus-Anschlüsse](docs/LOCAL_MODBUS.md).
 
 ## Zugriff und private Konfiguration
 

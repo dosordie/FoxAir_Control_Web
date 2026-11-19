@@ -35,11 +35,14 @@ from backend.warmlink import open_warmlink, write_control as write_warmlink_cont
 async def lifespan(_app: FastAPI):
     from backend.bus_connection import start, stop
     from backend.register_scan import stop as stop_scan
+    from backend.display_bus import manager as display_manager
     start()
+    display_manager.start()
     try:
         yield
     finally:
         stop_scan()
+        display_manager.stop()
         stop()
 
 
@@ -50,6 +53,8 @@ from backend.access import AccessMiddleware
 app.include_router(accounts_router)
 from backend.routes.backup import router as backup_router
 app.include_router(backup_router)
+from backend.routes.local_buses import router as local_router
+app.include_router(local_router)
 app.add_middleware(AccessMiddleware)
 
 VALID_TRANSPORTS = set(TRANSPORTS)
@@ -443,6 +448,12 @@ def register_read(register: int, transport: str = "cloud"):
             raise HTTPException(status_code=503, detail=str(exc)) from None
         return {"register": register, **result, "transport": transport,
                 "timestamp": now_iso(), "quality": "fresh"}
+    if transport == "display_modbus":
+        from backend.display_bus import manager
+        manager.lease()
+        row = manager.values().get(str(register))
+        if not row: raise HTTPException(503, "Noch kein Display-Wert empfangen; gegebenenfalls alle Werte vom Bus lesen")
+        return {**row, "quality": "observed" if manager.state()["connected"] and row["quality"] != "stale" else "stale"}
     if transport not in ("standard_modbus", "warmlink_raw"):
         raise HTTPException(status_code=501, detail="Dieser Transport unterstützt noch keine aktiven Registerreads")
     endpoint = warmlink_endpoint() if transport == "warmlink_raw" else standard_endpoint()
@@ -478,6 +489,13 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
         "metrics": {name: None for name in DASHBOARD_FIELDS},
         "live_supported": transport == "cloud",
     }
+    if transport == "display_modbus":
+        from backend.routes.local_buses import local_snapshot
+        result = local_snapshot("display_modbus")
+        snapshot["metrics"].update(result["metrics"])
+        snapshot["status"] = "partial" if result["metrics"] else "unavailable"
+        snapshot["error"] = result["connection"]["error"]
+        return fill_dashboard(snapshot)
     if passive:
         if transport != 'warmlink_raw':
             raise HTTPException(status_code=422, detail='Passiver Empfang nur am LTE-Anschluss verfügbar')

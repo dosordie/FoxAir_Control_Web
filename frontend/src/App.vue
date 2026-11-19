@@ -197,8 +197,8 @@ async function submitCloudWrite(code: FirstWriteCode) {
 const liveEnabled = ref(window.localStorage.getItem('foxair.cloudLiveEnabled') !== 'false')
 const storedInterval = Number(window.localStorage.getItem('foxair.cloudLiveInterval') || 30)
 const liveInterval = ref(Number.isFinite(storedInterval) ? Math.max(10, Math.min(3600, storedInterval)) : 30)
-const liveActive = computed(() => page.value === 'home' && selectedTransport.value === 'cloud' &&
-  liveEnabled.value && !document.hidden)
+const liveActive = computed(() => page.value === 'home' && !document.hidden &&
+  (selectedTransport.value === 'standard_modbus' || (selectedTransport.value === 'cloud' && liveEnabled.value)))
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 let unmounted = false
 const { favoriteIds, favoritesOnly, isFavorite, toggleFavorite } = useRegisterFavorites()
@@ -252,7 +252,7 @@ const mainRegisterGroup = ref('T')
 const mainRegisterSearch = ref('')
 const mainRegisterRows = computed(() => {
   const query = mainRegisterSearch.value.trim().toLowerCase()
-  const rows=selectedTransport.value==='warmlink_raw'?Object.values(localValues.value).map(row=>({...row,code:row.code||'',name:row.name||'Register '+row.register,group:row.group||''})):cloudRows.value
+  const rows=['warmlink_raw','display_modbus'].includes(selectedTransport.value)?Object.values(localValues.value).map(row=>({...row,code:row.code||'',name:row.name||'Register '+row.register,group:row.group||''})):cloudRows.value
   return rows.filter(row =>
     (!mainRegisterGroup.value || row.group === mainRegisterGroup.value) &&
     (!query || [row.name, row.code, String(row.register ?? '')]
@@ -290,7 +290,7 @@ async function loadLastValues() {
 }
 function currentRegisterValue(register: number): RegisterValue | null {
   const direct = currentValue.value?.register === register && currentValue.value.transport === selectedTransport.value ? currentValue.value : null
-  const local = selectedTransport.value === 'warmlink_raw' ? localValues.value[String(register)] : null
+  const local = ['warmlink_raw','display_modbus'].includes(selectedTransport.value) ? localValues.value[String(register)] : null
   const cloud = selectedTransport.value === 'cloud' ? cloudByRegister.value.get(register) : null
   const cloudValue = cloud?.timestamp && cloud.value != null ? {...cloud, register, raw:null, transport:'cloud', timestamp:cloud.timestamp, value:cloud.value} : null
   const last = sharedValues.value[String(register)]
@@ -300,7 +300,7 @@ function currentRegisterValue(register: number): RegisterValue | null {
 }
 function valueSource(register: number) {
   const row = currentRegisterValue(register)
-  return row ? ({cloud:'Cloud', warmlink_raw:'Modbus (LTE)', standard_modbus:'Modbus'}[row.transport] || row.transport) : 'Noch kein Wert'
+  return row ? ({cloud:'Cloud', warmlink_raw:'Modbus (LTE)', standard_modbus:'Modbus', display_modbus:'Display-Bus'}[row.transport] || row.transport) : 'Noch kein Wert'
 }
 watch(selectedTransport, () => void loadLastValues())
 onMounted(() => void loadLastValues())
@@ -411,7 +411,7 @@ async function loadDashboard(live = false) {
 }
 
 function onVisibilityChange() {
-  if(selectedTransport.value==='warmlink_raw'){
+  if(['warmlink_raw','display_modbus'].includes(selectedTransport.value)){
     if(!document.hidden && !pushConnected.value)void refreshSnapshot().catch(()=>{})
     return
   }
@@ -688,7 +688,8 @@ onBeforeUnmount(() => {
                 <label class="live-switch"><input type="checkbox" v-model="liveEnabled" /> Automatische Cloud-Abfrage</label>
                 <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
               </div>
-              <small v-if="selectedTransport==='warmlink_raw'">{{ pushConnected?'Live-Übertragung aktiv':'Live-Übertragung verbindet …' }}<template v-if="busState?.mode!=='on_demand'"> · {{ busState?.connected?'Bus verbunden':'Busverbindung wird geprüft' }}</template> · empfangene Werte erscheinen automatisch</small>
+              <small v-if="selectedTransport==='standard_modbus'">Automatische Aktualisierung bei sichtbarer Übersicht</small>
+              <small v-if="['warmlink_raw','display_modbus'].includes(selectedTransport)">{{ pushConnected?'Live-Übertragung aktiv':'Live-Übertragung verbindet …' }}<template v-if="busState?.mode!=='on_demand'"> · {{ busState?.connected?'Bus verbunden':'Busverbindung wird geprüft' }}</template> · empfangene Werte erscheinen automatisch</small>
             </div>
           </section>
 
@@ -772,6 +773,11 @@ onBeforeUnmount(() => {
               <button type="button" class="outlined-action" @click="loadCloudValues"><RefreshCw :size="15" /> Cache aktualisieren</button>
             </div>
             <div v-if="!cloudView" class="register-toolbar"><span>{{ registerLoading ? 'Suche …' : registers.length + ' Treffer · ' + catalogSize + ' Register gesamt' }}</span><span>{{ transportLabel }}</span></div>
+            <div v-if="!cloudView && selectedTransport==='display_modbus'" class="lte-summary">
+              <div class="lte-summary-info"><strong>Display · {{lteScan.completed}}/{{lteScan.total}} Parameterpakete</strong><span>{{busState?.connected?'Bus verbunden':'Bus nicht verbunden'}} · {{Object.keys(localValues).length}} Werte · passiver Empfang</span></div>
+              <button class="outlined-action" :disabled="!adminAuthenticated || scanStarting || lteScan.status==='running' || !busState?.connected" @click="startLteScan">Alle Werte vom Bus lesen</button>
+              <p v-if="lteScan.error" role="alert" class="read-error">{{lteScan.error}}</p>
+            </div>
             <LteScanSummary v-if="!cloudView&&selectedTransport==='warmlink_raw'" :scan="lteScan" :value-count="Object.keys(localValues).length" :connected="pushConnected" :starting="scanStarting" @refresh="startLteScan" />
             <p v-if="!cloudView&&catalogError" role="alert" class="read-error">{{ catalogError }}</p>
             <div v-if="!cloudView" class="register-items">
@@ -828,7 +834,7 @@ onBeforeUnmount(() => {
               <p class="description parameter-description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="canOperate && browserOnline" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
+              <ParameterEditor v-if="selectedTransport!=='display_modbus'" :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="canOperate && browserOnline" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </ParameterDetails>
@@ -840,7 +846,7 @@ onBeforeUnmount(() => {
         <AccountManagement v-if="adminAuthenticated" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
-          <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Unter Verbindungseinstellungen wählst du, wie lange die LTE-Verbindung offen bleibt.</p>
+          <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Unter Verbindungseinstellungen richtest du Cloud und lokale Busanschlüsse ein.</p>
           <div class="transport-options">
             <label v-for="option in (transports.length ? transports : [
               { id: 'cloud', name: 'PHNIX Cloud', configured: false, read_supported: false, reason: '' },
@@ -854,7 +860,7 @@ onBeforeUnmount(() => {
               <span class="choice-mark"></span>
             </label>
           </div>
-          <div class="settings-note"><Activity :size="18" /><p>Cloud-Livepolling während sichtbarer Übersicht. Standard-Modbus bleibt aufgrund anderer Busnutzer standardmäßig deaktiviert. LTE-Anschluss unter Verbindungseinstellungen konfigurieren; Display-Anbindung folgt separat.</p></div>
+          <div class="settings-note"><Activity :size="18" /><p>Cloud und Standard-Modbus werden bei sichtbarer Übersicht aktualisiert. Display und LTE empfangen neue Buswerte live. Neue lokale Anschlüsse bleiben bis zur Einrichtung deaktiviert.</p></div>
           <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
 

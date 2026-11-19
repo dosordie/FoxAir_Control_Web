@@ -48,7 +48,7 @@ export function useRegisterCatalog(
       if (
         selectedGroup.value &&
         registers.value.length &&
-        ['cloud', 'warmlink_raw', 'standard_modbus'].includes(source)
+        ['cloud', 'warmlink_raw', 'standard_modbus', 'display_modbus'].includes(source)
       ) {
         try {
           const refreshed = await api.refreshParameters(

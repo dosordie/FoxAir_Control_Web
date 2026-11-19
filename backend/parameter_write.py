@@ -189,6 +189,10 @@ def convert_baseline(register, entry, expected, source, target):
 
 
 def write(register, transport, requested, expected, *, expected_transport=None):
+    if transport == "display_modbus":
+        raise WriteValidationError(
+            "Display-Bus ist lesend; nur die separate Snapshot-Spezialfunktion ist freigegeben"
+        )
     entry = definition(register)
     expected = convert_baseline(
         register, entry, expected, expected_transport, transport

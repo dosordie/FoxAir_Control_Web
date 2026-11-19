@@ -54,7 +54,12 @@ class AccessMiddleware:
         journal = request.method == "POST" and (
             path.startswith("/api/parameters/")
             and path.endswith("/write")
-            or path in ("/api/cloud/write", "/api/warmlink/write")
+            or path
+            in (
+                "/api/cloud/write",
+                "/api/warmlink/write",
+                "/api/local/display_modbus/scan",
+            )
             or path.startswith("/api/timers/")
         )
         if not journal:

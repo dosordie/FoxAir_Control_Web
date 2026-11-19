@@ -29,13 +29,13 @@ export function useLteConnection(
   let generation = 0
 
   function applySnapshot(incoming: LteSnapshot) {
-    if (disposed || transport.value !== 'warmlink_raw') return
+    if (disposed || !['warmlink_raw', 'display_modbus'].includes(transport.value)) return
     busState.value = incoming.connection
     const resetValues =
       incoming.removed?.length || (incoming.reset && !Object.keys(incoming.values).length)
     if (resetValues) {
       invalidateReadValues()
-      if (dashboard.value?.transport === 'warmlink_raw') {
+      if (dashboard.value?.transport === transport.value) {
         for (const key of Object.keys(dashboard.value.metrics) as (keyof Dashboard['metrics'])[]) {
           dashboard.value.metrics[key] = null
         }
@@ -51,7 +51,7 @@ export function useLteConnection(
     lteScan.value = incoming.scan
 
     const current = dashboard.value
-    if (current?.transport !== 'warmlink_raw') return
+    if (current?.transport !== transport.value) return
     for (const key of Object.keys(incoming.metrics) as (keyof Dashboard['metrics'])[]) {
       const next = incoming.metrics[key]
       const previous = current.metrics[key]
@@ -77,8 +77,12 @@ export function useLteConnection(
     events?.close()
     events = undefined
     pushConnected.value = false
-    if (disposed || transport.value !== 'warmlink_raw') return
-    const stream = new EventSource('/api/warmlink/events')
+    if (disposed || !['warmlink_raw', 'display_modbus'].includes(transport.value)) return
+    const stream = new EventSource(
+      transport.value === 'display_modbus'
+        ? '/api/local/display_modbus/events'
+        : '/api/warmlink/events',
+    )
     events = stream
     stream.onmessage = (event) => {
       if (events !== stream || disposed) return
@@ -96,7 +100,8 @@ export function useLteConnection(
 
   async function refreshSnapshot() {
     const requestedGeneration = generation
-    const incoming = await api.lteSnapshot()
+    const incoming =
+      transport.value === 'display_modbus' ? await api.displaySnapshot() : await api.lteSnapshot()
     if (!disposed && requestedGeneration === generation) applySnapshot({ ...incoming, reset: true })
   }
 
@@ -104,8 +109,9 @@ export function useLteConnection(
     if (disposed) return
     const requestedGeneration = generation
     try {
-      if (transport.value === 'warmlink_raw') {
-        await api.busLease()
+      if (['warmlink_raw', 'display_modbus'].includes(transport.value)) {
+        if (transport.value === 'display_modbus') await api.displayLease()
+        else await api.busLease()
         if (!pushConnected.value) await refreshSnapshot()
       } else {
         const state = await api.busConnection()
@@ -122,13 +128,14 @@ export function useLteConnection(
     if (
       scanStarting.value ||
       lteScan.value.status === 'running' ||
-      transport.value !== 'warmlink_raw'
+      !['warmlink_raw', 'display_modbus'].includes(transport.value)
     )
       return
     const requestedGeneration = generation
     scanStarting.value = true
     try {
-      const result = await api.lteScan()
+      const result =
+        transport.value === 'display_modbus' ? await api.displayScan() : await api.lteScan()
       if (disposed || requestedGeneration !== generation) return
       lteScan.value = result
       await refreshSnapshot()
@@ -137,7 +144,7 @@ export function useLteConnection(
         lteScan.value = {
           ...lteScan.value,
           status: 'error',
-          error: error instanceof Error ? error.message : 'LTE-Lesen fehlgeschlagen',
+          error: error instanceof Error ? error.message : 'Busabfrage fehlgeschlagen',
         }
     } finally {
       if (requestedGeneration === generation) scanStarting.value = false
@@ -147,7 +154,8 @@ export function useLteConnection(
   watch(transport, () => {
     generation += 1
     localValues.value = {}
-    lteScan.value = emptyScan()
+    busState.value = null
+    lteScan.value = { ...emptyScan(), total: transport.value === 'display_modbus' ? 6 : 8 }
     scanStarting.value = false
     if (started) connectStream()
   })

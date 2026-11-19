@@ -31,6 +31,11 @@ class GroupRead(BaseModel):
 def refresh_group(payload: GroupRead, request: Request):
     if request.headers.get("x-foxair-admin") != "1":
         raise HTTPException(403, "Anwendungs-Header fehlt")
+    if payload.transport == "display_modbus":
+        from backend.display_bus import manager
+
+        manager.lease()
+        return {"values": manager.values(), "updated": 0, "status": "passive"}
     if payload.transport not in ("cloud", "warmlink_raw", "standard_modbus"):
         raise HTTPException(422, "Verbindung unterstützt keine aktiven Abfragen")
     known = store.values()

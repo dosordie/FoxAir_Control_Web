@@ -36,9 +36,17 @@ jobs:
           PY
 
   frontend:
+    needs: backend
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: foxair-frontend-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Read reviewed upstream revision
         id: upstream
         run: |
@@ -70,37 +78,18 @@ jobs:
       - name: Type-check and build
         working-directory: frontend
         run: npm run format:check && npm test && npm run build
-      - name: Upload prebuilt PWA for Linux server installation
-        uses: actions/upload-artifact@v4
-        with:
-          name: foxair-frontend-dist
-          path: frontend/dist/
-          if-no-files-found: error
-          retention-days: 1
-
-  publish:
-    name: Publish prebuilt frontend to git branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [backend, frontend]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    concurrency:
-      group: foxair-frontend-dist-branch
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: foxair-frontend-dist
-          path: prebuilt
-      - name: Publish clean assets + exact source revision to web-dist branch
+      # Publish only after all checks, without retaining Actions storage artifacts.
+      # Build/test steps receive no Git credentials; the token is scoped to this step.
+      - name: Publish prebuilt frontend to git branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          PUBLISH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          test -f prebuilt/index.html
+          test -f frontend/dist/index.html
           build_dir="$(mktemp -d)"
-          cp -a prebuilt/. "$build_dir/"
+          cp -a frontend/dist/. "$build_dir/"
           printf '%s\n' "$GITHUB_SHA" > "$build_dir/.build-source-sha"
           git -C "$build_dir" init -q --initial-branch=web-dist
           git -C "$build_dir" config user.name "github-actions[bot]"
@@ -108,6 +97,6 @@ jobs:
           git -C "$build_dir" add -A
           git -C "$build_dir" commit -qm "build: frontend from $GITHUB_SHA"
           git -C "$build_dir" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git -C "$build_dir" -c "http.https://github.com/.extraheader=$auth_header" \
+          auth_header="$(printf 'x-access-token:%s' "$PUBLISH_TOKEN" | base64 -w 0)"
+          git -C "$build_dir" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth_header" \
             push -q --force origin HEAD:refs/heads/web-dist
