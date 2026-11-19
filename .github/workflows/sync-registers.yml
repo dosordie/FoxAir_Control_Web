@@ -1,7 +1,5 @@
 name: Propose upstream register snapshot
 on:
-  schedule:
-    - cron: '17 6 * * 1'
   workflow_dispatch:
     inputs:
       upstream_ref:
