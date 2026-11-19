@@ -55,7 +55,12 @@ export function useLteConnection(
     for (const key of Object.keys(incoming.metrics) as (keyof Dashboard['metrics'])[]) {
       const next = incoming.metrics[key]
       const previous = current.metrics[key]
-      if (next && (!previous || Date.parse(next.timestamp) >= Date.parse(previous.timestamp)))
+      if (
+        next &&
+        (!previous ||
+          (key === 'target' && next.source_code === '2014' && previous.source_code !== '2014') ||
+          Date.parse(next.timestamp) >= Date.parse(previous.timestamp))
+      )
         current.metrics[key] = next
       const shown = current.metrics[key]
       if (

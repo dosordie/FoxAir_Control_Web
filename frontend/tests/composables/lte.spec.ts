@@ -53,6 +53,18 @@ describe('LTE connection ownership', () => {
     expect(invalidate).toHaveBeenCalled()
   })
 
+  it('projects the selected live target immediately instead of keeping a newer base target', async () => {
+    const { transport, dashboard } = mount()
+    await flush()
+    transport.value = 'display_modbus'
+    dashboard.value = {transport:'display_modbus', metrics:{target:{value:35,unit:'°C',quality:'fresh',timestamp:'2026-11-19T20:00:01Z',source_code:'1158'}},status:'partial',timestamp:'',error:null} as Dashboard
+    await nextTick()
+    const selected = {value:36.6,unit:'°C',quality:'observed',timestamp:'2026-11-19T20:00:00Z',source_code:'2014'}
+    Stream.instances.at(-1)!.receive({...packet(),metrics:{target:selected}})
+    expect(dashboard.value?.metrics.target?.value).toBe(36.6)
+    expect(dashboard.value?.metrics.target?.source_code).toBe('2014')
+  })
+
   it('rejects a delayed scan result and old stream messages after changing transport', async () => {
     const { state, transport } = mount()
     await flush()

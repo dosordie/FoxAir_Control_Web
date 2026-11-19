@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
   ChevronRight, Clock3, Gauge, HeartPulse, House,
-  Power, RadioTower, RefreshCw, Search,
+  Power, RadioTower, RefreshCw,
   Settings2, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
 } from 'lucide-vue-next'
@@ -16,6 +16,8 @@ import ConnectionSettingsDialog from './components/ConnectionSettingsDialog.vue'
 import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
+import HeatpumpStatus from './components/HeatpumpStatus.vue'
+import MainRegisterBrowser from './components/MainRegisterBrowser.vue'
 import SpecialControls from './components/SpecialControls.vue'
 import AccountManagement from './components/AccountManagement.vue'
 import ParameterFilters from './components/ParameterFilters.vue'
@@ -247,20 +249,15 @@ const waterSpread = computed(() => {
 function deltaText(value: number | null): string {
   return value === null ? '—' : (value > 0 ? '+' : '') + value.toLocaleString('de-DE', {maximumFractionDigits:1})
 }
-const mainRegisterOpen = ref(false)
-const mainRegisterGroup = ref('T')
-const mainRegisterSearch = ref('')
-const mainRegisterRows = computed(() => {
-  const query = mainRegisterSearch.value.trim().toLowerCase()
-  const rows=['warmlink_raw','display_modbus'].includes(selectedTransport.value)?Object.values(localValues.value).map(row=>({...row,code:row.code||'',name:row.name||'Register '+row.register,group:row.group||''})):cloudRows.value
-  return rows.filter(row =>
-    (!mainRegisterGroup.value || row.group === mainRegisterGroup.value) &&
-    (!query || [row.name, row.code, String(row.register ?? '')]
-      .some(text => text.toLowerCase().includes(query)))
-  ).sort((a, b) =>
-    (a.register ?? Number.MAX_SAFE_INTEGER) - (b.register ?? Number.MAX_SAFE_INTEGER) ||
-    a.code.localeCompare(b.code, 'de')
-  ).slice(0, 60)
+const browserRows = computed(() => {
+  const names = new Map(cloudRows.value.filter(row => row.register != null).map(row => [row.register!, row]))
+  const values = ['warmlink_raw','display_modbus'].includes(selectedTransport.value)
+    ? Object.values(localValues.value)
+    : selectedTransport.value === 'standard_modbus'
+      ? Object.values(sharedValues.value).filter(row => row.transport === 'standard_modbus')
+      : cloudRows.value.filter(row => row.register != null && row.timestamp && row.value != null && row.confidence === 'confirmed')
+          .map(row => ({...row, register: row.register!, raw:null, timestamp:row.timestamp!, value:row.value!, transport:'cloud'}))
+  return values.map(row => ({...row, name:row.name || names.get(row.register)?.name || 'Register '+row.register}))
 })
 const filteredCloudRows = computed(() => {
   const term = search.value.trim().toLowerCase()
@@ -630,10 +627,10 @@ onBeforeUnmount(() => {
                   <div class="fan-ring integrated-fan" :class="{ 'fan-running': fanRunning }" :aria-label="fanRunning?'Lüfter dreht':'Lüfter steht'">
                     <svg class="fan-rotor" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="rotor-metal" x2="1" y2="1"><stop stop-color="#a6a9ac"/><stop offset=".5" stop-color="#343b40"/><stop offset="1" stop-color="#717a80"/></linearGradient></defs><g fill="url(#rotor-metal)" stroke="#1b2024" stroke-width=".6"><path v-for="rotation in [0,90,180,270]" :key="rotation" :transform="'rotate('+rotation+' 50 50)'" d="M49 48 C27 46 14 34 21 18 C35 8 52 19 56 37 L54 48Z"/></g><circle cx="50" cy="50" r="10" fill="#50585e" stroke="#828a90"/><circle cx="50" cy="50" r="3" fill="#252b30"/></svg>
                   </div>
-                  <CompressorGauge :metric="snapshot?.metrics.compressor_frequency || null" />
+                  <HeatpumpStatus :mode="currentRegisterValue(1012)" :run="currentRegisterValue(2012)" :power="snapshot?.metrics.power || null" />
 
                 </div>
-                <span class="unit-ground"></span>
+                <CompressorGauge :metric="snapshot?.metrics.compressor_frequency || null" />
               </div>
               <div class="target-temperature">
                 <span class="overline">Aktueller Sollwert</span>
@@ -648,13 +645,13 @@ onBeforeUnmount(() => {
             </div>
             <div class="hero-metrics">
               <div v-for="item in readings" :key="item.key" class="hero-metric"
-                :class="{ 'is-stale': snapshot?.metrics[item.key]?.quality === 'stale' }"
+                :class="['reading-'+item.key, { 'is-stale': snapshot?.metrics[item.key]?.quality === 'stale' }]"
                 :title="snapshot?.metrics[item.key]?.quality === 'stale' ? 'Letzter bekannter Wert, Verbindung unterbrochen' : ''">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong>{{ metric(item.key) }} <small class="metric-unit">{{ item.unit }}</small></strong>
                 <span class="metric-label">{{ item.label }}</span>
               </div>
-              <div class="hero-metric" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
+              <div class="hero-metric reading-spread" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
                 <Waves :size="24" :stroke-width="1.8" />
                 <strong>{{ deltaText(waterSpread) }} <small class="metric-unit">K</small></strong>
                 <span class="metric-label">Spreizung VL/RL</span>
@@ -689,7 +686,7 @@ onBeforeUnmount(() => {
                 <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
               </div>
               <small v-if="selectedTransport==='standard_modbus'">Automatische Aktualisierung bei sichtbarer Übersicht</small>
-              <small v-if="['warmlink_raw','display_modbus'].includes(selectedTransport)">{{ pushConnected?'Live-Übertragung aktiv':'Live-Übertragung verbindet …' }}<template v-if="busState?.mode!=='on_demand'"> · {{ busState?.connected?'Bus verbunden':'Busverbindung wird geprüft' }}</template> · empfangene Werte erscheinen automatisch</small>
+              <small class="bus-live-note" v-if="['warmlink_raw','display_modbus'].includes(selectedTransport)" role="status">{{ pushConnected && busState?.connected ? 'Live · Bus verbunden' : busState?.connected ? 'Bus verbunden · Live-Übertragung verbindet …' : 'Busverbindung wird geprüft …' }}</small>
             </div>
           </section>
 
@@ -722,32 +719,7 @@ onBeforeUnmount(() => {
               <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreiben erfordert die Admin-Anmeldung.</p>
             </section>
           </div>
-          <section class="panel main-register-preview">
-            <button class="register-preview-toggle" type="button" @click="mainRegisterOpen = !mainRegisterOpen"
-              :aria-expanded="mainRegisterOpen">
-              <span><span class="section-caption">REGISTER / FOXAIR_CONTROL</span><strong>Registerübersicht im Hauptfenster</strong></span>
-              <span>{{ mainRegisterOpen ? 'Schließen' : 'Anzeigen' }} <ChevronRight :size="17" :class="{ 'is-open': mainRegisterOpen }" /></span>
-            </button>
-            <template v-if="mainRegisterOpen">
-              <div class="register-preview-controls">
-                <label class="search-box"><Search :size="17" /><input v-model="mainRegisterSearch" placeholder="Register oder Code suchen" aria-label="Hauptfenster Register filtern" /></label>
-                <div class="parameter-groups">
-                  <button v-for="grp in [...orderedGroups.map(g => g.group), '']" :key="grp" class="group-chip"
-                    :class="{ active: mainRegisterGroup === grp }" @click="mainRegisterGroup = grp">{{ grp || 'Alle' }}</button>
-                </div>
-              </div>
-              <div class="main-register-list">
-                <div v-for="entry in mainRegisterRows" :key="entry.code" class="main-register-row"
-                  :class="{ 'is-stale': entry.quality === 'stale' }">
-                  <span class="register-code">{{ entry.register ?? entry.code }}</span>
-                  <span class="register-title">{{ entry.name }}<small>{{ entry.register ?? 'Nur Cloud' }}</small></span>
-                  <strong :title="relativeTimestamp(entry.timestamp)">{{ entry.display_value ?? textValue(entry.value) }} {{ entry.unit }}</strong>
-                </div>
-                <p v-if="!mainRegisterRows.length" class="empty-state">Noch keine Registerwerte vorhanden.</p>
-              </div>
-              <button class="outlined-action" type="button" @click="navigate('parameters')">Alle Parameter öffnen <ArrowRight :size="16" /></button>
-            </template>
-          </section>
+          <MainRegisterBrowser :rows="browserRows" :transport="selectedTransport" @parameters="navigate('parameters')" />
         </div>
       </template>
 

@@ -60,7 +60,17 @@ def lease(request: Request):
 
 
 def local_snapshot(transport="display_modbus"):
-    values = manager.values()
+    from backend.catalog import load_registers
+
+    definitions = load_registers()
+    values = {
+        key: {
+            **row,
+            "name": definitions.get(key, {}).get("name") or f"Register {key}",
+            "code": definitions.get(key, {}).get("code") or "",
+        }
+        for key, row in manager.values().items()
+    }
     state = manager.state()
     metrics = {}
     for name, register in DASHBOARD_FIELDS.items():
@@ -72,6 +82,25 @@ def local_snapshot(transport="display_modbus"):
                 if state["connected"] and row["quality"] != "stale"
                 else "stale",
             }
+    # The live broadcast carries 2014 even before parameter block 1091 (R02).
+    # Project it on every SSE update, exactly as on the ordinary dashboard.
+    from backend.last_values import fill_dashboard
+
+    metrics = fill_dashboard({"metrics": metrics})["metrics"]
+    power = values.get("2011")
+    if power and power.get("raw") in (0, 1):
+        metrics["power"] = {**power, "source_code": "2011"}
+    selected = values.get("2014")
+    if (
+        selected
+        and isinstance(selected.get("value"), (int, float))
+        and 5 <= selected["value"] <= 80
+    ):
+        metrics["target"] = {
+            **selected,
+            "source_code": "2014",
+            "label": "Aktueller Wassersollwert",
+        }
     return {
         "values": values,
         "metrics": metrics,

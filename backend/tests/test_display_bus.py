@@ -347,3 +347,83 @@ class DisplayTcpTests(TestCase):
                 listener.close()
                 thread.join(timeout=3)
         self.assertEqual(failures, [])
+
+
+class DisplayProjectionTests(TestCase):
+    def test_live_selected_target_is_present_without_parameter_snapshot(self):
+        from backend.routes.local_buses import local_snapshot
+
+        row = {
+            "register": 2014,
+            "raw": 366,
+            "value": 36.6,
+            "unit": "°C",
+            "quality": "observed",
+            "transport": "display_modbus",
+            "timestamp": "2026-11-19T20:00:00+00:00",
+        }
+        with (
+            patch(
+                "backend.routes.local_buses.manager.values", return_value={"2014": row}
+            ),
+            patch(
+                "backend.routes.local_buses.manager.state",
+                return_value={"connected": True, "scan": {}},
+            ),
+            patch("backend.last_values.store.values", return_value={}),
+        ):
+            target = local_snapshot()["metrics"]["target"]
+        self.assertEqual(target["value"], 36.6)
+        self.assertEqual(target["source_code"], "2014")
+        self.assertEqual(target["quality"], "observed")
+
+    def test_live_selected_target_wins_over_fresh_base_target(self):
+        from backend.routes.local_buses import local_snapshot
+
+        row = {
+            "register": 2014,
+            "value": 36.6,
+            "unit": "°C",
+            "quality": "observed",
+            "timestamp": "2026-11-19T20:00:00+00:00",
+        }
+        base = {**row, "register": 1158, "value": 35}
+        with (
+            patch(
+                "backend.routes.local_buses.manager.values",
+                return_value={"2014": row, "1158": base},
+            ),
+            patch(
+                "backend.routes.local_buses.manager.state",
+                return_value={"connected": True, "scan": {}},
+            ),
+            patch("backend.last_values.store.values", return_value={}),
+        ):
+            metrics = local_snapshot()["metrics"]
+        self.assertEqual(metrics["target"]["value"], 36.6)
+        self.assertEqual(metrics["base_target"]["value"], 35)
+
+    def test_live_power_state_does_not_wait_for_parameter_packet(self):
+        from backend.routes.local_buses import local_snapshot
+
+        row = {
+            "register": 2011,
+            "raw": 1,
+            "value": "Ein",
+            "unit": "",
+            "quality": "observed",
+            "timestamp": "2026-11-19T20:00:00+00:00",
+        }
+        with (
+            patch(
+                "backend.routes.local_buses.manager.values", return_value={"2011": row}
+            ),
+            patch(
+                "backend.routes.local_buses.manager.state",
+                return_value={"connected": True, "scan": {}},
+            ),
+            patch("backend.last_values.store.values", return_value={}),
+        ):
+            snapshot = local_snapshot()
+        self.assertEqual(snapshot["metrics"]["power"]["value"], "Ein")
+        self.assertEqual(snapshot["values"]["2011"]["name"], "Gerätezustand")

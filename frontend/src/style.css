@@ -393,6 +393,40 @@ a{color:inherit}
 
 .parameter-description-title{font-size:14px;margin:22px 0 8px}
 
+/* Keep the frequency in normal flow below the actual artwork on every screen. */
+.unit-container{height:auto;min-height:255px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding-bottom:6px}
+.unit-container>.compressor-badge{position:static;flex:none;align-self:center}
+.heatpump-status-icons{position:absolute;right:0;top:18%;display:flex;flex-direction:column;gap:9px;transform:translateX(65%)}
+.heatpump-state{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#ffffffe8;color:#d66c16;box-shadow:0 3px 12px #0002}
+.defrost-state{color:#258bb6}.status-drop{position:absolute;right:0;bottom:0;background:#fff;border-radius:50%;padding:1px;color:#218fb5}
+.bus-live-note{font-size:11px;line-height:1.4;color:#7d8490;overflow-wrap:anywhere}
+.register-browser-scroll{max-height:560px;overflow:auto;margin:12px 0 16px}
+.register-browser-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
+.register-browser-table th{position:sticky;top:0;background:#fff;z-index:1;text-align:left;font-size:11px;color:#707986;padding:10px 7px;border-bottom:1px solid #e4e7eb}
+.register-browser-table th:first-child{width:65px}.register-browser-table th:nth-child(2){width:40%}
+.register-browser-table td{padding:10px 7px;border-bottom:1px solid #ffffffa6;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;background:var(--register-area,#fff)}
+.register-browser-table td:first-child{font-weight:700}.register-browser-table td small{display:block;color:#6a7480;margin-top:4px}
+.register-browser-table .area-settings{--register-area:rgb(224,246,224)}
+.register-browser-table .area-status{--register-area:rgb(255,239,210)}
+.register-browser-table .area-display{--register-area:rgb(238,230,255)}
+.register-browser-table .area-inverter{--register-area:rgb(220,242,252)}
+.register-browser-table .previous-register-value{color:#737981;font-size:11px}
+.register-browser-table .register-changed td{animation:register-value-flash .9s ease-out}
+@keyframes register-value-flash{0%,30%{background:#ffcc73}100%{background:var(--register-area,#fff)}}
+.browser-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;color:#78808b;margin:12px 0}.browser-legend span{padding:3px 6px;border-radius:5px;background:#e0f6e0}.browser-legend span+span{background:#ffefd2}
+@media(max-width:600px){
+  .unit-container{height:auto;min-height:0;padding:20px 0 10px;gap:9px}
+  .unit-container .unit.illustrated-unit{width:min(78%,300px)}
+  .heatpump-status-icons{transform:translateX(75%)}.heatpump-state{width:34px;height:34px}
+  .transport-inline .bus-live-note{grid-column:1/-1;font-size:11px;margin-top:3px}
+  .hero-metric.reading-return{order:0}.hero-metric.reading-supply{order:1}.hero-metric.reading-spread{order:2}
+  .hero-metric.reading-flow{order:3}.hero-metric.reading-tank{order:4}.hero-metric.reading-outdoor{order:5}
+  .content-columns>.operating-panel{order:-1}
+  .register-browser-table{font-size:11px}.register-browser-table th:first-child{width:52px}.register-browser-table th:nth-child(2){width:34%}
+  .register-browser-table th,.register-browser-table td{padding:9px 4px}.register-browser-table .previous-register-value{font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){.register-browser-table .register-changed td{animation:none}}
+
 .unit.illustrated-unit:before{content:none}
 
 .special-control-scroll{min-height:0;overflow:auto;padding:4px 8px 16px}.special-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.special-control-card{min-width:0;padding:18px;border:1px solid #e7eaee;border-radius:16px;background:#fafbfc}.special-control-card h3{font-size:15px;margin:10px 0}.special-current{font-size:24px;font-weight:700;margin:12px 0}.special-current small{font-size:13px}.special-control-card details{font-size:12px;color:#68717c}.special-control-card .cloud-write-panel{padding:12px;margin-top:14px;background:#fff}.special-control-card .settings-input{width:100%;min-width:0}.special-control-card .main-action{width:100%;font-size:12px}.curve-panel{background:#f8fafc;border:1px solid #e8edf1;border-radius:16px;padding:14px;margin:8px 0 18px}.curve-panel h3{margin:0}.curve-panel p{font-size:13px;color:#68717c}.curve-panel svg{width:100%;max-height:280px;font:12px sans-serif;fill:#66717f}@media(max-width:600px){.special-card-grid{grid-template-columns:1fr}.special-control-scroll{padding:4px 1px 12px}}

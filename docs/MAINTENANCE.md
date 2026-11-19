@@ -189,3 +189,12 @@ Backups use Fernet authenticated encryption with a fresh salt and PBKDF2-SHA256 
 See [LOCAL_MODBUS.md](LOCAL_MODBUS.md). `display_protocol.py` owns the deterministic passive decoder and fixed snapshot state machine, `display_bus.py` owns its single socket/thread and lease, and `routes/local_buses.py` exposes protected configuration and live snapshots. No generic display writer exists. Ordinary Modbus retains the separate short-lived RTU client. Configuration enforces distinct physical TCP endpoints; CRC framing is shared without changing LTE request ownership. New encrypted backups include both private bus config files and accept older envelopes.
 
 CI builds are tested locally before a bundled push. Frontend publication now occurs after backend and frontend checks without uploading/downloading retained Actions artifacts. Checkout credentials are not persisted into build/test steps; only the final publication step receives the repository token. This preserves the matching `web-dist` commit contract used by update.sh while avoiding Actions artifact storage consumption.
+
+
+### Home telemetry and register browser
+
+The display SSE projection promotes validated live MAIN 2014 to the active target on every update, independently of whether parameter packet 1091/R02 has arrived. MAIN 2011 supplies the observed on/off state. Missing fields may use shared last-known values with their original source, quality and timestamp. No additional active bus reads or timeout/retry changes are introduced.
+
+`HeatpumpStatus.vue` keeps selected mode MAIN 1012 (including combined domestic hot water modes) separate from actual run state MAIN 2012 (defrost = 2). Unknown or stale states hide their badges. Symbols are SVG components inspired by the desktop/firmware mappings, without new raster assets.
+
+`MainRegisterBrowser.vue` owns only the home register browser: numeric address ordering without a default group or 60-row limit, desktop area colors (1000–1599 green; 2000–2999 orange), and the previous distinct displayed value. History is kept in memory while the home component is mounted and resets on transport change. Timestamp-only updates do not flash; changed rows briefly flash, respecting reduced motion. The parameter catalogue/editor presentation is unaffected.
