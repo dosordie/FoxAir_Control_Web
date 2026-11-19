@@ -17,6 +17,7 @@ import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import SpecialControls from './components/SpecialControls.vue'
+import AccountManagement from './components/AccountManagement.vue'
 import ParameterFilters from './components/ParameterFilters.vue'
 import ParameterDetails from './components/ParameterDetails.vue'
 import LteScanSummary from './components/LteScanSummary.vue'
@@ -73,7 +74,7 @@ const cloudKind = ref('')
 const cloudCodeSelected = ref<CloudRow | null>(null)
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
-const { ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
+const { signedIn, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
@@ -606,7 +607,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <AppHeader :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="adminAuthenticated" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
+    <AppHeader v-model:username="username" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
     <main>
@@ -827,7 +828,7 @@ onBeforeUnmount(() => {
               <p class="description parameter-description">{{ selectedRegister.description || 'Keine zusätzliche Beschreibung vorhanden.' }}</p>
               <p v-if="readError" class="read-error">{{ readError }}</p>
               <button class="main-action" :disabled="reading || !selectedTransportInfo?.read_supported" @click="readRegister"><RefreshCw :size="18" :class="{ spinning: reading }" />{{ reading ? 'Wert wird gelesen …' : 'Register jetzt lesen' }}</button>
-              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="adminAuthenticated && browserOnline" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
+              <ParameterEditor :key="selectedTransport+':'+selectedRegister.register" :register="selectedRegister" :transport="selectedTransport" :admin="canOperate && browserOnline" :value="currentRegisterValue(selectedRegister.register)" @updated="readRegister" @read="currentValue=$event" />
             </template>
             <div v-else class="empty-detail"><SlidersHorizontal :size="35" /><h2>{{ cloudView ? 'Cloud-Code auswählen' : 'Parameter auswählen' }}</h2><p>Vorhandene Werte sind in der Liste sichtbar. Für Details einen Eintrag öffnen.</p></div>
           </ParameterDetails>
@@ -836,6 +837,7 @@ onBeforeUnmount(() => {
 
       <template v-else>
         <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindung und Anzeige für dieses Gerät.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
+        <AccountManagement v-if="adminAuthenticated" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
           <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Unter Verbindungseinstellungen wählst du, wie lange die LTE-Verbindung offen bleibt.</p>

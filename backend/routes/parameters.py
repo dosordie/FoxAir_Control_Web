@@ -112,7 +112,9 @@ def write_parameter(register: int, payload: ParameterWrite, request: Request):
     from backend.cloud_read import CloudError
     from backend.parameter_write import write
 
-    require_admin(request, "")
+    from backend.users import require_operator
+
+    require_operator(request, [register])
     try:
         return write(
             register,

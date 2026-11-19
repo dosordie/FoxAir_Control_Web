@@ -185,12 +185,12 @@ export const api = {
     if(favorites!==undefined){parameters.set('favorites_only','true');for(const id of favorites)parameters.append('favorite',String(id))}
     return get<{items:Register[];catalog_size:number}>('/api/registers?'+parameters)
   },
-  adminSession: () => get<{ authenticated: boolean; role: string; sso_available?: boolean }>('/api/admin/session'),
-  adminSsoLogin: () => post<{ authenticated: boolean; role: string; sso_available?: boolean }>('/api/admin/sso/login', {}),
-  adminLogin: (admin_password: string) =>
-    post<{ authenticated: boolean; role: string }>('/api/admin/login', { admin_password }),
+  adminSession: () => get<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean }>('/api/admin/session'),
+  adminSsoLogin: () => post<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean }>('/api/admin/sso/login', {}),
+  adminLogin: (admin_password: string, username = "admin") =>
+    post<{ authenticated: boolean; role: string; username?: string }>('/api/admin/login', { admin_password, username }),
   adminLogout: () =>
-    post<{ authenticated: boolean; role: string }>('/api/admin/logout', {}),
+    post<{ authenticated: boolean; role: string; username?: string }>('/api/admin/logout', {}),
   cloudWrite: (code: 'Power' | 'Mode' | 'H22' | 'R02', value: string, expected: string) =>
     post<CloudWriteResult>('/api/cloud/write', { code, value, expected }),
   cloudStatus: () => get<CloudConfigStatus>('/api/cloud/config'),

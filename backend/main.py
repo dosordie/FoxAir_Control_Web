@@ -45,6 +45,13 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="FoxAir Control Web", version="0.1.0", docs_url=None, redoc_url=None, lifespan=lifespan)
 
+from backend.routes.accounts import router as accounts_router
+from backend.access import AccessMiddleware
+app.include_router(accounts_router)
+from backend.routes.backup import router as backup_router
+app.include_router(backup_router)
+app.add_middleware(AccessMiddleware)
+
 VALID_TRANSPORTS = set(TRANSPORTS)
 app.include_router(lte_router)
 app.include_router(parameter_router)
@@ -92,6 +99,7 @@ class CloudAdminAction(BaseModel):
 
 
 class AdminLogin(BaseModel):
+    username: str = Field(default="admin", min_length=1, max_length=64)
     admin_password: str = Field(min_length=1, max_length=256)
 
 
@@ -131,13 +139,21 @@ def set_admin_cookie(response: Response, token: str, secure: bool):
 def admin_session_state(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     identity = verified_identity(request)
-    authenticated = is_admin_session(request)
-    if identity and not authenticated and not request.cookies.get(OPTOUT_COOKIE):
+    from backend.users import principal
+    user = principal(request)
+    authenticated = user is not None
+    import hashlib, time
+    from backend.cloud_config import _read_json, STATE_DIR
+    token_hash = hashlib.sha256((request.cookies.get(session_cookie_name()) or "").encode()).hexdigest()
+    revoked = _read_json(STATE_DIR / "revoked-sessions.json").get(token_hash, 0) > time.time()
+    if identity and not authenticated and not request.cookies.get(OPTOUT_COOKIE) and not revoked:
         revoke_admin_session(request.cookies.get(session_cookie_name()))
         set_admin_cookie(response, create_admin_session(identity.session_data()), True)
         authenticated = True
-    return {"authenticated": authenticated, "role": "admin" if authenticated else "reader",
-            "sso_available": identity is not None}
+        from backend.users import account
+        user = {"username": identity.account, "role": account(identity.account)["role"]}
+    return {"authenticated": authenticated, "role": user["role"] if user else "reader",
+            "username": user["username"] if user else None, "sso_available": identity is not None}
 
 
 @app.post("/api/admin/sso/login")
@@ -151,19 +167,26 @@ def admin_sso_login(request: Request, response: Response):
     revoke_admin_session(request.cookies.get(session_cookie_name()))
     set_admin_cookie(response, create_admin_session(identity.session_data()), True)
     response.delete_cookie(OPTOUT_COOKIE, path="/", secure=True, httponly=True, samesite="strict")
-    return {"authenticated": True, "role": "admin", "sso_available": True}
+    from backend.users import account
+    return {"authenticated": True, "role": account(identity.account)["role"], "username": identity.account, "sso_available": True}
 
 
 @app.post("/api/admin/login")
 def admin_login(payload: AdminLogin, request: Request, response: Response):
-    check_admin_password(request, payload.admin_password)
+    identity = None
+    if payload.username == "admin":
+        check_admin_password(request, payload.admin_password)
+    else:
+        from backend.users import login
+        identity = login(request, payload.username, payload.admin_password)
     is_https = ensure_secure_origin(request)
-    token = create_admin_session()
+    token = create_admin_session(identity)
     revoke_admin_session(request.cookies.get(session_cookie_name()))
     set_admin_cookie(response, token, is_https)
     response.delete_cookie(OPTOUT_COOKIE, path="/", secure=is_https, httponly=True, samesite="strict")
     cloud_log_event("auth", "Web-Administrator angemeldet")
-    return {"authenticated": True, "role": "admin"}
+    from backend.users import account
+    return {"authenticated": True, "role": account(payload.username)["role"], "username": payload.username}
 
 
 @app.post("/api/admin/logout")

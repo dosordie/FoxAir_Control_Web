@@ -74,9 +74,15 @@ Die [kurze Installationsanleitung](docs/INSTALLATION.md) führt durch Einrichtun
 
 Ohne Admin-Anmeldung ist lesender Zugriff möglich. Die lokale Admin-Sitzung bleibt bis zu 30 Tage bestehen und überlebt Dienstneustarts; das Passwort wird nicht im Browser gespeichert.
 
+## Benutzer, Protokoll und Sicherung
+
+Unter **Einstellungen → Benutzer & Berechtigungen** können Administratoren lokale Konten, SSO-Zuordnungen und Sitzungen verwalten. Leser sehen Messwerte; Bediener dürfen einzeln freigegebene MAIN-Register ändern. Administratoren verwalten Verbindungen und Updates. Das bestehende Konto `admin` bleibt als Notfallzugang erhalten.
+
+Schreibaufträge erscheinen im privaten Änderungsprotokoll. Verschlüsselte Sicherungen umfassen lokale Benutzer, Cloud-Zugang und LTE-Einstellungen; Proxy-Secrets und das Notfallpasswort werden separat verwaltet. Zur Wiederherstellung ist das Sicherungspasswort erforderlich.
+
 ## Zugriff und private Konfiguration
 
-Die Admin-Anmeldung schützt schreibende und administrative Aktionen. **Sie schützt nicht sämtliche lesenden Messwert-APIs.** Für einen öffentlichen Zugang ist deshalb ein vorgeschalteter Zugriffsschutz mit HTTPS nötig, beispielsweise Nginx mit Authelia.
+Die Anmeldung schützt schreibende und administrative Aktionen nach Rolle. **Lesender Gastzugriff ist standardmäßig erlaubt und kann in der Benutzerverwaltung deaktiviert werden.** Für einen öffentlichen Zugang ist deshalb ein vorgeschalteter Zugriffsschutz mit HTTPS nötig, beispielsweise Nginx mit Authelia.
 
 Optionales Trusted-Proxy-SSO ist vorhanden und **standardmäßig deaktiviert**. Es benötigt eine ausdrücklich vertrauenswürdige Proxy-IP, ein gemeinsames Secret und eine feste Zuordnung zum vorhandenen lokalen Administratorkonto. Generische Beispiele liegen unter [deploy/](deploy/).
 

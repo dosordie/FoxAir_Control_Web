@@ -4,11 +4,13 @@ import type { Page } from '../types/navigation'
 defineProps<{
   page: Page
   authenticated: boolean
+  role?: string
   ssoAvailable?: boolean
   busy: boolean
   secure: boolean
   error: string
 }>()
+const username = defineModel<string>('username', { default: 'admin' })
 const password = defineModel<string>('password', { required: true })
 const loginOpen = defineModel<boolean>('loginOpen', { required: true })
 const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLogin: [] }>()
@@ -43,11 +45,30 @@ const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLog
           :aria-expanded="loginOpen"
           @click="loginOpen = !loginOpen"
         >
-          <ShieldCheck :size="17" /> {{ authenticated ? 'Administrator' : 'Gast · Anmelden' }}
+          <ShieldCheck :size="17" />
+          {{
+            authenticated
+              ? role === 'admin'
+                ? 'Administrator'
+                : role === 'operator'
+                  ? 'Bediener'
+                  : 'Leser'
+              : role === 'operator'
+                ? 'Bediener'
+                : 'Anmelden'
+          }}
         </button>
         <div v-if="loginOpen" class="login-popover">
           <p>
-            <strong>{{ authenticated ? 'Administrator' : 'Lesender Gast' }}</strong>
+            <strong>{{
+              authenticated
+                ? role === 'admin'
+                  ? 'Administrator'
+                  : role === 'operator'
+                    ? 'Bediener'
+                    : 'Leser'
+                : 'Lesender Gast'
+            }}</strong>
           </p>
           <button v-if="authenticated" class="outlined-action" @click="emit('logout')">
             Abmelden
@@ -62,7 +83,10 @@ const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLog
             >
               Mit Authelia anmelden
             </button>
-            <label class="field-label" for="header-password">Admin-Passwort</label>
+            <label class="field-label"
+              >Benutzername<input class="settings-input" v-model="username" autocomplete="username"
+            /></label>
+            <label class="field-label" for="header-password">Passwort</label>
             <input
               id="header-password"
               class="settings-input"

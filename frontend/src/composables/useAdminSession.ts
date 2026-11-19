@@ -8,6 +8,10 @@ export function useAdminSession(
   const secureAdminContext =
     window.location.protocol === 'https:' ||
     ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+  const signedIn = ref(false)
+  const username = ref('admin')
+  const role = ref('reader')
+  const canOperate = ref(false)
   const adminAuthenticated = ref(false)
   const adminBusy = ref(false)
   const ssoAvailable = ref(false)
@@ -20,7 +24,11 @@ export function useAdminSession(
     try {
       const result = await api.adminSession()
       if (!disposed) {
-        adminAuthenticated.value = result.authenticated
+        if (result.username) username.value = result.username
+        signedIn.value = result.authenticated
+        role.value = result.role
+        canOperate.value = result.authenticated && result.role !== 'reader'
+        adminAuthenticated.value = result.authenticated && result.role === 'admin'
         ssoAvailable.value = result.sso_available === true
       }
     } catch {
@@ -33,9 +41,13 @@ export function useAdminSession(
     adminBusy.value = true
     adminLoginError.value = ''
     try {
-      const result = await api.adminLogin(cloudAdminPassword.value)
+      const result = await api.adminLogin(cloudAdminPassword.value, username.value)
       if (disposed) return
-      adminAuthenticated.value = result.authenticated
+      if (result.username) username.value = result.username
+      signedIn.value = result.authenticated
+      role.value = result.role
+      canOperate.value = result.authenticated && result.role !== 'reader'
+      adminAuthenticated.value = result.authenticated && result.role === 'admin'
       cloudAdminPassword.value = ''
       loginOpen.value = false
       if (result.authenticated) await onLogin()
@@ -55,7 +67,11 @@ export function useAdminSession(
     try {
       const result = await api.adminSsoLogin()
       if (disposed) return
-      adminAuthenticated.value = result.authenticated
+      if (result.username) username.value = result.username
+      signedIn.value = result.authenticated
+      role.value = result.role
+      canOperate.value = result.authenticated && result.role !== 'reader'
+      adminAuthenticated.value = result.authenticated && result.role === 'admin'
       cloudAdminPassword.value = ''
       loginOpen.value = false
       if (result.authenticated) await onLogin()
@@ -75,6 +91,9 @@ export function useAdminSession(
       /* Clear local sensitive fields even if the server is unreachable. */
     }
     adminAuthenticated.value = false
+    signedIn.value = false
+    role.value = 'reader'
+    canOperate.value = false
     cloudAdminPassword.value = ''
     onLogout()
   }
@@ -85,6 +104,10 @@ export function useAdminSession(
   })
   return {
     secureAdminContext,
+    signedIn,
+    username,
+    role,
+    canOperate,
     ssoAvailable,
     loginWithSso,
     adminAuthenticated,

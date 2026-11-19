@@ -122,11 +122,14 @@ def verified_identity(request: Request) -> Identity | None:
             and request.headers.get("remote-user", users[0]) != users[0]
         ):
             return None
-        mapping = config.get("user_mapping")
+        from backend.users import account, read
+
+        mapping = read().get("sso_mapping", config.get("user_mapping"))
+        target = mapping.get(users[0]) if isinstance(mapping, dict) else None
         if (
-            not isinstance(mapping, dict)
-            or mapping.get(users[0]) != "admin"
-            or not _local_admin_exists()
+            not isinstance(target, str)
+            or not account(target)
+            or (target == "admin" and not _local_admin_exists())
         ):
             return None
         # Reuse the existing HTTPS and Origin boundary. This requires the proxy
@@ -136,7 +139,7 @@ def verified_identity(request: Request) -> Identity | None:
         binding = hashlib.sha256(
             json.dumps(config, sort_keys=True).encode() + secret.encode()
         ).hexdigest()
-        return Identity(users[0], "admin", binding)
+        return Identity(users[0], target, binding)
     except (OSError, ValueError, TypeError, AttributeError, HTTPException):
         # Secure-origin rejection must not turn LAN fallback into a server error.
         return None
