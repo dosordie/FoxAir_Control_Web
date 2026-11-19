@@ -79,7 +79,15 @@ class AccessMiddleware:
             await send(message)
 
         # Persist an intent before dispatch; if storage is unavailable no write is sent.
-        record(actor["username"] if actor else "password-or-guest", path, {}, "started")
+        try:
+            record(
+                actor["username"] if actor else "password-or-guest", path, {}, "started"
+            )
+        except OSError:
+            return await JSONResponse(
+                {"detail": "Änderungsprotokoll nicht verfügbar; kein Auftrag gesendet"},
+                status_code=503,
+            )(scope, receive, send)
         try:
             await self.app(scope, capture_receive, capture_send)
         finally:

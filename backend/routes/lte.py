@@ -70,7 +70,14 @@ async def lte_events(request: Request):
         previous_state = None
         first = True
         ticks = 0
+        lifetime = 0
         while not await request.is_disconnected():
+            from backend.users import read as account_policy, principal
+
+            if not account_policy().get("guest_read", True):
+                if not principal(request) or lifetime >= 120:
+                    return
+            lifetime += 1
             # Reading this cache never connects to the DTU or sends telegrams.
             snapshot = lte_snapshot()
             values = snapshot.pop("values")
