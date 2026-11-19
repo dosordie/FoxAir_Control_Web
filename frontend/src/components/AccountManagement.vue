@@ -19,6 +19,7 @@ type AuditRow = {
 const users = ref<UserRow[]>([]),
   sessions = ref<SessionRow[]>([]),
   audit = ref<AuditRow[]>([])
+const dialog = ref<HTMLDialogElement | null>(null)
 const message = ref(''),
   busy = ref(false),
   guest = ref(true),
@@ -126,116 +127,142 @@ async function restoreBackup() {
     window.location.reload()
   })
 }
-onMounted(() => run(async () => {}))
+onMounted(async () => {
+  try {
+    await load()
+  } catch (error) {
+    message.value = String(error)
+  }
+})
 </script>
 <template>
   <section class="settings-panel panel account-management">
     <h2>Benutzer &amp; Berechtigungen</h2>
     <p>
-      Leser sehen Messwerte. Bediener dürfen nur ausdrücklich freigegebene Register ändern.
-      Administratoren verwalten die Anwendung. Das Konto admin bleibt als Notfallzugang erhalten.
+      Konten, Rollen, SSO-Zuordnungen, Sitzungen, Änderungsprotokoll und verschlüsselte Sicherungen
+      verwalten.
     </p>
-    <p v-if="message" role="status">{{ message }}</p>
-    <div class="transport-options">
-      <button
-        v-for="u in users"
-        :key="u.username"
-        class="outlined-action"
-        :disabled="u.fallback"
-        @click="edit(u)"
-      >
-        {{ u.username }} · {{ u.role }} · {{ u.enabled ? 'aktiv' : 'gesperrt' }}
-      </button>
-    </div>
-    <form @submit.prevent="save">
-      <label
-        >Benutzername<input
-          class="settings-input"
-          v-model="name"
-          required
-          autocomplete="off" /></label
-      ><label
-        >Rolle<select class="settings-input" v-model="role">
-          <option value="reader">Leser</option>
-          <option value="operator">Bediener</option>
-          <option value="admin">Administrator</option>
-        </select></label
-      ><label
-        >Neues Passwort (leer = unverändert oder nur SSO)<input
-          class="settings-input"
-          type="password"
-          v-model="password"
-          autocomplete="new-password" /></label
-      ><label
-        >Freigegebene MAIN-Register, mit Komma getrennt<input
-          class="settings-input"
-          v-model="registers"
-          placeholder="z. B. 1012,1158" /></label
-      ><label><input type="checkbox" v-model="enabled" /> Konto aktiv</label
-      ><button class="main-action" :disabled="busy">Benutzer speichern</button>
-    </form>
-    <h3>Authelia &amp; Gastzugriff</h3>
-    <label
-      >Zuordnung: eine Zeile pro Benutzer<textarea
-        class="settings-input"
-        v-model="mapping"
-        placeholder="sso-name=lokaler-benutzer"
-      ></textarea></label
-    ><label
-      ><input type="checkbox" v-model="guest" /> Messwerte ohne lokale Anmeldung lesen
-      erlauben</label
-    ><button class="outlined-action" :disabled="busy" @click="policy">
-      Zugriffsregeln speichern
+    <button type="button" class="outlined-action" @click="dialog?.showModal()">
+      Benutzerverwaltung öffnen
     </button>
-    <h3>Sitzungen</h3>
-    <div v-for="s in sessions" :key="s.id">
-      <span
-        >{{ s.username }} · bis {{ new Date(s.expires * 1000).toLocaleString() }}
-        {{ s.current ? '(diese Sitzung)' : '' }}</span
-      ><button
-        class="outlined-action"
-        :disabled="busy"
-        @click="run(() => call('/sessions/revoke', { id: s.id }))"
-      >
-        Abmelden
-      </button>
-    </div>
-    <h3>Sicherung &amp; Wiederherstellung</h3>
-    <p>
-      Verschlüsselt Benutzer, Cloud-Zugang und LTE-Einstellungen. Das bestehende Notfallpasswort,
-      Proxy-Secrets und SSO-Serverkonfiguration bleiben unverändert. Sicherungspasswort separat
-      aufbewahren.
-    </p>
-    <input
-      class="settings-input"
-      type="password"
-      v-model="backupPassword"
-      placeholder="Sicherungspasswort, mindestens 12 Zeichen"
-      autocomplete="new-password"
-    />
-    <button
-      class="outlined-action"
-      :disabled="busy || backupPassword.length < 12"
-      @click="exportBackup"
-    >
-      Verschlüsselte Sicherung herunterladen
-    </button>
-    <input type="file" accept="application/json,.json" @change="readBackup" />
-    <button
-      class="outlined-action"
-      :disabled="busy || !archive || backupPassword.length < 12"
-      @click="restoreBackup"
-    >
-      Sicherung wiederherstellen
-    </button>
-    <h3>Änderungsprotokoll</h3>
-    <details v-for="(a, i) in audit" :key="i">
-      <summary>{{ a.user }} · {{ a.status }} · {{ a.path }}</summary>
-      <pre style="white-space: pre-wrap; overflow-wrap: anywhere">{{
-        JSON.stringify(a, null, 2)
-      }}</pre>
-    </details>
   </section>
+  <dialog
+    ref="dialog"
+    class="connection-dialog panel account-management"
+    aria-labelledby="accounts-title"
+    @click.self="dialog?.close()"
+  >
+    <div class="connection-dialog-content">
+      <header class="connection-dialog-header">
+        <h2 id="accounts-title">Benutzer &amp; Berechtigungen</h2>
+        <button type="button" class="outlined-action" @click="dialog?.close()">Schließen</button>
+      </header>
+      <p>
+        Leser sehen Messwerte. Bediener dürfen nur ausdrücklich freigegebene Register ändern.
+        Administratoren verwalten die Anwendung. Das Konto admin bleibt als Notfallzugang erhalten.
+      </p>
+      <p v-if="message" role="status">{{ message }}</p>
+      <div class="transport-options">
+        <button
+          v-for="u in users"
+          :key="u.username"
+          class="outlined-action"
+          :disabled="u.fallback"
+          @click="edit(u)"
+        >
+          {{ u.username }} · {{ u.role }} · {{ u.enabled ? 'aktiv' : 'gesperrt' }}
+        </button>
+      </div>
+      <form @submit.prevent="save">
+        <label
+          >Benutzername<input
+            class="settings-input"
+            v-model="name"
+            required
+            autocomplete="off" /></label
+        ><label
+          >Rolle<select class="settings-input" v-model="role">
+            <option value="reader">Leser</option>
+            <option value="operator">Bediener</option>
+            <option value="admin">Administrator</option>
+          </select></label
+        ><label
+          >Neues Passwort (leer = unverändert oder nur SSO)<input
+            class="settings-input"
+            type="password"
+            v-model="password"
+            autocomplete="new-password" /></label
+        ><label
+          >Freigegebene MAIN-Register, mit Komma getrennt<input
+            class="settings-input"
+            v-model="registers"
+            placeholder="z. B. 1012,1158" /></label
+        ><label><input type="checkbox" v-model="enabled" /> Konto aktiv</label
+        ><button class="main-action" :disabled="busy">Benutzer speichern</button>
+      </form>
+      <h3>Authelia &amp; Gastzugriff</h3>
+      <label
+        >Zuordnung: eine Zeile pro Benutzer<textarea
+          class="settings-input"
+          v-model="mapping"
+          placeholder="sso-name=lokaler-benutzer"
+        ></textarea></label
+      ><label
+        ><input type="checkbox" v-model="guest" /> Messwerte ohne lokale Anmeldung lesen
+        erlauben</label
+      ><button class="outlined-action" :disabled="busy" @click="policy">
+        Zugriffsregeln speichern
+      </button>
+      <h3>Sitzungen</h3>
+      <div v-for="s in sessions" :key="s.id">
+        <span
+          >{{ s.username }} · bis {{ new Date(s.expires * 1000).toLocaleString() }}
+          {{ s.current ? '(diese Sitzung)' : '' }}</span
+        ><button
+          class="outlined-action"
+          :disabled="busy"
+          @click="run(() => call('/sessions/revoke', { id: s.id }))"
+        >
+          Abmelden
+        </button>
+      </div>
+      <h3>Sicherung &amp; Wiederherstellung</h3>
+      <p>
+        Verschlüsselt Benutzer, Cloud-Zugang und LTE-Einstellungen. Das bestehende Notfallpasswort,
+        Proxy-Secrets und SSO-Serverkonfiguration bleiben unverändert. Sicherungspasswort separat
+        aufbewahren.
+      </p>
+      <input
+        class="settings-input"
+        type="password"
+        v-model="backupPassword"
+        placeholder="Sicherungspasswort, mindestens 12 Zeichen"
+        autocomplete="new-password"
+      />
+      <button
+        class="outlined-action"
+        :disabled="busy || backupPassword.length < 12"
+        @click="exportBackup"
+      >
+        Verschlüsselte Sicherung herunterladen
+      </button>
+      <input type="file" accept="application/json,.json" @change="readBackup" />
+      <button
+        class="outlined-action"
+        :disabled="busy || !archive || backupPassword.length < 12"
+        @click="restoreBackup"
+      >
+        Sicherung wiederherstellen
+      </button>
+      <h3>Änderungsprotokoll</h3>
+      <details v-for="(a, i) in audit" :key="i">
+        <summary>{{ a.user }} · {{ a.status }} · {{ a.path }}</summary>
+        <pre style="white-space: pre-wrap; overflow-wrap: anywhere">{{
+          JSON.stringify(a, null, 2)
+        }}</pre>
+      </details>
+    </div>
+  </dialog>
 </template>
 
 <style scoped>
