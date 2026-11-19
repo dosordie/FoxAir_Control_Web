@@ -5,9 +5,9 @@ import threading
 import time
 from backend.display_protocol import DisplayProtocol
 from backend.diagnostics import log_event
-from backend.bus_locks import endpoint_lock
 from backend.settings import display_endpoint, local_bus_config
 from backend.last_values import remember_words, store
+from backend.transport_selection import LOCK as selection_lock, allows, operation
 
 
 class DisplayBus:
@@ -24,6 +24,7 @@ class DisplayBus:
         self.protocol = None
         self.words = {}
         self.source_epoch = 0
+        self.handover_closed = False
 
     def lease(self):
         with self.lock:
@@ -31,6 +32,31 @@ class DisplayBus:
                 time.monotonic()
                 + local_bus_config("display_modbus")["browser_timeout_seconds"]
             )
+
+    def disconnect(self):
+        with self.lock:
+            self.handover_closed = True
+            if self.sock:
+                try:
+                    self.sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                self.sock.close()
+                self.sock = None
+            self.connected = False
+            if self.protocol and self.protocol.sync["status"] == "running":
+                self.protocol.sync.update(
+                    status="error", error="Verbindungsart gewechselt"
+                )
+
+    def connect(self, endpoint):
+        with operation("display_modbus"):
+            sock = socket.create_connection(
+                (endpoint.host, endpoint.port), timeout=endpoint.timeout
+            )
+            with self.lock:
+                self.sock = sock
+            return sock
 
     def stop(self):
         self.stop_event.set()
@@ -60,7 +86,9 @@ class DisplayBus:
                 else {"status": "idle", "completed": 0, "total": 6, "error": None}
             )
             return {
-                "connected": self.connected and self.endpoint == display_endpoint(),
+                "connected": self.connected
+                and self.endpoint == display_endpoint()
+                and allows("display_modbus"),
                 "mode": local_bus_config("display_modbus")["connection_mode"],
                 "error": self.error,
                 "last_rx": self.last_rx,
@@ -71,7 +99,7 @@ class DisplayBus:
 
     def synchronize(self):
         self.lease()
-        with self.lock:
+        with operation("display_modbus"), self.lock:
             if (
                 not self.connected
                 or not self.protocol
@@ -104,25 +132,27 @@ class DisplayBus:
         while not self.stop_event.is_set():
             endpoint = display_endpoint()
             config = local_bus_config("display_modbus")
-            wanted = endpoint and (
-                config["connection_mode"] == "permanent"
-                or time.monotonic() < self.lease_until
+            wanted = (
+                endpoint
+                and allows("display_modbus")
+                and (
+                    config["connection_mode"] == "permanent"
+                    or time.monotonic() < self.lease_until
+                )
             )
             if not wanted:
                 self.stop_event.wait(0.5)
                 continue
-            lease = endpoint_lock(endpoint)
-            if not lease.acquire(timeout=0.5):
-                continue
             try:
-                with socket.create_connection(
-                    (endpoint.host, endpoint.port), timeout=endpoint.timeout
-                ) as sock:
+                with self.connect(endpoint) as sock:
                     sock.settimeout(0.01)
-                    with self.lock:
+                    with selection_lock, self.lock:
+                        if not allows("display_modbus") or sock.fileno() < 0:
+                            raise ValueError("Verbindung gewechselt")
                         self.endpoint = endpoint
                         self.sock = sock
                         self.connected = True
+                        self.handover_closed = False
                         self.error = None
                         self.words = {}
                         self.source_epoch += 1
@@ -145,7 +175,9 @@ class DisplayBus:
                         self.protocol = DisplayProtocol(remember)
                     log_event("display", "Display-Bus verbunden; passiver Empfang")
                     while (
-                        not self.stop_event.is_set() and endpoint == display_endpoint()
+                        not self.stop_event.is_set()
+                        and endpoint == display_endpoint()
+                        and allows("display_modbus")
                     ):
                         if (
                             local_bus_config("display_modbus")["connection_mode"]
@@ -159,7 +191,9 @@ class DisplayBus:
                             data = None
                         if data == b"":
                             raise ConnectionError("Display-Verbindung geschlossen")
-                        with self.lock:
+                        with selection_lock, self.lock:
+                            if not allows("display_modbus"):
+                                break
                             if data:
                                 self.last_rx = time.time()
                                 count = self.protocol.feed(data)
@@ -184,11 +218,21 @@ class DisplayBus:
                                 )
             except (OSError, ValueError):
                 with self.lock:
-                    self.error = "Display-Verbindung unterbrochen oder nicht erreichbar"
-                log_event(
-                    "display-error",
-                    "Display-Verbindung unterbrochen; erneuter passiver Verbindungsversuch",
-                )
+                    unexpected = (
+                        not self.handover_closed
+                        and not self.stop_event.is_set()
+                        and allows("display_modbus")
+                    )
+                    self.error = (
+                        "Display-Verbindung unterbrochen oder nicht erreichbar"
+                        if unexpected
+                        else None
+                    )
+                if unexpected:
+                    log_event(
+                        "display-error",
+                        "Display-Verbindung unterbrochen; erneuter passiver Verbindungsversuch",
+                    )
             finally:
                 with self.lock:
                     if self.protocol and self.protocol.sync["status"] == "running":
@@ -198,7 +242,6 @@ class DisplayBus:
                         )
                     self.connected = False
                     self.sock = None
-                lease.release()
             self.stop_event.wait(2)
 
 

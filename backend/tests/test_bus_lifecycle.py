@@ -71,6 +71,7 @@ class LifecycleTests(unittest.TestCase):
     def test_http_lifespan_starts_receiver_and_stops_scan_before_connection(self):
         calls = []
         with (
+            patch("backend.transport_selection.initialize"),
             patch(
                 "backend.bus_connection.start",
                 side_effect=lambda: calls.append("start"),

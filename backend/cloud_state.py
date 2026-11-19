@@ -284,8 +284,9 @@ def _scan_worker(account: tuple[str, str, str], entries: list[dict[str, Any]]) -
     errors = 0
     def fetch(codes: list[str], depth: int = 0) -> None:
         nonlocal succeeded, completed, unsupported, errors
-        if _account() != account:
-            raise CloudError("Cloud-Konto gewechselt, Scan abgebrochen")
+        from backend.transport_selection import allows
+        if _account() != account or not allows("cloud"):
+            raise CloudError("Cloud-Konto oder aktive Verbindung gewechselt, Scan abgebrochen")
         # A failed unsupported code must not invalidate the other codes.
         try:
             with _cloud_lock:

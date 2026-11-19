@@ -112,6 +112,9 @@ def phases(kind, old, desired):
 
 @contextmanager
 def connection(transport):
+    from backend.transport_selection import allows
+    if not allows(transport):
+        raise WriteValidationError('Andere Verbindung ist global ausgewählt')
     if transport == 'cloud':
         account = credentials()
         with _cloud_lock:

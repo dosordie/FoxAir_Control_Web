@@ -129,6 +129,10 @@ class BusConnectionManager:
             sock.close()
             raise
 
+    def disconnect(self):
+        with self._io:
+            self._close()
+
     def _close(self) -> None:
         """Caller owns _io; never hold the state lock across socket operations."""
         with self._state_lock:
@@ -151,7 +155,9 @@ class BusConnectionManager:
     @contextmanager
     def operation(self, endpoint: Endpoint):
         """Use the shared socket; discard ambiguous sessions without replay."""
-        with self._io, endpoint_lock(endpoint):
+        from backend.transport_selection import operation
+
+        with operation("warmlink_raw"), self._io, endpoint_lock(endpoint):
             if self._stopped:
                 raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
             client = self._connect(endpoint)
@@ -188,7 +194,9 @@ class BusConnectionManager:
             with self.operation(endpoint) as client:
                 yield client
             return
-        with self._io, endpoint_lock(endpoint):
+        from backend.transport_selection import operation
+
+        with operation("warmlink_raw"), self._io, endpoint_lock(endpoint):
             if self._stopped:
                 raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
             client = self._new_session(endpoint)
@@ -205,6 +213,15 @@ class BusConnectionManager:
                 log_event("lte", "LTE TCP-Sitzung beendet")
 
     def _receive_once(self) -> float:
+        from backend.transport_selection import LOCK, allows
+
+        with LOCK:
+            if not allows("warmlink_raw"):
+                self.disconnect()
+                return 0.15
+            return self._receive_selected()
+
+    def _receive_selected(self) -> float:
         """Return interruptible backoff; never transmit from the background."""
         endpoint = self._endpoint_provider()
         mode = self._config_provider().get("connection_mode", "on_demand")

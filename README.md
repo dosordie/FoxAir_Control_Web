@@ -122,3 +122,5 @@ Vue 3 und TypeScript bilden das Frontend, FastAPI das Python-Backend. Register u
 Dieses Projekt steht unter der [MIT-Lizenz](LICENSE), entsprechend der [Lizenzdatei von FoxAir_Control](https://github.com/dosordie/FoxAir_Control/blob/main/LICENSE).
 
 Copyright (c) 2026 DosOrDie.
+
+Optionale zusätzliche HomeServer-Werte: [Gira-Experteneinstellungen (Beta)](docs/GIRA.md).

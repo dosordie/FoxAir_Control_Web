@@ -9,6 +9,7 @@ import {
 } from 'lucide-vue-next'
 import TimerEditor from './TimerEditor.vue'
 import CloudInsights from './CloudInsights.vue'
+import { useSharedTransport } from './composables/useSharedTransport'
 import { useAdminSession } from './composables/useAdminSession'
 import AppHeader from './components/AppHeader.vue'
 import UpdatePanel from './components/UpdatePanel.vue'
@@ -17,6 +18,7 @@ import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
+import ExpertGira from './components/ExpertGira.vue'
 import MainRegisterBrowser from './components/MainRegisterBrowser.vue'
 import SpecialControls from './components/SpecialControls.vue'
 import AccountManagement from './components/AccountManagement.vue'
@@ -34,9 +36,7 @@ import { fanIsRunning } from './telemetry'
 import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
 const { browserOnline } = useBrowserConnection()
-const validIds: TransportId[] = ['cloud', 'standard_modbus', 'display_modbus', 'warmlink_raw']
-const storedId = window.localStorage.getItem('foxair.lastTransport') as TransportId
-const selectedTransport = ref<TransportId>(validIds.includes(storedId) ? storedId : 'cloud')
+const { selectedTransport, transportBusy, transportError, initializeTransport } = useSharedTransport()
 const transports = ref<Transport[]>([])
 const page = ref<Page>('home')
 const snapshot = ref<Dashboard | null>(null)
@@ -219,7 +219,11 @@ const readError = ref('')
 
 const selectedTransportInfo = computed(() => transports.value.find(t => t.id === selectedTransport.value))
 const transportLabel = computed(() => selectedTransportInfo.value?.name || 'PHNIX-Cloud')
-const online = computed(() => snapshot.value?.status === 'online')
+const isBusTransport = computed(() => ['warmlink_raw','display_modbus'].includes(selectedTransport.value))
+const online = computed(() => isBusTransport.value ? !!busState.value?.connected : snapshot.value?.status === 'online')
+const connectionText = computed(() => isBusTransport.value
+  ? busState.value?.connected ? (busState.value.last_rx ? 'Verbunden' : 'Bus verbunden · wartet auf Werte') : 'Nicht verbunden'
+  : online.value ? 'Verbunden' : snapshot.value?.status === 'partial' ? 'Messwerte unvollständig' : 'Nicht verbunden')
 const modeText = computed(() => displayMetric(snapshot.value?.metrics.mode || null, '—'))
 const powerText = computed(() => displayMetric(snapshot.value?.metrics.power || null, '—'))
 const fanRunning = computed(() => fanIsRunning(
@@ -431,6 +435,7 @@ function scheduleValueRefresh() {
   }, cloudOverview.value?.status === 'running' ? 5000 : 15000)
 }
 async function loadCloudValues() {
+  if (selectedTransport.value !== 'cloud') return
   try {
     void loadLastValues()
     cloudOverview.value = await api.cloudValues()
@@ -548,7 +553,6 @@ async function readRegister() {
   }
 }
 watch(selectedTransport, (value) => {
-  window.localStorage.setItem('foxair.lastTransport', value)
   currentValue.value = null
   lteWriteSources.value = {}
   specialLocalRows.value = []
@@ -585,6 +589,7 @@ onMounted(async () => {
   } catch {
     // Backend not reachable; show unavailable values, never demo values.
   }
+  await initializeTransport()
   await Promise.all([loadDashboard(), loadCloudValues(), checkAdminSession()])
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   if (page.value === 'settings') await loadCloudLogs()
@@ -617,7 +622,7 @@ onBeforeUnmount(() => {
               <div class="device-name"><h1>{{ deviceName }}</h1></div>
               <div class="connection">
                 <span class="connection-dot" :class="{ online }"></span>
-                <span>{{ online ? 'Verbunden' : snapshot?.status === 'partial' ? 'Teilweise verbunden' : 'Nicht verbunden' }}</span>
+                <span>{{ connectionText }}</span>
               </div>
             </div>
             <div class="hero-main">
@@ -675,12 +680,14 @@ onBeforeUnmount(() => {
             </div>
             <div class="transport-inline">
               <label for="home-transport">Verbindung</label>
-              <select id="home-transport" v-model="selectedTransport">
+              <select id="home-transport" v-model="selectedTransport" :disabled="transportBusy || !adminAuthenticated">
                 <option value="cloud">PHNIX-Cloud</option>
                 <option value="standard_modbus">Standard-Modbus</option>
                 <option value="display_modbus">Display-Modbus</option>
                 <option value="warmlink_raw">LTE-/Warmlink-Modbus</option>
               </select>
+              <small class="bus-live-note">Gilt für alle Geräte{{ adminAuthenticated ? '' : ' · Änderung als Administrator' }}</small>
+              <small v-if="transportError" class="error-text" role="alert">{{ transportError }}</small>
               <div class="live-inline" v-if="selectedTransport === 'cloud'">
                 <label class="live-switch"><input type="checkbox" v-model="liveEnabled" /> Automatische Cloud-Abfrage</label>
                 <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
@@ -710,13 +717,14 @@ onBeforeUnmount(() => {
             <section class="panel operating-panel">
               <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div><span class="soft-tag">Antippen zum Einstellen</span></div>
               <PowerSummary :metrics="snapshot?.metrics" />
+              <ExpertGira />
               <div class="operation-row">
                 <button type="button" class="operation operation-button" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
                 <button type="button" class="operation operation-button" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
                 <button type="button" class="operation operation-button" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
               </div>
               <button class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
-              <p class="section-hint">Cloud-Livewerte werden bei sichtbarer Übersicht aktualisiert. Schreiben erfordert die Admin-Anmeldung.</p>
+              <p class="section-hint">Neue Messwerte erscheinen automatisch. Schreibfunktionen hängen von Verbindung und Benutzerrechten ab.</p>
             </section>
           </div>
           <MainRegisterBrowser :rows="browserRows" :transport="selectedTransport" @parameters="navigate('parameters')" />
@@ -814,11 +822,12 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else>
-        <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindung und Anzeige für dieses Gerät.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
+        <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindungen, Anzeigen und Verwaltung.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <AccountManagement v-if="adminAuthenticated" />
+        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
-          <p>Deine letzte Auswahl wird auf diesem Gerät gespeichert. Unter Verbindungseinstellungen richtest du Cloud und lokale Busanschlüsse ein.</p>
+          <p>Die ausgewählte Verbindung gilt für alle Geräte und wird automatisch synchronisiert. Unter Verbindungseinstellungen richtest du Cloud und lokale Busanschlüsse ein.</p>
           <div class="transport-options">
             <label v-for="option in (transports.length ? transports : [
               { id: 'cloud', name: 'PHNIX Cloud', configured: false, read_supported: false, reason: '' },
@@ -826,7 +835,7 @@ onBeforeUnmount(() => {
               { id: 'display_modbus', name: 'Display-Modbus', configured: false, read_supported: false, reason: '' },
               { id: 'warmlink_raw', name: 'LTE-/Warmlink-Modbus', configured: false, read_supported: false, reason: '' }
             ])" :key="option.id" class="transport-option" :class="{ active: selectedTransport === option.id }">
-              <input v-model="selectedTransport" type="radio" name="transport" :value="option.id" />
+              <input v-model="selectedTransport" type="radio" name="transport" :value="option.id" :disabled="transportBusy || !adminAuthenticated" />
               <span class="transport-option-icon"><Cloud v-if="option.id === 'cloud'" :size="21" /><Wifi v-else-if="option.id === 'standard_modbus'" :size="21" /><Gauge v-else-if="option.id === 'display_modbus'" :size="21" /><RadioTower v-else :size="21" /></span>
               <span class="transport-option-text"><strong>{{ option.name }}</strong><small>{{ option.read_supported ? 'Lesen verfügbar' : option.reason || 'Noch nicht konfiguriert' }}</small></span>
               <span class="choice-mark"></span>

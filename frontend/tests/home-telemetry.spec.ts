@@ -46,6 +46,11 @@ it('sorts every received register numerically and tracks only changed values wit
     props.transport = 'warmlink_raw'
     await nextTick()
     expect(rows()[0]!.querySelector('.previous-register-value')?.textContent).toBe('—')
+    const filter=(name:string)=>Array.from(root.querySelectorAll('button')).find(b=>b.textContent?.trim()===name)!
+    filter('Livewerte').click();await nextTick();expect(rows()).toHaveLength(1)
+    filter('Livewerte').click();await nextTick();expect(rows()).toHaveLength(3)
+    filter('Einstellwerte').click();await nextTick();expect(rows()).toHaveLength(2)
+    filter('Einstellwerte').click();await nextTick()
     const input = root.querySelector('input')!
     input.value = '2014';input.dispatchEvent(new Event('input'));await nextTick()
     expect(rows()).toHaveLength(1)

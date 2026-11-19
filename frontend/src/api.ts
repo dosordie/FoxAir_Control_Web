@@ -179,6 +179,8 @@ export const api = {
   warmlinkConfig: () => post<WarmlinkConfig>('/api/warmlink/config', {}),
   saveWarmlinkConfig: (config: WarmlinkConfig) => post<WarmlinkConfig>('/api/warmlink/config/save', config),
   warmlinkWrite: (code:'Power'|'Mode'|'H22'|'R02',value:string,expected:string) => post<CloudWriteResult>('/api/warmlink/write',{code,value,expected}),
+  activeTransport: () => get<{transport:TransportId;revision:number}>('/api/transport'),
+  selectTransport: (transport:TransportId) => post<{transport:TransportId;revision:number}>('/api/transport',{transport}),
   health: () => get<{ ok: boolean; version: string }>('/api/health'),
   transports: () => get<{ items: Transport[]; live_supported: boolean }>('/api/transports'),
   dashboard: (transport: TransportId, live = false) => get<Dashboard>('/api/dashboard?transport=' + encodeURIComponent(transport) + (live ? '&live=true' : '')),

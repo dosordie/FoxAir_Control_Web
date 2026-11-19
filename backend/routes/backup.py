@@ -12,7 +12,7 @@ from backend import users, cloud_config, admin_session
 
 router = APIRouter()
 BASE_FILES = ("users.json", "cloud.json", "warmlink.json")
-FILES = BASE_FILES + ("display_modbus.json", "standard_modbus.json")
+FILES = BASE_FILES + ("display_modbus.json", "standard_modbus.json", "gira.json")
 
 
 class Backup(BaseModel):
@@ -71,6 +71,13 @@ def restore(payload: Backup, request: Request):
                 or not isinstance(row.get("enabled"), bool)
             ):
                 raise ValueError()
+        if rows.get("gira.json"):
+            from backend.gira import Config, validate
+
+            rows["gira.json"] = {
+                **validate(Config.model_validate(rows["gira.json"])),
+                "revision": secrets.token_hex(12),
+            }
         from backend.routes.local_buses import BusConfig
         from backend.settings import _config_lock, local_bus_config
         import ipaddress

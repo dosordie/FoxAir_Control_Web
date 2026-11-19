@@ -75,7 +75,8 @@ class RtuReadSession:
 @contextmanager
 def open_rtu(endpoint: Endpoint):
     """Exactly one client/operation at a time; socket always closes on exit."""
-    with endpoint_lock(endpoint):
+    from backend.transport_selection import operation
+    with operation("standard_modbus"), endpoint_lock(endpoint):
         with socket.create_connection((endpoint.host, endpoint.port), timeout=endpoint.timeout) as sock:
             sock.settimeout(endpoint.timeout)
             yield RtuReadSession(sock, endpoint.slave)

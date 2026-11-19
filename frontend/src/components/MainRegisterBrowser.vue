@@ -6,6 +6,8 @@ const props = defineProps<{ rows: RegisterValue[]; transport: TransportId }>()
 const emit = defineEmits<{ parameters: [] }>()
 const open = ref(false)
 const query = ref('')
+const showSettings = ref(true)
+const showLive = ref(true)
 type History = {
   current: string
   previous: string
@@ -51,12 +53,14 @@ const rows = computed(() => {
   return [...unique.values()]
     .filter(
       (row) =>
-        !term ||
-        [row.register, row.code, row.name].some((value) =>
-          String(value || '')
-            .toLocaleLowerCase('de')
-            .includes(term),
-        ),
+        (row.register < 1000 || row.register >= 1600 || showSettings.value) &&
+        (row.register < 2000 || row.register >= 3000 || showLive.value) &&
+        (!term ||
+          [row.register, row.code, row.name].some((value) =>
+            String(value || '')
+              .toLocaleLowerCase('de')
+              .includes(term),
+          )),
     )
     .sort((a, b) => a.register - b.register)
 })
@@ -92,6 +96,14 @@ function area(register: number) {
           placeholder="Register oder Code suchen"
           aria-label="Hauptfenster Register filtern"
       /></label>
+      <div class="register-area-filters" aria-label="Registerbereiche">
+        <button type="button" :aria-pressed="showSettings" @click="showSettings = !showSettings">
+          Einstellwerte
+        </button>
+        <button type="button" :aria-pressed="showLive" @click="showLive = !showLive">
+          Livewerte
+        </button>
+      </div>
       <p class="browser-legend">
         <span>Einstellungen</span><span>Status</span> · {{ rows.length }} empfangene Register
       </p>

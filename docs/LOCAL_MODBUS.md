@@ -54,3 +54,10 @@ Das gemeinsame Diagnoseprotokoll zeigt Empfang, Verbindungsausfälle und Snapsho
 Automatisierte Tests verwenden synthetische Frames sowie einen lokalen TCP-Gegenpart. Sie prüfen passiven Empfang ohne TX, die beiden exakten Trigger, ACK-Reihenfolge, CRC, Fragmentierung, fremde Units, alte/unvollständige Pakete, begrenzte Wiederholungen, Berechtigungen und normale Schreibsperren. Echte Wärmepumpenwerte werden dabei nicht verändert.
 
 Der abschließende Hardwaretest benötigt die jeweiligen privaten Endpunkte: zunächst passiven Empfang prüfen, dann einmal den Snapshot anfordern und alle sechs Pflichtpakete kontrollieren. Den Desktop-Client dabei nicht parallel als aktiven Busnutzer betreiben. Ein erfolgreicher Softwaretest ersetzt diese Prüfung am konkreten Gerät und TCP-Gateway nicht.
+
+
+## Gemeinsame Verbindungswahl
+
+Die aktive Wärmepumpen-Verbindung wird serverseitig gespeichert und etwa alle zwei Sekunden auf die Browser synchronisiert. Nur Administratoren können sie ändern. Die privaten Anschlusskonfigurationen bleiben erhalten, aktiv ist aber nur der ausgewählte Bus – auch bei „dauerhaft offen“. Vor der Übergabe wartet der Server laufende RTU-Operationen ab und schließt den bisherigen Empfänger. Alte Browser können den vorherigen Bus weder durch Polling noch durch eine alte Browser-Lease wieder aktivieren. Der Standardbus muss für andere Master wie ioBroker weiterhin separat freigehalten werden.
+
+„Verbunden“ beschreibt beim Display-/LTE-Bus die bestehende Verbindung. Fehlende Einstellpakete oder einzelne Messwerte machen daraus keinen Verbindungsabbruch; die einzelnen Werte behalten ihre eigene Qualitäts-/Alterskennzeichnung. `active_transport.json` enthält nur die gemeinsame Auswahl und wird beim Wiederherstellen einer Sicherung nicht ersetzt.

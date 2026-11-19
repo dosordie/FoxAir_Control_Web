@@ -189,6 +189,9 @@ def convert_baseline(register, entry, expected, source, target):
 
 
 def write(register, transport, requested, expected, *, expected_transport=None):
+    from backend.transport_selection import allows
+    if not allows(transport):
+        raise WriteValidationError("Andere Verbindung ist global ausgewählt")
     if transport == "display_modbus":
         raise WriteValidationError(
             "Display-Bus ist lesend; nur die separate Snapshot-Spezialfunktion ist freigegeben"

@@ -36,12 +36,17 @@ async def lifespan(_app: FastAPI):
     from backend.bus_connection import start, stop
     from backend.register_scan import stop as stop_scan
     from backend.display_bus import manager as display_manager
+    from backend.transport_selection import initialize
+    initialize()
+    from backend.gira import client as gira_client
+    gira_client.start()
     start()
     display_manager.start()
     try:
         yield
     finally:
         stop_scan()
+        await gira_client.stop()
         display_manager.stop()
         stop()
 
@@ -55,6 +60,10 @@ from backend.routes.backup import router as backup_router
 app.include_router(backup_router)
 from backend.routes.local_buses import router as local_router
 app.include_router(local_router)
+from backend.routes.transport import router as transport_router
+app.include_router(transport_router)
+from backend.gira import router as gira_router
+app.include_router(gira_router)
 app.add_middleware(AccessMiddleware)
 
 VALID_TRANSPORTS = set(TRANSPORTS)
