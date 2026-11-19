@@ -8,7 +8,7 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     env:
-      FOXAIR_STATE_DIR: ${{ runner.temp }}/foxair-test-state
+      FOXAIR_STATE_DIR: /tmp/foxair-test-state
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
