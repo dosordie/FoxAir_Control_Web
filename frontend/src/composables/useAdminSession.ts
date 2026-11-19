@@ -20,6 +20,13 @@ export function useAdminSession(
   const adminLoginError = ref('')
   let disposed = false
 
+  function clearAuthorization() {
+    adminAuthenticated.value = false
+    signedIn.value = false
+    role.value = 'reader'
+    canOperate.value = false
+  }
+
   async function checkAdminSession() {
     try {
       const result = await api.adminSession()
@@ -32,7 +39,7 @@ export function useAdminSession(
         ssoAvailable.value = result.sso_available === true
       }
     } catch {
-      if (!disposed) adminAuthenticated.value = false
+      if (!disposed) clearAuthorization()
     }
   }
 
@@ -53,7 +60,7 @@ export function useAdminSession(
       if (result.authenticated) await onLogin()
     } catch (error) {
       if (disposed) return
-      adminAuthenticated.value = false
+      clearAuthorization()
       adminLoginError.value = error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen'
     } finally {
       if (!disposed) adminBusy.value = false
@@ -76,9 +83,11 @@ export function useAdminSession(
       loginOpen.value = false
       if (result.authenticated) await onLogin()
     } catch (error) {
-      if (!disposed)
+      if (!disposed) {
+        clearAuthorization()
         adminLoginError.value =
           error instanceof Error ? error.message : 'SSO-Anmeldung fehlgeschlagen'
+      }
     } finally {
       if (!disposed) adminBusy.value = false
     }

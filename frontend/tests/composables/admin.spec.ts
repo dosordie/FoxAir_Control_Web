@@ -54,3 +54,14 @@ it('accepts server-confirmed SSO without collecting a local password and can res
   expect(state.adminAuthenticated.value).toBe(true)
   expect(onLogin).toHaveBeenCalledOnce()
 })
+
+
+it('drops stale client permissions when the session cannot be verified',async()=>{
+ const {state}=mount()
+ state.signedIn.value=true;state.role.value='operator';state.canOperate.value=true
+ vi.mocked(api.adminSession).mockRejectedValue(new Error('offline'))
+ await state.checkAdminSession()
+ expect(state.signedIn.value).toBe(false)
+ expect(state.canOperate.value).toBe(false)
+ expect(state.role.value).toBe('reader')
+})
