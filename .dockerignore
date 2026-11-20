@@ -1,0 +1,41 @@
+# Source control and unrelated CI/deployment assets
+.git
+.github
+.gitignore
+docs
+tests
+upstream
+release-assets
+*.log
+*.py[cod]
+__pycache__
+**/__pycache__
+.pytest_cache
+.venv
+venv
+**/.venv
+# Frontend: node_modules and compiled output are always created in the image
+frontend/node_modules
+frontend/dist
+frontend/.vite
+# Secrets and local system settings must NEVER enter the build context
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+config.local.json
+**/config.local.json
+**/*.sqlite
+**/*.sqlite3
+**/audit.json
+**/users.json
+**/cloud.json
+**/admin.json
+**/sessions.json
+# Windows/editor temporary files
+.vscode
+.idea
+.DS_Store
+dist
+build
