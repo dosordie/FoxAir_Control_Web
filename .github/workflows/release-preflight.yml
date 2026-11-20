@@ -1,0 +1,62 @@
+name: v0.1.0 release preflight (no publish)
+
+# Manual test only: checks main, the immutable intended version and its
+# matching web-dist build. Does not create a Git tag, release or GHCR package.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout stable main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify the first version and release tag
+        run: |
+          set -euo pipefail
+          python scripts/check_release_version.py --tag v0.1.0
+          test "$(cat VERSION)" = "0.1.0"
+
+      - name: Check v0.1.0 has not already been tagged
+        run: |
+          set -euo pipefail
+          git fetch origin refs/tags/v0.1.0:refs/tags/v0.1.0 2>/dev/null && {
+            echo "v0.1.0 already exists; do not recreate it." >&2
+            exit 1
+          } || true
+          if git show-ref --verify --quiet refs/tags/v0.1.0; then
+            echo "v0.1.0 already exists." >&2
+            exit 1
+          fi
+
+      - name: Verify main and prebuilt frontend are identical revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin +refs/heads/web-dist:refs/remotes/origin/web-dist
+          source_sha="$(git rev-parse HEAD)"
+          frontend_sha="$(git show refs/remotes/origin/web-dist:.build-source-sha | tr -d '\r\n')"
+          test "$source_sha" = "$frontend_sha" || {
+            echo "web-dist mismatch: frontend=$frontend_sha, main=$source_sha" >&2
+            exit 1
+          }
+          git archive refs/remotes/origin/web-dist | tar -tf - | grep -qx 'index.html'
+          echo "Release preflight OK: main and web-dist match ($source_sha)"
+
+      - name: Explain remaining manual release gates
+        run: |
+          echo "This workflow does not publish a release."
+          echo "Before tagging: check normal Web CI, Docker CI, systemd migration and GHCR readiness."
