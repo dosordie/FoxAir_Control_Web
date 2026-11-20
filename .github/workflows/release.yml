@@ -1,0 +1,164 @@
+name: Approved immutable stable release
+# Preparation only. Never triggered by push or release publication.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing approved immutable main tag
+        required: true
+        default: v0.1.0
+      approved:
+        description: Explicit approval to publish the stable release and GHCR image
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: foxair-stable-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main' && inputs.approved
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+      version: ${{ steps.source.outputs.version }}
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate immutable version and approved main ancestry
+        id: source
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/check_release_version.py --tag "$TAG"
+          python -c "from backend.releases import assert_new_stable; from backend.build_info import product_version; assert_new_stable(product_version())"
+          test "$(git show origin/main:VERSION)" = "$(cat VERSION)"
+          git merge-base --is-ancestor HEAD origin/main
+          test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$(git rev-parse HEAD)"
+          if gh release view "$TAG" >/tmp/release-lookup 2>/tmp/release-lookup-error; then
+            echo 'Release exists; never overwrite artifacts.' >&2; exit 1
+          elif ! grep -Eqi 'release not found|HTTP 404|Not Found' /tmp/release-lookup-error; then
+            echo 'Could not prove release is absent; refusing publication.' >&2; exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Backend verification
+        env:
+          FOXAIR_STATE_DIR: /tmp/foxair-release-test-state
+        run: |
+          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+          python -m compileall -q backend scripts
+          python -m unittest discover -s backend/tests -q
+          python scripts/sync_registers.py --check
+      - name: Resolve pinned register source
+        id: upstream
+        run: python -c "import json,os,re; r=json.load(open('data/upstream.json'))['ref']; assert re.fullmatch('[0-9a-f]{40}',r); open(os.environ['GITHUB_OUTPUT'],'a').write('ref='+r+'\n')"
+      - uses: actions/checkout@v4
+        with:
+          repository: dosordie/FoxAir_Control
+          ref: ${{ steps.upstream.outputs.ref }}
+          path: upstream
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build exact release frontend
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python scripts/export_cloud_catalog.py upstream frontend/public/cloud_catalog.json
+          npm ci --prefix frontend --no-audit --no-fund
+          npm run format:check --prefix frontend
+          npm test --prefix frontend
+          npm run build --prefix frontend
+          python scripts/build_manifest.py --source "$SOURCE_SHA" --channel release
+      - name: Build and test the identical container
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          FOXAIR_EXPECTED_SOURCE: ${{ steps.source.outputs.sha }}
+          VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          docker build --build-arg FOXAIR_VERSION="$(cat VERSION)" --target runtime-prebuilt --build-arg FOXAIR_SOURCE_SHA="$SOURCE_SHA" --label org.opencontainers.image.version="$VERSION" --label org.opencontainers.image.revision="$SOURCE_SHA" --label org.opencontainers.image.source=https://github.com/dosordie/FoxAir_Control_Web -t foxair-web:release .
+          bash scripts/smoke_docker.sh foxair-web:release
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish immutable version image and complete draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.source.outputs.tag }}
+          VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          set -euo pipefail
+          image=ghcr.io/dosordie/foxair-control-web
+          if docker manifest inspect "$image:$VERSION" >/tmp/image-lookup 2>/tmp/image-lookup-error; then
+            echo 'Version image already exists; do not replace it.' >&2; exit 1
+          elif ! grep -Eqi 'manifest unknown|no such manifest|manifest.*not found' /tmp/image-lookup-error; then
+            echo 'Could not prove version image is absent; refusing publication.' >&2; exit 1
+          fi
+          docker tag foxair-web:release "$image:$VERSION"
+          docker push "$image:$VERSION"
+          digest="$(docker image inspect "$image:$VERSION" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
+          python scripts/package_release.py --digest "$digest"
+          gh release create "$TAG" --verify-tag --draft --title "FoxAir Control Web $TAG" --generate-notes release-assets/*
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          persist-credentials: false
+      - name: Download completed draft manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release download "$TAG" --pattern release-ready.json --dir /tmp/foxair-release
+      - name: Verify public immutable image before exposing release
+        env:
+          DOCKER_CONFIG: /tmp/foxair-anonymous-docker
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          digest="$(python -c "import json; print(json.load(open('/tmp/foxair-release/release-ready.json'))['image_digest'])")"
+          image="ghcr.io/dosordie/foxair-control-web@$digest"
+          docker pull "$image" || { echo 'GHCR package must be Public. After fixing visibility, rerun only this failed job; do not rebuild/replace the version image.' >&2; exit 1; }
+          test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$VERSION"
+          test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$SOURCE_SHA"
+      - name: Publish ready stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Move rolling alias only after stable release is public
+        run: |
+          set -euo pipefail
+          digest="$(python -c "import json; print(json.load(open('/tmp/foxair-release/release-ready.json'))['image_digest'])")"
+          image=ghcr.io/dosordie/foxair-control-web
+          docker tag "$image@$digest" "$image:latest"
+          docker push "$image:latest"

@@ -38,6 +38,8 @@ async def lifespan(_app: FastAPI):
     from backend.display_bus import manager as display_manager
     from backend.transport_selection import initialize
     initialize()
+    from backend.setup import initialize as initialize_setup
+    initialize_setup()
     from backend.gira import client as gira_client
     gira_client.start()
     start()
@@ -51,7 +53,8 @@ async def lifespan(_app: FastAPI):
         stop()
 
 
-app = FastAPI(title="FoxAir Control Web", version="0.1.0", docs_url=None, redoc_url=None, lifespan=lifespan)
+from backend.build_info import product_version, info as build_info
+app = FastAPI(title="FoxAir Control Web", version=product_version(), docs_url=None, redoc_url=None, lifespan=lifespan)
 
 from backend.routes.accounts import router as accounts_router
 from backend.access import AccessMiddleware
@@ -64,6 +67,8 @@ from backend.routes.transport import router as transport_router
 app.include_router(transport_router)
 from backend.gira import router as gira_router
 app.include_router(gira_router)
+from backend.setup import router as setup_router
+app.include_router(setup_router)
 app.add_middleware(AccessMiddleware)
 
 VALID_TRANSPORTS = set(TRANSPORTS)
@@ -82,7 +87,7 @@ def require_transport(transport: str) -> None:
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": app.version}
+    return {"ok": True, "version": build_info()["display_version"], "build": build_info()}
 
 
 @app.get("/api/transports")

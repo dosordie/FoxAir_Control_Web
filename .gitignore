@@ -22,3 +22,6 @@ config.local.json
 
 # Exported from the pinned desktop catalog during CI
 frontend/public/cloud_catalog.json
+
+build-manifest.json
+release-assets/

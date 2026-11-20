@@ -306,6 +306,12 @@ class GiraClient:
             except asyncio.CancelledError:
                 raise
             except Exception:
+                from backend.diagnostics import log_event
+
+                log_event(
+                    "gira-error",
+                    "Gira-Verbindung unterbrochen; erneuter Verbindungsversuch folgt",
+                )
                 self.error = (
                     "Gira-Verbindung nicht verfügbar; erneuter Verbindungsversuch folgt"
                 )

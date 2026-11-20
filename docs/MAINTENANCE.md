@@ -188,7 +188,7 @@ Backups use Fernet authenticated encryption with a fresh salt and PBKDF2-SHA256 
 
 See [LOCAL_MODBUS.md](LOCAL_MODBUS.md). `display_protocol.py` owns the deterministic passive decoder and fixed snapshot state machine, `display_bus.py` owns its single socket/thread and lease, and `routes/local_buses.py` exposes protected configuration and live snapshots. No generic display writer exists. Ordinary Modbus retains the separate short-lived RTU client. Configuration enforces distinct physical TCP endpoints; CRC framing is shared without changing LTE request ownership. New encrypted backups include both private bus config files and accept older envelopes.
 
-CI builds are tested locally before a bundled push. Frontend publication now occurs after backend and frontend checks without uploading/downloading retained Actions artifacts. Checkout credentials are not persisted into build/test steps; only the final publication step receives the repository token. This preserves the matching `web-dist` commit contract used by update.sh while avoiding Actions artifact storage consumption.
+CI builds are tested locally before a bundled push. Frontend publication now occurs after backend and frontend checks without uploading/downloading retained Actions artifacts. Checkout credentials are not persisted into build/test steps; only the final publication step receives the repository token. The work helper consumes only matching `web-dist-work` builds. Production uses complete release assets rather than the mutable `web-dist` branch; see RELEASES.md. No retained Actions artifacts are used.
 
 
 ### Home telemetry and register browser
@@ -205,3 +205,22 @@ The display SSE projection promotes validated live MAIN 2014 to the active targe
 `transport_selection.py` persists a revisioned installation-wide choice and serializes handover against bus operations. Physical receivers are disconnected before the new choice is published; browser updates never write the choice back. Read-only clients cannot change this shared setting. `useSharedTransport` polls confirmed revisions, ignores older responses, and preserves the confirmed choice after denied changes. Missing live metrics are separate from transport connectivity.
 
 `gira.py` provides an optional independent, disabled-by-default server WebSocket for expert CO subscriptions. It has no write/call API. Private IPs and configured keys are validated, messages and scalar lengths are bounded, unknown keys/error results are ignored, credentials and raw server errors are not exposed. TLS verification remains enabled. Gira config is included in encrypted backups and validated on restore, with a fresh revision to cancel the old stream. See [GIRA.md](GIRA.md).
+
+
+### Shared release identity and bootstrap
+
+`build_info.py` verifies identical frontend/backend build manifests, source identity,
+product VERSION and the pinned register catalogue. `releases.py` accepts only complete
+stable assets from this repository. The systemd release installer stages code and an
+isolated venv before switching, checks running build identity and restores the previous
+pair on failure. The deployment state directory is never migrated or deleted.
+
+`setup.py` creates a private one-time code only on fresh instances without any existing
+admin file or named users. During bootstrap the access middleware blocks ordinary APIs.
+Completion requires a trusted secure origin, application header, rate-limited local
+code proof and a strong password; exclusive file creation prevents overwriting existing
+accounts. The GUI does not receive the private setup code from an API.
+
+Home flow includes pump PWM MAIN 2115 (0–100%). No Cloud mapping is claimed without an
+upstream-backed code. The home register browser uses a separate code column and compact
+desktop rows; parameter catalogue/editor layout remains unchanged.

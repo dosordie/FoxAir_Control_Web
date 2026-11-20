@@ -4,46 +4,37 @@
 Prüfungen sind eine Übergabe an Work; kein Produktions-Update wurde ausgeführt.
 
 ## Branch-Vertrag
-- `work`: Entwicklungs-/Teststand auf der Linux-Test-VM, manuelles `git pull --ff-only origin work`. Dazu passenden Vue-Build separat bereitstellen.
+- `work`: Entwicklungs-/Teststand auf der Linux-Test-VM, `scripts/update-work.sh` hält Git-Quellstand und passenden Vue-Build zusammen; ein manuelles `git pull` allein aktualisiert den Build noch nicht.
 - `main`: freigegebener Stable-/Release-Quellstand. Änderungen von `work` nach Review nach `main` übernehmen.
 - Ein GitHub Release `vX.Y.Z` markiert **genau einen getesteten main-Commit**. Docker-Tag `X.Y.Z` und Linux/systemd erhalten dieselbe Versionsnummer.
 - Desktop-Anwendung `FoxAir_Control` ist unabhängig versioniert.
 
-## Vor dem ersten Release
-- [ ] PR #10 prüfen, alle CI-Checks grün und nach `main` übernehmen.
-- [ ] `VERSION`, `backend/main.py`, `frontend/package.json`,
-      `frontend/package-lock.json` stimmen auf `0.1.0` überein.
-- [ ] Bei jedem Versionswechsel diese Dateien zusammen ändern und
-      `python scripts/check_release_version.py --tag vX.Y.Z` ausführen.
-- [ ] Prüfen, ob der manuelle GitHub-Actions-Workflow
-      **v0.1.0 release preflight (no publish)** grün ist.
-      Er validiert `main`, `v0.1.0` und `web-dist`; er publiziert **nichts**.
-- [ ] GitHub Web CI erfolgreich und Docker-Smoke-Test erfolgreich.
-- [ ] Der produktive systemd-Updater ist von `git pull main` auf
-      **immutable release assets/tag** umgestellt (Work, Issue #11).
-- [ ] Frontend-Artefakt ist zu **derselben SHA** wie das Backend gebunden,
-      nicht ausschließlich an den veränderlichen `web-dist`-Branch.
-- [ ] `/api/health` und Update-UI melden verlässlich `0.1.0` als Webversion;
-      Release-Commit steht als zusätzliches technisches Detail zur Verfügung.
-- [ ] Bestehende systemd-Nutzer-/Cloud-/Proxy- und Admin-Konfiguration vor
-      dem Upgrade sichern und Migration inklusive Rollback testen.
+## In work umgesetzt, vor Freigabe prüfen
 
-## Release-Freigabe (nach Work-Review)
-- [ ] Exakten freigegebenen `main`-Commit auswählen.
-- [ ] `v0.1.0` **einmalig** auf diesen Commit taggen; keine nachträgliche
-      Änderung eines veröffentlichten Tags.
-- [ ] Release Notes erstellen (Änderungen, Upgrade, bekannte Einschränkungen).
-- [ ] Sicherstellen, dass systemd-Artefakt + Docker-Image
-      zum **gleichen Commit** gehören.
-- [ ] GitHub-Release und GHCR-Push orchestrieren: Beim aktuellen Trigger
-      `release: published` kann die Release-Seite bereits sichtbar sein,
-      während Docker noch baut. **Nicht** vor fertigen Artefakten
-      als installierbare Version anbieten (Work-Gate/Manifest).
-- [ ] GHCR-Paket-Sichtbarkeit (Public) und tatsächlichen Pull prüfen.
-- [ ] Docker-Tag `0.1.0`, OCI-Version `0.1.0` und Quell-SHA vergleichen;
-      `latest` erst nach Stable-Freigabe setzen.
-- [ ] Portainer-Test auf realem Docker-Host: Admin-Einrichtung, Proxy/HTTPS,
-      Persistenz, Cloud/LTE/Modbus, PWA, Update und Rollback.
+- [x] Gemeinsame `VERSION` und Prüfung von Backend-/Frontend-Version.
+- [x] Identisches Quell-/Frontend-Manifest in Linux-Paket und Docker-Image.
+- [x] Secure GUI-Ersteinrichtung mit lokalem Einmalcode; bestehende Konten erhalten.
+- [x] Separates passendes Frontend `web-dist-work` und Helfer `scripts/update-work.sh`.
+- [x] Release-basierter systemd-Installer mit Prüfsummen, eigener venv und lokalem Rollback.
+- [x] Container-Updatepanel ohne Host-/systemd-Aufrufe.
+- [x] Manuell freizugebender Workflow: Draft-Assets und öffentliches Image vor sichtbarem Release.
+- [ ] CI des finalen work-Commits grün; konkrete Ergebnisse in Issues #9/#11.
+
+## Vor dem ersten Release ausdrücklich freigeben und abnehmen
+
+- [ ] Work-Änderungen und Draft-PR #10 gemeinsam reviewen; erst nach Freigabe nach main übernehmen.
+- [ ] Exakten main-Commit freigeben und `v0.1.0` einmalig taggen.
+- [ ] Release Notes und Sicherung der bestehenden Benutzer-/Proxy-/Cloud-/Busdaten.
+- [ ] Reale systemd-Erstmigration inklusive Rückweg zu Code UND Abhängigkeiten testen.
+- [ ] Realer Portainer-/HTTPS-/SSO-/PWA-/SSE-/Hardwaretest, Volume-Backup und Image-Rollback.
+- [ ] GHCR-Paket auf Public stellen und anonymen Pull bestätigen.
+- [ ] Approved immutable stable release auf main mit Freigabeschalter ausführen.
+- [ ] Linux-Paket, Frontend, Docker-OCI-Version und Quell-SHA identisch; Fertigmanifest vorhanden.
+- [ ] Veröffentlichung von v0.1.0 und erst danach optional `latest` bestätigen.
+
+Der aktuelle Ablauf steht in [RELEASES.md](RELEASES.md). Der ältere manuelle
+Preflight bleibt eine ergänzende Prüfung; er veröffentlicht nichts und ersetzt
+nicht die Freigaben oder den gemeinsamen Release-Workflow.
 
 ## Möglicher Release-Notes-Text (nur Vorlage)
 ```markdown
@@ -65,6 +56,6 @@ Erstes versioniertes Stable-Release von FoxAir Control Web.
 ```
 
 ## Explizit noch nicht erledigt
-**Kein `v0.1.0`-Tag, kein GitHub-Release, kein produktiver systemd-Updater-Umbau,
+**Kein `v0.1.0`-Tag, kein GitHub-Release, keine produktive systemd-Migration,
 kein GHCR-Push und kein Portainer-Deployment.** Das bleibt bis zur gemeinsamen
 Work-Abnahme offen. Referenz: Issue #11, Docker-Issue #9 und Draft-PR #10.

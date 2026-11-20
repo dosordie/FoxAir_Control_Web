@@ -36,7 +36,7 @@ def check(tag: str | None = None) -> str:
         if found != v:
             errors.append(f"{name}: {found!r} != {v!r}")
     fastapi = re.search(r'\bapp\s*=\s*FastAPI\([^\n]*\bversion="([^"]+)"', main)
-    if not fastapi or fastapi.group(1) != v:
+    if (not fastapi or fastapi.group(1) != v) and "version=product_version()" not in main:
         errors.append(f"backend/main.py FastAPI version != {v!r}")
     if tag is not None and tag != "v" + v:
         errors.append(f"Git release tag {tag!r} != expected {'v' + v!r}")

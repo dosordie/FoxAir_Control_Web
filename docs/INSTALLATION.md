@@ -140,3 +140,10 @@ npm run dev
 ```
 
 Die Entwicklungsversion unter `http://127.0.0.1:5173/` öffnen. Vite leitet API-Anfragen an das lokale Backend weiter.
+
+
+## Work-Teststand und künftige Release-Migration
+
+main ist der Stable-/Release-Zweig; work ist die Linux-Test-VM. Der Test-Helfer scripts/update-work.sh verbindet einen Fast-Forward von work mit dem exakt passenden web-dist-work-Frontend. Der produktive scripts/update.sh-Pfad ist in work auf geprüfte vollständige Stable-Releases vorbereitet und zieht nicht mehr laufend main. **Noch kein v0.1.0-Release und keine automatische Migration der bestehenden Installation.** Siehe [RELEASES.md](RELEASES.md), insbesondere Sicherung, Erst-Migration und Rollback.
+
+Frische Installationen erhalten eine sichere GUI-Ersteinrichtung. Im App-Verzeichnis den einmaligen Code mit derselben Service-Umgebung über die FoxAir-venv und python -m backend.setup lokal abrufen; Passwort in der HTTPS-GUI selbst festlegen. Bestehende Admin-Konten, Benutzer, Sessions und Konfigurationen bleiben bestehen. Einrichtung und produktive Updates sind separate Vorgänge.

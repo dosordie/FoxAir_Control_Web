@@ -1,153 +1,28 @@
-name: Docker image (build, smoke test, GHCR release)
-
+name: Manual Docker verification (no publish)
 on:
-  pull_request:
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - compose.yaml
-      - .env.example
-      - docker/**
-      - docs/INSTALLATION_DOCKER.md
-      - .github/workflows/docker.yml
-      - VERSION
-      - scripts/check_release_version.py
   workflow_dispatch:
-  release:
-    types: [published]
-
 permissions:
   contents: read
-
 jobs:
-  docker:
+  verify:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write # used only for a published release
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          persist-credentials: false
-
-      - name: Verify consistent Web product version
-        run: python scripts/check_release_version.py
-
-      - name: Verify release tag is versioned and originates from main
-        if: github.event_name == 'release'
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/check_release_version.py --tag "$RELEASE_TAG"
-          git fetch --no-tags --depth=100 origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
-            echo 'Release commit is not an ancestor of main' >&2
-            exit 1
-          }
-
-      - name: Resolve reviewed desktop catalog commit
+          python-version: '3.12'
+      - name: Resolve pinned catalog
         id: upstream
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, os, re
-          ref = json.load(open('data/upstream.json', encoding='utf-8'))['ref']
-          if not re.fullmatch(r'[0-9a-f]{40}', ref):
-              raise SystemExit('Invalid pinned upstream SHA')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-              out.write(f'ref={ref}\n')
-          PY
-
-      - name: Checkout pinned FoxAir_Control catalog
-        uses: actions/checkout@v4
+        run: python -c "import json,os; r=json.load(open('data/upstream.json'))['ref']; open(os.environ['GITHUB_OUTPUT'],'a').write('ref='+r+'\n')"
+      - uses: actions/checkout@v4
         with:
           repository: dosordie/FoxAir_Control
           ref: ${{ steps.upstream.outputs.ref }}
           path: upstream
           persist-credentials: false
-
-      - name: Export cloud catalog from pinned snapshot
+      - name: Export pinned catalog
         run: python scripts/export_cloud_catalog.py upstream frontend/public/cloud_catalog.json
-
-      - name: Build image locally for smoke test (no publish)
-        run: |
-          docker build \
-            --label org.opencontainers.image.source=https://github.com/dosordie/FoxAir_Control_Web \
-            --label org.opencontainers.image.revision="$GITHUB_SHA" \
-            --label org.opencontainers.image.version="$(cat VERSION)" \
-            --tag foxair-control-web:smoke .
-
-      - name: Smoke test API, frontend and writable persistent state
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker volume create foxair-web-ci-state >/dev/null
-          docker run -d --name foxair-web-smoke \
-            -p 127.0.0.1:18081:8081 \
-            -v foxair-web-ci-state:/var/lib/foxair-web \
-            foxair-control-web:smoke
-          trap 'docker logs foxair-web-smoke || true; docker rm -f foxair-web-smoke || true; docker volume rm foxair-web-ci-state || true' EXIT
-          for i in $(seq 1 45); do
-            if curl --silent --fail http://127.0.0.1:18081/api/health > /tmp/foxair-health.json; then break; fi
-            sleep 2
-          done
-          python -c "import json; assert json.load(open('/tmp/foxair-health.json'))['ok'] is True"
-          curl --silent --show-error --fail http://127.0.0.1:18081/ | grep -qi '<html'
-          curl --silent --show-error --fail http://127.0.0.1:18081/cloud_catalog.json >/dev/null
-          docker exec foxair-web-smoke python -c "from backend.cloud_config import set_admin_password; set_admin_password('ci-smoke-password-only')"
-          docker restart foxair-web-smoke
-          for i in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:18081/api/health >/dev/null; then break; fi
-            sleep 2
-          done
-          docker exec foxair-web-smoke python -c "from backend.cloud_config import verify_admin; assert verify_admin('ci-smoke-password-only')"
-          for i in $(seq 1 20); do
-            health="$(docker inspect -f '{{.State.Health.Status}}' foxair-web-smoke)"
-            if [[ "$health" == 'healthy' ]]; then break; fi
-            sleep 2
-          done
-          test "$health" = 'healthy' || { echo "Container not healthy: $health" >&2; exit 1; }
-          test "$(docker image inspect foxair-control-web:smoke --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}')" = "$(cat VERSION)"
-          test "$(docker image inspect foxair-control-web:smoke --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}')" = "$GITHUB_SHA"
-
-      - name: Determine release tags
-        if: github.event_name == 'release'
-        id: tags
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          PRERELEASE: ${{ github.event.release.prerelease }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${RELEASE_TAG#v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a semver release: $RELEASE_TAG"; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [[ "$PRERELEASE" == "false" ]]; then
-            echo "stable=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Login to GitHub Container Registry
-        if: github.event_name == 'release'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish tested image to GHCR (release only)
-        if: github.event_name == 'release'
-        env:
-          VERSION: ${{ steps.tags.outputs.version }}
-          STABLE: ${{ steps.tags.outputs.stable }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          image=ghcr.io/dosordie/foxair-control-web
-          docker tag foxair-control-web:smoke "$image:$VERSION"
-          docker push "$image:$VERSION"
-          if [[ "$STABLE" == "true" ]]; then
-            docker tag foxair-control-web:smoke "$image:latest"
-            docker push "$image:latest"
-          fi
+      - name: Build self-contained image
+        run: docker build --build-arg FOXAIR_VERSION="$(cat VERSION)" --build-arg FOXAIR_SOURCE_SHA="$GITHUB_SHA" --label org.opencontainers.image.version="$(cat VERSION)" --label org.opencontainers.image.revision="$GITHUB_SHA" -t foxair-web:manual .
+      - name: Verify isolated installation
+        run: bash scripts/smoke_docker.sh foxair-web:manual

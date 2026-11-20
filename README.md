@@ -124,3 +124,5 @@ Dieses Projekt steht unter der [MIT-Lizenz](LICENSE), entsprechend der [Lizenzda
 Copyright (c) 2026 DosOrDie.
 
 Optionale zusätzliche HomeServer-Werte: [Gira-Experteneinstellungen (Beta)](docs/GIRA.md).
+
+Der Entwicklungszweig `work` erhält einen eigenen passenden Web-Build. Der geplante gemeinsame Releaseweg für Linux und Docker ist in [Releases und Updates](docs/RELEASES.md) beschrieben; `v0.1.0` ist noch nicht veröffentlicht.

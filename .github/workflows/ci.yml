@@ -1,7 +1,7 @@
 name: FoxAir Web CI
 on:
   push:
-    branches: [main]
+    branches: [main, work]
   pull_request:
 
 jobs:
@@ -16,14 +16,16 @@ jobs:
           python-version: "3.12"
       - name: Install API dependencies
         run: python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Check shared product version
+        run: python scripts/check_release_version.py
       - name: Compile Python sources
         run: python -m compileall -q backend scripts
       - name: Check shell deployment scripts
-        run: bash -n scripts/update.sh scripts/install_service.sh scripts/install_web_update.sh scripts/set_trusted_proxy.sh scripts/set_listen_address.sh scripts/install_stream_shutdown.sh
+        run: bash -n scripts/update.sh scripts/install_service.sh scripts/install_web_update.sh scripts/set_trusted_proxy.sh scripts/set_listen_address.sh scripts/install_stream_shutdown.sh scripts/update-work.sh scripts/smoke_docker.sh
       - name: Run backend tests
         run: python -m unittest discover -s backend/tests -v
       - name: Check refactored transport formatting
-        run: python -m ruff format --check backend/bus_connection.py backend/bus_locks.py backend/register_cache.py backend/register_definitions.py backend/register_scan.py backend/warmlink_protocol.py backend/warmlink.py backend/diagnostics.py backend/admin_session.py backend/users.py backend/access.py backend/proxy_sso.py backend/server.py backend/routes
+        run: python -m ruff format --check backend/bus_connection.py backend/bus_locks.py backend/register_cache.py backend/register_definitions.py backend/register_scan.py backend/warmlink_protocol.py backend/warmlink.py backend/diagnostics.py backend/admin_session.py backend/users.py backend/access.py backend/proxy_sso.py backend/server.py backend/routes backend/setup.py backend/build_info.py backend/releases.py scripts/build_manifest.py scripts/install_release.py scripts/package_release.py
       - name: Verify register catalogue snapshot
         run: |
           python scripts/sync_registers.py --check
@@ -78,20 +80,32 @@ jobs:
       - name: Type-check and build
         working-directory: frontend
         run: npm run format:check && npm test && npm run build
+      - name: Bind frontend and backend to the exact source
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: python scripts/build_manifest.py --source "$SOURCE_SHA" --channel "${{ github.ref == 'refs/heads/work' && 'work' || 'preview' }}"
+      - name: Build and smoke-test the same source as a container
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          docker build --build-arg FOXAIR_VERSION="$(cat VERSION)" --target runtime-prebuilt --build-arg FOXAIR_SOURCE_SHA="$SOURCE_SHA" --label org.opencontainers.image.version="$(cat VERSION)" --label org.opencontainers.image.revision="$SOURCE_SHA" -t foxair-web:ci .
+          bash scripts/smoke_docker.sh foxair-web:ci
       # Publish only after all checks, without retaining Actions storage artifacts.
       # Build/test steps receive no Git credentials; the token is scoped to this step.
       - name: Publish prebuilt frontend to git branch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/work')
         env:
           PUBLISH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           test -f frontend/dist/index.html
+          build_branch=web-dist
+          if [[ "$GITHUB_REF" == refs/heads/work ]]; then build_branch=web-dist-work; fi
           build_dir="$(mktemp -d)"
           cp -a frontend/dist/. "$build_dir/"
           printf '%s\n' "$GITHUB_SHA" > "$build_dir/.build-source-sha"
-          git -C "$build_dir" init -q --initial-branch=web-dist
+          git -C "$build_dir" init -q --initial-branch="$build_branch"
           git -C "$build_dir" config user.name "github-actions[bot]"
           git -C "$build_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C "$build_dir" add -A
@@ -99,4 +113,4 @@ jobs:
           git -C "$build_dir" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
           auth_header="$(printf 'x-access-token:%s' "$PUBLISH_TOKEN" | base64 -w 0)"
           git -C "$build_dir" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth_header" \
-            push -q --force origin HEAD:refs/heads/web-dist
+            push -q --force origin "HEAD:refs/heads/$build_branch"

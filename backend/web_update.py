@@ -5,6 +5,7 @@ start. After an authenticated HTTPS POST it only creates one fixed trigger
 file. A separately installed root-owned systemd path/service runs the exact
 root-owned update.sh script, with no caller-supplied commands or arguments.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,7 +34,9 @@ _last_remote_build_sha: str | None = None
 
 def _cmd(*args: str) -> subprocess.CompletedProcess[str] | None:
     try:
-        return subprocess.run(args, text=True, capture_output=True, timeout=3, check=False)
+        return subprocess.run(
+            args, text=True, capture_output=True, timeout=3, check=False
+        )
     except (OSError, subprocess.TimeoutExpired):
         return None
 
@@ -47,9 +50,11 @@ def _current_sha() -> str | None:
 def _deployed_sha() -> str | None:
     """Compiled UI revision, which may lag the working tree after a CI delay."""
     try:
-        sha = (ROOT / "frontend" / "dist" / ".build-source-sha").read_text(
-            encoding="utf-8"
-        ).strip()
+        sha = (
+            (ROOT / "frontend" / "dist" / ".build-source-sha")
+            .read_text(encoding="utf-8")
+            .strip()
+        )
     except OSError:
         return None
     return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
@@ -63,8 +68,11 @@ def _remote_sha() -> str | None:
     _last_remote_attempt = now
     try:
         request = urllib.request.Request(
-            REMOTE_API, headers={"Accept": "application/vnd.github+json",
-                                 "User-Agent": "FoxAir-Control-Web-Updater/1"},
+            REMOTE_API,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "FoxAir-Control-Web-Updater/1",
+            },
         )
         with urllib.request.urlopen(request, timeout=4) as response:
             body = json.loads(response.read(32_768))
@@ -83,7 +91,8 @@ def _remote_build_sha() -> str | None:
     _last_remote_build_attempt = now
     try:
         request = urllib.request.Request(
-            REMOTE_BUILD, headers={"User-Agent": "FoxAir-Control-Web-Updater/1"},
+            REMOTE_BUILD,
+            headers={"User-Agent": "FoxAir-Control-Web-Updater/1"},
         )
         with urllib.request.urlopen(request, timeout=4) as response:
             sha = response.read(200).decode("ascii").strip()
@@ -94,38 +103,83 @@ def _remote_build_sha() -> str | None:
 
 
 def _status_unit(unit: str) -> dict[str, str]:
-    result = _cmd("systemctl", "show", unit,
-                  "--property=LoadState,ActiveState,Result,ExecMainStatus")
+    result = _cmd(
+        "systemctl",
+        "show",
+        unit,
+        "--property=LoadState,ActiveState,Result,ExecMainStatus",
+    )
     if not result or result.returncode:
         return {}
-    return dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    return dict(
+        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+    )
 
 
 def status() -> dict[str, Any]:
-    current = _current_sha()
-    remote = _remote_sha()
-    deployed = _deployed_sha()
-    remote_build = _remote_build_sha()
-    watcher = _status_unit(PATH_UNIT)
-    service = _status_unit(SERVICE)
-    installed = watcher.get("LoadState") == "loaded" and watcher.get("ActiveState") == "active"
-    running = service.get("ActiveState") in ("activating", "active")
+    from backend.build_info import info
+    from backend.releases import latest, newer
+
+    build = info()
+    release = latest()
+    container = os.getenv("FOXAIR_CONTAINER") == "1"
+    mode = (
+        "container"
+        if container
+        else "work"
+        if build["build_channel"] == "work"
+        else "release"
+    )
+    watcher = _status_unit(PATH_UNIT) if mode == "release" else {}
+    service = _status_unit(SERVICE) if mode == "release" else {}
+    available = bool(
+        release
+        and (
+            newer(release["version"], build["version"])
+            or (
+                build["build_channel"] != "release"
+                and release["version"] == build["version"]
+            )
+        )
+    )
     return {
-        "installed": installed,
-        "current": current,
-        "deployed": deployed,
-        "remote": remote,
-        "remote_build": remote_build,
-        "build_ready": bool(remote and remote_build and remote == remote_build),
-        "update_available": bool(current and remote and current != remote) or
-                            bool(current and deployed and current != deployed),
-        "pending": TRIGGER.exists(),
-        "running": running,
-        "last_result": service.get("Result") if service.get("LoadState") == "loaded" else None,
+        "installed": watcher.get("LoadState") == "loaded"
+        and watcher.get("ActiveState") == "active",
+        "current": build.get("source_commit"),
+        "deployed": _deployed_sha(),
+        "remote": release.get("source_commit") if release else None,
+        "remote_build": release.get("frontend_source_commit") if release else None,
+        "build_ready": release is not None,
+        "update_available": available,
+        "pending": TRIGGER.exists() if mode == "release" else False,
+        "running": service.get("ActiveState") in ("active", "activating"),
+        "last_result": service.get("Result"),
+        "version": build["display_version"],
+        "available_version": release.get("version") if release else None,
+        "channel": build["build_channel"],
+        "update_mode": mode,
+        "notes_url": release.get("notes_url") if release else None,
+        "build_consistent": build["build_consistent"],
     }
 
 
 def request_update() -> dict[str, Any]:
+    from backend.build_info import info
+    from backend.releases import latest, newer
+
+    if os.getenv("FOXAIR_CONTAINER") == "1":
+        raise RuntimeError("Container über Compose oder Portainer aktualisieren")
+    if info()["build_channel"] == "work":
+        raise RuntimeError("Test-VM manuell mit scripts/update-work.sh aktualisieren")
+    candidate = latest()
+    installed = info()
+    if candidate is None:
+        raise RuntimeError("Kein vollständiges freigegebenes Release verfügbar")
+    if not newer(candidate["version"], installed["version"]) and not (
+        candidate["version"] == installed["version"]
+        and installed["build_channel"] != "release"
+    ):
+        raise RuntimeError("Kein neueres freigegebenes Release verfügbar")
     watcher = _status_unit(PATH_UNIT)
     if watcher.get("LoadState") != "loaded" or watcher.get("ActiveState") != "active":
         raise RuntimeError("Update-Hilfsdienst noch nicht eingerichtet")

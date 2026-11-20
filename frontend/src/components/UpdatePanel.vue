@@ -21,7 +21,7 @@ async function loadGitUpdateStatus() {
   }
 }
 async function submitGitUpdate() {
-  if (!props.secure || !props.admin) {
+  if (!props.secure || !props.admin || updateInfo.value?.update_mode !== 'release') {
     updateError.value = 'HTTPS und Web-Administrationspasswort erforderlich.'
     return
   }
@@ -57,45 +57,74 @@ watch(
       </div>
       <RefreshCw :size="22" />
     </div>
-    <p class="section-hint">
-      Der Update-Hilfsdienst aktualisiert ausschließlich FoxAir-Web von GitHub und verwendet
-      denselben geprüften Build wie <code>scripts/update.sh</code>. Er wird einmalig im LXC
-      installiert.
+    <p v-if="updateInfo?.update_mode === 'container'" class="section-hint">
+      Container über Docker Compose oder Portainer aktualisieren. Keine Host-Updates aus der
+      Web-App.
+    </p>
+    <p v-else-if="updateInfo?.update_mode === 'work'" class="section-hint">
+      Entwicklungsstand für die Test-VM. Mit <code>bash scripts/update-work.sh</code> Code und
+      passendes Frontend aktualisieren.
+    </p>
+    <p v-else class="section-hint">
+      Updates verwenden ausschließlich vollständige freigegebene Releases mit zusammengehörigem
+      Backend, Frontend und Docker-Version.
+    </p>
+    <p v-if="updateInfo && !updateInfo.build_consistent" class="notice">
+      Entwicklungs-/Legacy-Installation oder Backend und Frontend noch nicht gemeinsam
+      bereitgestellt.
     </p>
     <div class="update-versions">
       <div>
-        <span>Installierter Commit</span
-        ><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong>
+        <span>Installierte Version</span><strong>{{ updateInfo?.version || '—' }}</strong>
       </div>
       <div>
-        <span>GitHub main</span
-        ><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong>
+        <span>Verfügbares Release</span
+        ><strong>{{ updateInfo?.available_version || 'Noch kein vollständiges Release' }}</strong>
       </div>
       <div>
-        <span>Aktiver Web-Build</span
-        ><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong>
-      </div>
-      <div>
-        <span>GitHub web-dist</span
-        ><strong>{{ updateInfo?.remote_build?.slice(0, 10) || 'noch nicht erreichbar' }}</strong>
-      </div>
-      <div>
-        <span>Hilfsdienst</span
-        ><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong>
-      </div>
-      <div>
-        <span>Status</span
-        ><strong>{{
-          updateInfo?.running
-            ? 'Update läuft'
-            : updateInfo?.pending
-              ? 'Anforderung wartet'
-              : updateInfo?.last_result || '—'
-        }}</strong>
+        <span>Build-Kanal</span><strong>{{ updateInfo?.channel || '—' }}</strong>
       </div>
     </div>
+    <p v-if="updateInfo?.notes_url">
+      <a :href="updateInfo.notes_url" target="_blank" rel="noopener">Release Notes öffnen</a>
+    </p>
+    <details>
+      <summary>Technische Build-Details</summary>
+      <div class="update-versions">
+        <div>
+          <span>Installierter Commit</span
+          ><strong>{{ updateInfo?.current?.slice(0, 10) || '—' }}</strong>
+        </div>
+        <div>
+          <span>Release-Commit</span
+          ><strong>{{ updateInfo?.remote?.slice(0, 10) || 'nicht erreichbar' }}</strong>
+        </div>
+        <div>
+          <span>Aktiver Web-Build</span
+          ><strong>{{ updateInfo?.deployed?.slice(0, 10) || 'unbekannt' }}</strong>
+        </div>
+        <div>
+          <span>Release-Frontend</span
+          ><strong>{{ updateInfo?.remote_build?.slice(0, 10) || 'noch nicht erreichbar' }}</strong>
+        </div>
+        <div>
+          <span>Hilfsdienst</span
+          ><strong>{{ updateInfo?.installed ? 'Bereit' : 'Nicht eingerichtet' }}</strong>
+        </div>
+        <div>
+          <span>Status</span
+          ><strong>{{
+            updateInfo?.running
+              ? 'Update läuft'
+              : updateInfo?.pending
+                ? 'Anforderung wartet'
+                : updateInfo?.last_result || '—'
+          }}</strong>
+        </div>
+      </div>
+    </details>
     <p v-if="updateInfo?.remote && updateInfo?.deployed === updateInfo.remote" class="success-text">
-      <strong>Alles aktuell – neueste Web-Version installiert.</strong>
+      <strong>Release und Web-Build sind aktuell.</strong>
     </p>
     <p v-else-if="updateInfo?.remote && updateInfo?.deployed !== updateInfo.remote" class="notice">
       <strong
@@ -115,9 +144,9 @@ watch(
       v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote"
       class="section-hint"
     >
-      Installierter Code entspricht dem aktuellen main-Commit.
+      Installierter Code entspricht dem verfügbaren Release-Commit.
     </p>
-    <p v-if="!updateInfo?.installed" class="section-hint">
+    <p v-if="updateInfo?.update_mode === 'release' && !updateInfo?.installed" class="section-hint">
       Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code>
     </p>
     <div class="update-actions">
@@ -133,6 +162,8 @@ watch(
         type="button"
         class="main-action"
         :disabled="
+          updateInfo?.update_mode !== 'release' ||
+          !updateInfo?.update_available ||
           !updateInfo?.installed ||
           !updateInfo?.build_ready ||
           updateInfo?.running ||

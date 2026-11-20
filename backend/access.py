@@ -36,11 +36,22 @@ class AccessMiddleware:
 
         request = Request(scope)
         path = scope["path"]
+        from backend.setup import pending
+
+        if (
+            path not in ("/api/health", "/api/setup/status", "/api/setup/complete")
+            and pending()
+        ):
+            return await JSONResponse(
+                {"detail": "Sichere Ersteinrichtung erforderlich"}, status_code=423
+            )(scope, receive, send)
         if (
             not users.read().get("guest_read", True)
             and path
             not in (
                 "/api/health",
+                "/api/setup/status",
+                "/api/setup/complete",
                 "/api/admin/session",
                 "/api/admin/login",
                 "/api/admin/sso/login",

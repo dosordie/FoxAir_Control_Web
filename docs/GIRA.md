@@ -14,3 +14,15 @@ Anmeldung und JSON-Formate entsprechen dem überprüften Referenzstand [ioBroker
 Zugangsdaten liegen nur in der privaten `gira.json`, werden nicht zurück an den Browser ausgegeben und sind in der verschlüsselten Sicherung enthalten. Die GUI zeigt Objektbezeichnungen und Werte gemäß derselben Leseberechtigung wie die Wärmepumpenwerte. Beim Wiederherstellen oder Ändern der Konfiguration werden alte Werte nicht unter neue Bezeichnungen übernommen. Bei Ausfällen erfolgt eine begrenzte Wiederverbindungsrate; letzte Werte sind als veraltet gekennzeichnet.
 
 Die automatisierte Abnahme verwendet einen lokalen WebSocket-Simulator mit Zahlen- und Textwerten. Die Verbindung zu einem konkreten HomeServer muss anschließend mit dessen privaten Zugangsdaten geprüft werden.
+
+## Textdarstellung
+
+Base64-kodierte UTF-8-Texte werden automatisch dekodiert; Zahlen bleiben numerisch.
+Pro Objekt lässt sich die Textdarstellung auf unveränderten Klartext oder ausdrücklich
+Base64/UTF-8 bzw. Base64/Latin-1 (ältere HomeServer) setzen. Die automatische Erkennung
+kann bei kurzen Klartexten mehrdeutig sein; in diesem Fall Klartext wählen.
+`SGVpemVu` bedeutet beispielsweise „Heizen“. Falls stattdessen eine Laufzeit erwartet
+wird, den abonnierten Objektschlüssel und den vom HomeServer gesendeten Wert prüfen.
+
+Auf der Startseite erscheinen nur die Werte. Den Verbindungsstatus zeigt der geöffnete
+Expertenbereich; Verbindungen und Fehler stehen auch im Verbindungsprotokoll.

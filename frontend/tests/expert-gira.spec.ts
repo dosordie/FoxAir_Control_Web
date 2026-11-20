@@ -15,7 +15,7 @@ it('renders numeric zero and text safely using only the read endpoint',async()=>
 })
 it('does not restore private connection fields from a late response after losing admin access',async()=>{
  let complete!:(value:unknown)=>void
- vi.stubGlobal('fetch',vi.fn(()=>new Promise(resolve=>{complete=resolve})))
+ vi.stubGlobal('fetch',vi.fn((url:string)=>url.endsWith('/config')?new Promise(resolve=>{complete=resolve}):Promise.resolve({ok:true,json:async()=>({enabled:false,connected:false,error:null,items:[]})})))
  const state=reactive({settings:true,admin:true,secure:true})
  const root=document.createElement('div');document.body.append(root);const app=createApp(defineComponent({setup:()=>()=>h(ExpertGira,state)}));app.mount(root);cleanup=()=>{app.unmount();root.remove()}
  const details=root.querySelector('details')!;details.open=true;details.dispatchEvent(new Event('toggle'));await nextTick()

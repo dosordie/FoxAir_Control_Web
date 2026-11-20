@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import getpass
 
-from backend.cloud_config import STATE_DIR, set_admin_password
+from backend.cloud_config import STATE_DIR, ADMIN_FILE, set_admin_password
 
 
 def main() -> None:
+    if ADMIN_FILE.exists():
+        raise SystemExit("Bestehendes Admin-Konto wird nicht überschrieben. Recovery bewusst separat ausführen.")
     print("FoxAir Web Docker: lokales Admin-Passwort einrichten (mind. 12 Zeichen).")
     password = getpass.getpass("Neues Passwort: ")
     again = getpass.getpass("Wiederholen: ")

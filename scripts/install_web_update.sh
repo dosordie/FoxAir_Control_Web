@@ -22,26 +22,37 @@ python3 - "$app" <<'PY'
 from pathlib import Path
 import os, stat, sys
 base = Path(sys.argv[1])
-for candidate in (base, base / "scripts", base / "scripts" / "update.sh", base / ".git"):
+# The release updater imports Python modules and uses this private venv.
+# Verify the full executable code tree before enabling a root helper.
+venv = base.parent / "venv"
+paths = [base, *base.rglob("*"), venv, *venv.rglob("*")]
+for candidate in paths:
+    if candidate.is_symlink() and candidate not in (base, venv):
+        continue
     mode = candidate.stat()
     if mode.st_uid != 0 or mode.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise SystemExit("Unsafe updater checkout permissions; keep FoxAir Git checkout root-owned")
+        raise SystemExit("Unsafe updater code permissions; keep installation root-owned")
 PY
 
-origin="$(git -C "$app" remote get-url origin)"
-case "$origin" in
-  https://github.com/dosordie/FoxAir_Control_Web|https://github.com/dosordie/FoxAir_Control_Web.git|git@github.com:dosordie/FoxAir_Control_Web.git)
-    ;;
-  *)
-    echo "Unerwartete Git-Quelle: Update-Auslöser NICHT installiert." >&2
-    exit 1 ;;
-esac
+if [[ -d "$app/.git" ]]; then
+  origin="$(git -C "$app" remote get-url origin)"
+  case "$origin" in
+    https://github.com/dosordie/FoxAir_Control_Web|https://github.com/dosordie/FoxAir_Control_Web.git|git@github.com:dosordie/FoxAir_Control_Web.git) ;;
+    *) echo "Unerwartete Git-Quelle; Update-Auslöser nicht installiert." >&2; exit 1 ;;
+  esac
+  if [[ "$(git -C "$app" branch --show-current)" == work ]]; then
+    echo "work verwendet den manuellen update-work.sh-Helfer." >&2; exit 1
+  fi
+else
+  # Release packages deliberately contain no mutable Git checkout.
+  (cd "$app" && /opt/foxair-web/venv/bin/python -c "from backend.build_info import info; d=info(); assert d['build_consistent'] and d['build_channel']=='release'")
+fi
 
 install -d -m 0700 -o foxair-web -g foxair-web "$state"
 
 cat > "$unitdir/foxair-web-update.service" <<'EOF'
 [Unit]
-Description=Update FoxAir Control Web from validated Git source
+Description=Update FoxAir Control Web from complete immutable release
 Wants=network-online.target
 After=network-online.target
 ConditionPathExists=/var/lib/foxair-web/update-request

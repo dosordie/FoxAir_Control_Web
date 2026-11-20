@@ -1,9 +1,8 @@
 # Docker / Portainer – vorbereitete Installation
 
-> **Status:** Docker-Unterstützung liegt zunächst im Vorbereitungs-PR zu Issue #9.
-> Bis CI-Smoketest und Review erfolgreich sind und ein GHCR-Paket veröffentlicht wurde,
-> existiert das Image `ghcr.io/dosordie/foxair-control-web:latest` möglicherweise **noch nicht**.
-> Die bestehende Linux-/systemd-Installation bleibt unverändert.
+> **Beta / Entwicklung auf `work`:** Die Vorbereitungen aus Draft-PR #10 sind enthalten.
+> Ein öffentliches Image `0.1.0` und ein Release werden erst nach ausdrücklicher Freigabe veröffentlicht.
+> Diese Anleitung allein führt kein Update der bestehenden Linux-Installation aus.
 
 ## Architektur
 
@@ -28,17 +27,17 @@ Sobald das öffentliche Image aus einem GitHub-Release verfügbar ist:
 2. Ggf. feste Image-Version in `FOXAIR_IMAGE=ghcr.io/dosordie/foxair-control-web:<VERSION>` setzen.
 3. `docker compose pull && docker compose up -d` ausführen.
 4. Auf dem Docker-Host `curl -fsS http://127.0.0.1:8081/api/health` prüfen.
-5. Das Admin-Passwort **interaktiv** setzen:
+5. Für den Netzwerkzugriff HTTPS und einen authentifizierenden Reverse Proxy konfigurieren.
+6. WebApp öffnen. Bei einer frischen Installation erscheint die Ersteinrichtung.
+   Den privaten einmaligen Code lokal abrufen:
 
    ```bash
-   docker compose exec foxair-web python -m docker.setup_admin
+   docker compose exec foxair-web python -m backend.setup
    ```
 
-   Das Skript ist speziell für Docker, erfordert keine systemd-Installation
-   und speichert den Passwort-Hash auf dem persistierten Volume.
-
-6. Für den Zugriff vom iPhone oder über das Netzwerk HTTPS und einen
-   authentifizierenden Reverse Proxy konfigurieren.
+   Code und ein neues, mindestens zwölf Zeichen langes Passwort in der GUI eingeben.
+   Vorhandene Konten werden erhalten; es gibt kein gemeinsames Standardpasswort.
+   Der Code wird anschließend entwertet, danach normal anmelden.
 
 **Achtung:** Gastzugriff auf Messwerte kann in der WebApp erlaubt sein. HTTP
 nicht ungeschützt ins Internet stellen. Admin-/Schreibfunktionen benötigen
@@ -80,7 +79,7 @@ eingecheckt. Die Docker-CI erzeugt sie automatisch. Für einen lokalen Build:
 ```bash
 git clone https://github.com/dosordie/FoxAir_Control_Web.git
 cd FoxAir_Control_Web
-# Falls der Docker-PR noch nicht gemergt ist, den Docker-Vorbereitungsbranch auschecken.
+git switch work # Entwicklungsstand; später einen freigegebenen Release-Tag verwenden.
 git clone https://github.com/dosordie/FoxAir_Control.git upstream
 python3 - <<'PY'
 import json, subprocess
@@ -88,7 +87,7 @@ ref = json.load(open('data/upstream.json'))['ref']
 subprocess.run(['git', '-C', 'upstream', 'checkout', '--detach', ref], check=True)
 PY
 python3 scripts/export_cloud_catalog.py upstream frontend/public/cloud_catalog.json
-docker build -t foxair-web:local .
+docker build --build-arg FOXAIR_VERSION="$(cat VERSION)" --build-arg FOXAIR_SOURCE_SHA="$(git rev-parse HEAD)" --build-arg FOXAIR_BUILD_CHANNEL=work -t foxair-web:local .
 ```
 
 Danach für die lokale Compose-Installation `FOXAIR_IMAGE=foxair-web:local`
@@ -115,36 +114,39 @@ Für ein Rollback ein zuvor verwendetes versioniertes GHCR-Image als
 `FOXAIR_IMAGE` setzen und neu starten. `docker compose down -v` **nicht**
 verwenden – es löscht das Datenvolume.
 
-Der bisherige `backend/web_update.py`-Updater ist **systemd-spezifisch**.
-Er kann innerhalb eines Containers nicht funktionieren und darf keine
-Host-Docker-Socket-Berechtigung erhalten. Die vorhandene systemd-Aktualisierung
-wird von dieser Vorbereitung **nicht** geändert; die spätere Work-Integration
-muss die Update-UI im Docker-Modus geeignet kennzeichnen/deaktivieren.
+Die Container-GUI zeigt Release-Informationen und Anweisungen für Compose/Portainer.
+Sie führt keine systemd-Befehle aus und benötigt keinen Docker-Socket.
+Zum Update den festen Tag in `FOXAIR_IMAGE` ändern, dann die obigen Befehle ausführen.
 
-## Automatischer GitHub-Build
+## GitHub-Prüfung und Veröffentlichung
 
-`.github/workflows/docker.yml`:
-- PR: Docker-Build + Start-/HTTP- und Volume-Smoke-Test, **ohne Veröffentlichung**
-- manuell: derselbe Test, **ohne Veröffentlichung**
-- GitHub Release (published): erfolgreich getestetes Image nach GHCR pushen;
-  `latest` nur bei stabilem Release; versioniertes `X.Y.Z`-Tag
-- Cloud-Katalog wird aus dem gepinnten Desktop-Commit vor dem Build generiert
-- keine Speicherung großer Docker-Images als Actions-Artefakte
+- **FoxAir Web CI** prüft Backend, Frontend und ein Container-Image mit genau demselben Frontend-Build.
+- **Manual Docker verification (no publish)** prüft zusätzlich den eigenständigen Docker-Build bei Bedarf.
+- **Approved immutable stable release** wird ausschließlich manuell auf `main` nach Freigabe gestartet.
+  Erst nach fertigen Linux-Assets und anonymem Pull des exakten GHCR-Digests wird das Release öffentlich.
+- Kein Workflow wird durch Veröffentlichung eines Releases nachträglich zum Image-Bau gestartet.
+- Keine großen Images als dauerhafte Actions-Artefakte.
+
+Details zu Manifest, Freigabe, Migration und Rollback: [RELEASES.md](RELEASES.md).
 
 Vor öffentlicher Bereitstellung GHCR-Paketsichtbarkeit auf **Public** prüfen.
 Zusätzliche Plattformen wie `linux/arm64` sind noch nicht Bestandteil
 dieser ersten `linux/amd64`-Vorbereitung.
 
-## Offene Freigabe- und Funktionstests für Work / Issue #9
+## Netzwerk, Einrichtung und noch offene Abnahmen
 
-- CI-Build und Smoke-Test auf GitHub Actions ausführen und Ergebnisse prüfen.
-- Update-UI für Containerbetrieb korrekt abgrenzen (systemd-Update darf nicht
-  als funktionierende Docker-Updatefunktion erscheinen).
-- Netzwerk-/Sicherheitsprüfung (SSL, Proxy-Header, Login/Cookie/Sitzung),
-  PWA-Cache, SSE, Cloud- und lokale Buskommunikation.
-- Portainer/LAN-Test auf einem realen Docker-Host, inklusive Volume-Backup,
-  Neustart, Image-Update und Rollback.
-- GHCR-Paketsichtbarkeit und veröffentlichte Versions-Tags prüfen.
-- Docker-/systemd-Betrieb funktional gleichwertig halten.
+Der Smoke-Test prüft frische GUI-Einrichtung, nicht privilegierten Betrieb,
+Healthcheck, sauberes Stoppen sowie Passwort-/Sitzungs-/Dateierhalt bei Neustart
+und Container-Neuanlage mit demselben Volume. Reale Portainer-, Proxy-/SSO-,
+Hardware- und Image-Update-/Rollback-Tests bleiben vor der Freigabe nötig.
 
-**Keine Produktionskonfiguration oder Zugangsdaten ins Git-Repository einchecken.**
+Der interaktive `python -m docker.setup_admin` bleibt ein lokaler Fallback für
+frische Installationen und verweigert das Überschreiben bestehender Admin-Dateien.
+Bei verlorenen Zugangsdaten die lokale administrative Recovery bzw. Backups
+verwenden; State-Dateien nicht pauschal löschen.
+
+HTTPS ist für Netzwerkzugriffe erforderlich. Bei vorgeschaltetem Proxy dessen **tatsächliche TCP-Peer-IP** über FOXAIR_TRUSTED_PROXY_IPS explizit im Compose-Environment konfigurieren; keine pauschalen Netze/Client-Forwarded-For-Werte vertrauen. Für SSO gelten zusätzlich die vorhandenen eigenen Proxy-Secret-/Benutzermapping-Regeln. Ein selbst behauptetes X-Forwarded-Proto ersetzt weder lokalen Einrichtungscode noch eine vertrauenswürdige Proxy-Konfiguration.
+
+Das Image enthält das gemeinsame Build-Manifest und meldet Version und SHA über /api/health. Im Container zeigt das Updatepanel Release-Informationen und Compose-/Portainer-Hinweise; systemd-Aufrufe und Hostupdates sind gesperrt. Feste Tags verwenden; latest ist nur eine ausdrückliche Rolling-Stable-Wahl. Zum Aktualisieren die gewählte Version in FOXAIR_IMAGE ändern, dann docker compose pull und docker compose up -d. Das benannte Volume bleibt erhalten. Ein Bind-Mount muss UID/GID 10001 gehören und darf keine bestehenden Dateien durch eine leere Verzeichnisquelle verdecken.
+
+**Keine Produktionskonfiguration oder Zugangsdaten ins Repository einchecken.**

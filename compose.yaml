@@ -4,7 +4,7 @@
 # restrict access using a firewall and serve authenticated HTTPS externally.
 services:
   foxair-web:
-    image: ${FOXAIR_IMAGE:-ghcr.io/dosordie/foxair-control-web:latest}
+    image: ${FOXAIR_IMAGE:-ghcr.io/dosordie/foxair-control-web:0.1.0}
     container_name: foxair-web
     restart: unless-stopped
     init: true
@@ -12,6 +12,7 @@ services:
       - "${FOXAIR_BIND_IP:-127.0.0.1}:${FOXAIR_HTTP_PORT:-8081}:8081"
     environment:
       FOXAIR_STATE_DIR: /var/lib/foxair-web
+      FOXAIR_TRUSTED_PROXY_IPS: ${FOXAIR_TRUSTED_PROXY_IPS:-}
     volumes:
       - foxair-web-state:/var/lib/foxair-web
     security_opt:

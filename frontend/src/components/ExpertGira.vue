@@ -72,7 +72,14 @@ async function load() {
   busy.value = true
   try {
     const data = await request('config', {})
-    if (!disposed && version === epoch) cfg.value = data
+    if (!disposed && version === epoch)
+      cfg.value = {
+        ...data,
+        objects: data.objects.map((item: Config['objects'][number]) => ({
+          ...item,
+          text_encoding: item.text_encoding || 'auto',
+        })),
+      }
   } catch (error) {
     if (!disposed && version === epoch) message.value = String(error)
   } finally {
@@ -106,8 +113,8 @@ watch(
     message.value = ''
     busy.value = false
     void load()
+    clearTimeout(timer)
     if (open.value) {
-      clearTimeout(timer)
       void refresh()
     }
   },
@@ -129,7 +136,8 @@ async function refresh() {
           }
     }
   }
-  if (!disposed) timer = setTimeout(refresh, state.value.enabled ? 2000 : 30000)
+  if (!disposed && (!props.settings || open.value))
+    timer = setTimeout(refresh, state.value.enabled ? 2000 : 30000)
 }
 const display = (value: number | string | null) =>
   value === null
@@ -237,6 +245,14 @@ onBeforeUnmount(() => {
                   v-model="object.unit"
                   maxlength="16"
               /></label>
+              <label
+                >Textdarstellung<select class="settings-input" v-model="object.text_encoding">
+                  <option value="auto">Automatisch (UTF-8/Base64)</option>
+                  <option value="plain">Klartext unverändert</option>
+                  <option value="utf8">Base64 / UTF-8</option>
+                  <option value="latin1">Base64 / Latin-1 (ältere Geräte)</option>
+                </select></label
+              >
               <button type="button" class="outlined-action" @click="cfg.objects.splice(index, 1)">
                 Objekt entfernen
               </button>

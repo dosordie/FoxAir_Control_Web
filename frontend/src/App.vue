@@ -19,6 +19,7 @@ import CompressorGauge from './components/CompressorGauge.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
 import ExpertGira from './components/ExpertGira.vue'
+import SetupWizard from './components/SetupWizard.vue'
 import MainRegisterBrowser from './components/MainRegisterBrowser.vue'
 import SpecialControls from './components/SpecialControls.vue'
 import AccountManagement from './components/AccountManagement.vue'
@@ -618,6 +619,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
+    <SetupWizard @completed="loginOpen=true" />
     <AppHeader v-model:username="username" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 

@@ -14,9 +14,8 @@ __pycache__
 .venv
 venv
 **/.venv
-# Frontend: node_modules and compiled output are always created in the image
+# Frontend: dependencies are installed in the build stage; CI may supply dist
 frontend/node_modules
-frontend/dist
 frontend/.vite
 # Secrets and local system settings must NEVER enter the build context
 .env
@@ -37,5 +36,7 @@ config.local.json
 .vscode
 .idea
 .DS_Store
-dist
-build
+/dist
+/build
+
+**/tests

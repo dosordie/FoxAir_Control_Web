@@ -72,6 +72,7 @@ class LifecycleTests(unittest.TestCase):
         calls = []
         with (
             patch("backend.transport_selection.initialize"),
+            patch("backend.setup.initialize"),
             patch(
                 "backend.bus_connection.start",
                 side_effect=lambda: calls.append("start"),
