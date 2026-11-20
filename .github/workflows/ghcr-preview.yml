@@ -1,0 +1,62 @@
+name: Publish v0.1.0 preview to GHCR
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: foxair-ghcr-0.1.0-preview
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/dosordie/foxair-control-web:0.1.0-preview
+      RELEASE_SHA: f3df345c5aa77eadf33c8c15409adbcccba444b5
+      ARCHIVE: foxair-web-docker-0.1.0-amd64.tar.gz
+      LOCAL_IMAGE: foxair-web:0.1.0-preview
+    steps:
+      - name: Download and verify published Docker archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v0.1.0 -R "$GITHUB_REPOSITORY" --json isPrerelease,isDraft \
+            --jq '.isPrerelease and (.isDraft | not)' | grep -qx true
+          gh release download v0.1.0 -R "$GITHUB_REPOSITORY" \
+            -p "$ARCHIVE" -p SHA256SUMS -p release-ready.json
+          sha256sum --ignore-missing -c SHA256SUMS
+          python - <<'PY'
+          import hashlib, json, os
+          with open("release-ready.json") as f:
+              release = json.load(f)
+          with open(os.environ["ARCHIVE"], "rb") as f:
+              checksum = hashlib.file_digest(f, "sha256").hexdigest()
+          assert release["ready"] and release["build_channel"] == "prerelease"
+          assert release["source_commit"] == release["frontend_source_commit"] == os.environ["RELEASE_SHA"]
+          assert release["docker_archive_sha256"] == checksum
+          PY
+          docker load -i "$ARCHIVE"
+          test "$(docker image inspect "$LOCAL_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$RELEASE_SHA"
+          test "$(docker image inspect "$LOCAL_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = 0.1.0
+          test "$(docker image inspect "$LOCAL_IMAGE" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the existing image under its preview tag
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "$IMAGE" > manifest.json 2> lookup-error.log; then
+            docker pull "$IMAGE"
+            test "$(docker image inspect "$IMAGE" --format '{{.Id}}')" = "$(docker image inspect "$LOCAL_IMAGE" --format '{{.Id}}')"
+            exit 0
+          fi
+          if ! grep -Eqi 'manifest unknown|no such manifest|manifest.*not found|denied' lookup-error.log; then
+            cat lookup-error.log >&2
+            exit 1
+          fi
+          docker tag "$LOCAL_IMAGE" "$IMAGE"
+          docker push "$IMAGE"
