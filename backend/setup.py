@@ -71,7 +71,9 @@ def complete(payload: Complete, request: Request):
                 409, "Instanz bereits eingerichtet; bestehende Konten bleiben erhalten"
             )
         expected = config._read_json(code_file()).get("code", "")
-        valid = bool(expected) and hmac.compare_digest(expected, payload.code)
+        valid = bool(expected) and hmac.compare_digest(
+            expected.encode("utf-8"), payload.code.encode("utf-8")
+        )
         config._admin_attempt_result(peer, valid)
         if not valid or payload.password == payload.code:
             raise HTTPException(403, "Einrichtungscode ungültig")

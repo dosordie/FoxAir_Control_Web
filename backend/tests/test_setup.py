@@ -44,6 +44,13 @@ class SetupTests(TestCase):
         self.assertEqual(
             self.client.post(
                 "/api/setup/complete",
+                json={"code": "ungültiger-Code", "password": "new-test-password"},
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/setup/complete",
                 json={"code": secret, "password": "new-test-password"},
             ).status_code,
             200,
