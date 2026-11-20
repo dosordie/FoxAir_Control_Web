@@ -20,6 +20,8 @@ output = Path(sys.argv[2]).resolve()
 if not (upstream / "cloud" / "warmlink_codes.py").exists():
     raise SystemExit("Upstream cloud catalog missing")
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backend.cloud_mapping_overrides import supplement_catalog
 sys.path.insert(0, str(upstream))
 from cloud.warmlink_codes import (
     WARMLINK_644_DISCOVERY_CODES, merged_cloud_metadata,
@@ -70,6 +72,7 @@ for code in WARMLINK_644_DISCOVERY_CODES:
         "confidence": confidence,
         "retry_when_empty": code in WARMLINK_IOS308_CODE_SET,
     })
+rows = supplement_catalog(rows)
 if len(rows) < 400:
     raise SystemExit(f"Incomplete upstream catalog: {len(rows)}")
 if len({x["code"] for x in rows}) != len(rows):

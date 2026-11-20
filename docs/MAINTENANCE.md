@@ -221,6 +221,10 @@ Completion requires a trusted secure origin, application header, rate-limited lo
 code proof and a strong password; exclusive file creation prevents overwriting existing
 accounts. The GUI does not receive the private setup code from an API.
 
-Home flow includes pump PWM MAIN 2115 (0–100%). No Cloud mapping is claimed without an
-upstream-backed code. The home register browser uses a separate code column and compact
+Home flow includes pump PWM MAIN 2115 (0–100%). Numeric Cloud codes 2115/2116 are confirmed by the GL9 live comparison in desktop
+issue #185. A temporary read-only exporter supplement bridges the pinned desktop
+catalogue until it contains these aliases. It yields to confirmed upstream metadata,
+refuses conflicting register addresses and never maps empty T_PWM_* candidates.
+2116 retains the local percentage convention without claiming an independent Cloud
+proof of its physical feedback unit. The home register browser uses a separate code column and compact
 desktop rows; parameter catalogue/editor layout remains unchanged.

@@ -19,6 +19,7 @@ import urllib.request
 from typing import Any
 
 from backend.catalog import load_registers
+from backend.cloud_mapping_overrides import PUMP_REGISTERS
 
 API_ROOT = "https://cloud.linked-go.com:449/crmservice/api"
 _TIMEOUT = 12
@@ -29,6 +30,7 @@ _client_key: tuple[str, str, str] | None = None
 # Confirmed FoxAir_Control mappings. Additional cloud mappings are added
 # only after confirmation with the upstream register/code resolver.
 CLOUD_REGISTERS: dict[int, str] = {
+    **PUMP_REGISTERS,  # GL9 live-confirmed numeric aliases: FoxAir_Control#185.
     1011: "Power",
     2012: "ModeState",
     2047: "T08",
@@ -63,6 +65,7 @@ DASHBOARD_MAPPING = {
     "electrical_power": 2054,
     "thermal_power": 2059,
     "cop": 2060,
+    "pump_pwm": 2115,
 }
 
 

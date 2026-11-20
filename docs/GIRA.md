@@ -26,3 +26,5 @@ wird, den abonnierten Objektschlüssel und den vom HomeServer gesendeten Wert pr
 
 Auf der Startseite erscheinen nur die Werte. Den Verbindungsstatus zeigt der geöffnete
 Expertenbereich; Verbindungen und Fehler stehen auch im Verbindungsprotokoll.
+
+Zahlen und Texte verwenden dieselbe Schrift und Wertgröße wie die Leistungsanzeige darüber. Lange Texte werden mehrzeilig umgebrochen; auch lange Wörter/Kennungen bleiben im Feld. Dadurch kann die Kachel höher werden.

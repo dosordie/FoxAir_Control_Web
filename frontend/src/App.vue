@@ -666,7 +666,7 @@ onBeforeUnmount(() => {
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong>{{ metric(item.key) }} <small class="metric-unit">{{ item.unit }}</small></strong>
                 <span class="metric-label">{{ item.label }}</span>
-                <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">Pumpen-PWM {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
+                <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">UP {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
               </div>
               <div class="hero-metric reading-spread" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
                 <Waves :size="24" :stroke-width="1.8" />
