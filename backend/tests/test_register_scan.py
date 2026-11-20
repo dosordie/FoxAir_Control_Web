@@ -118,7 +118,9 @@ class BlockReadTests(unittest.TestCase):
             for reg in range(start, start + count)
         }
         self.assertTrue(set(DASHBOARD_FIELDS.values()) | {2014} <= covered)
-        self.assertEqual(len(LTE_READ_BLOCKS), 3)
+        self.assertEqual(
+            len(LTE_READ_BLOCKS), 4
+        )  # Includes the separate confirmed pump PWM word.
         self.assertTrue(all(0 < count <= 90 for _, count in LTE_READ_BLOCKS))
 
 

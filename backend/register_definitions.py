@@ -14,8 +14,9 @@ STANDARD_DASHBOARD_BLOCKS = (
     (2035, 26),
     (2072, 1),
     (2077, 1),
+    (2115, 1),
 )
-LTE_DASHBOARD_BLOCKS = ((1011, 20), (1158, 1), (2012, 66))
+LTE_DASHBOARD_BLOCKS = ((1011, 20), (1158, 1), (2012, 66), (2115, 1))
 DASHBOARD_FIELDS = {
     "power": 1011,
     "mode": 2012,
@@ -31,6 +32,7 @@ DASHBOARD_FIELDS = {
     "electrical_power": 2054,
     "thermal_power": 2059,
     "cop": 2060,
+    "pump_pwm": 2115,
 }
 
 # core/at_compensation.py in the reviewed desktop source. The 0 °C point

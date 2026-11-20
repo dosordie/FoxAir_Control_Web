@@ -47,6 +47,20 @@ class GiraProtocolTests(TestCase):
             {"co@1": 4},
         )
 
+    def test_gira_base64_text_and_numeric_values(self):
+        self.assertEqual(gira.scalar("SGVpemVu"), "Heizen")
+        text = "ein seit 5h:11m"
+        self.assertEqual(gira.scalar(base64.b64encode(text.encode()).decode()), text)
+        self.assertEqual(gira.scalar("0"), 0)
+        self.assertEqual(gira.scalar("Heizkreis aktiv"), "Heizkreis aktiv")
+        self.assertEqual(gira.scalar("SGVpemVu", "plain"), "SGVpemVu")
+        self.assertEqual(
+            gira.scalar(
+                base64.b64encode("Kühlen".encode("latin-1")).decode(), "latin1"
+            ),
+            "Kühlen",
+        )
+
     def test_admin_only_configuration_never_returns_password_and_preserves_it_on_blank_save(
         self,
     ):

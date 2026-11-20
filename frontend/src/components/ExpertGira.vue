@@ -12,7 +12,7 @@ type Config = {
   password_configured?: boolean
   clear_password: boolean
   auth_header: boolean
-  objects: { key: string; name: string; unit: string }[]
+  objects: { key: string; name: string; unit: string; text_encoding?: string }[]
 }
 type State = {
   enabled: boolean
@@ -106,6 +106,10 @@ watch(
     message.value = ''
     busy.value = false
     void load()
+    if (open.value) {
+      clearTimeout(timer)
+      void refresh()
+    }
   },
 )
 async function refresh() {
@@ -151,6 +155,16 @@ onBeforeUnmount(() => {
   >
     <summary>Experteneinstellungen</summary>
     <div v-if="open">
+      <p class="section-hint" role="status">
+        {{
+          state.error ||
+          (state.connected
+            ? 'Gira verbunden'
+            : state.enabled
+              ? 'Gira verbindet …'
+              : 'Gira deaktiviert')
+        }}
+      </p>
       <h2>Gira HomeServer · zusätzliche Anzeigen</h2>
       <p class="section-hint">
         Rein lesende WebSocket-Abonnements. Diese Werte sind für dieselben Benutzer sichtbar wie die
@@ -231,7 +245,7 @@ onBeforeUnmount(() => {
               type="button"
               class="outlined-action"
               :disabled="cfg.objects.length >= 24"
-              @click="cfg.objects.push({ key: '', name: '', unit: '' })"
+              @click="cfg.objects.push({ key: '', name: '', unit: '', text_encoding: 'auto' })"
             >
               Objekt hinzufügen
             </button>
@@ -261,8 +275,5 @@ onBeforeUnmount(() => {
         ><small>{{ item.name }}</small>
       </div>
     </div>
-    <small class="section-hint" role="status">{{
-      state.error || (state.connected ? 'Gira verbunden' : 'Gira verbindet …')
-    }}</small>
   </div>
 </template>

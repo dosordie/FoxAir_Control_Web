@@ -339,6 +339,15 @@ const actionButtons = [
   { label: 'Ruhemodus', hint: 'Silent-Timer', icon: VolumeX, color: 'apricot', dialog: 'silent' },
   { label: 'Störungen', hint: 'Fehlerstatus', icon: Bell, color: 'lilac', dialog: 'fault' },
 ]
+const pumpPwm = computed(() => {
+  const row = snapshot.value?.metrics.pump_pwm || currentRegisterValue(2115)
+  const value = row == null ? NaN : Number(row.value)
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? row : null
+})
+function readingHint(key: string) {
+  const hints: Record<string,string> = {flow:'Volumenstrom des Heizwassers. Die Pumpen-PWM zeigt die gemeldete Ansteuerung aus Register 2115; bei ausgeschalteter Pumpe kann der Registerwert trotzdem 100 % sein.',tank:'Temperatur im Warmwasserspeicher.',outdoor:'Gemessene Außentemperatur.',return:'Eintritt des Heizwassers in die Wärmepumpe (Rücklauf).',supply:'Austritt des erwärmten Heizwassers aus der Wärmepumpe (Vorlauf).'}
+  return hints[key] || ''
+}
 const readings = computed(() => [
   { key: 'flow', label: 'Durchfluss', icon: Waves, unit: 'm³/h' },
   { key: 'tank', label: 'Warmwasser', icon: Thermometer, unit: '°C' },
@@ -638,11 +647,11 @@ onBeforeUnmount(() => {
                 <CompressorGauge :metric="snapshot?.metrics.compressor_frequency || null" />
               </div>
               <div class="target-temperature">
-                <span class="overline">Aktueller Sollwert</span>
+                <span class="overline" title="Aktuell von der Regelung gewählter Wassersollwert (Register 2014), einschließlich aktiver Wetterkompensation.">Aktueller Sollwert</span>
                 <div class="temp-adjust target-readonly">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                 </div>
-                <span class="target-delta">Δ VL–Soll: {{ deltaText(supplyDelta) }} K</span>
+                <span class="target-delta" title="Austritt minus aktueller Sollwert. Positive Werte bedeuten: Austritt ist wärmer als der Sollwert.">Δ VL–Soll: {{ deltaText(supplyDelta) }} K</span>
                 <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>
@@ -651,15 +660,16 @@ onBeforeUnmount(() => {
             <div class="hero-metrics">
               <div v-for="item in readings" :key="item.key" class="hero-metric"
                 :class="['reading-'+item.key, { 'is-stale': snapshot?.metrics[item.key]?.quality === 'stale' }]"
-                :title="snapshot?.metrics[item.key]?.quality === 'stale' ? 'Letzter bekannter Wert, Verbindung unterbrochen' : ''">
+                :title="readingHint(item.key)">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong>{{ metric(item.key) }} <small class="metric-unit">{{ item.unit }}</small></strong>
                 <span class="metric-label">{{ item.label }}</span>
+                <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">Pumpen-PWM {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
               </div>
               <div class="hero-metric reading-spread" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
                 <Waves :size="24" :stroke-width="1.8" />
                 <strong>{{ deltaText(waterSpread) }} <small class="metric-unit">K</small></strong>
-                <span class="metric-label">Spreizung VL/RL</span>
+                <span class="metric-label" title="Temperaturdifferenz zwischen Austritt und Eintritt der Wärmepumpe.">Spreizung VL/RL</span>
               </div>
             </div>
           </div>
@@ -715,7 +725,7 @@ onBeforeUnmount(() => {
             </section>
 
             <section class="panel operating-panel">
-              <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div><span class="soft-tag">Antippen zum Einstellen</span></div>
+              <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div></div>
               <PowerSummary :metrics="snapshot?.metrics" />
               <ExpertGira />
               <div class="operation-row">

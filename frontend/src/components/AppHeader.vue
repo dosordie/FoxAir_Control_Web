@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Settings2, ShieldCheck } from 'lucide-vue-next'
 import type { Page } from '../types/navigation'
-defineProps<{
+const props = defineProps<{
   page: Page
   authenticated: boolean
   role?: string
@@ -14,6 +15,26 @@ const username = defineModel<string>('username', { default: 'admin' })
 const password = defineModel<string>('password', { required: true })
 const loginOpen = defineModel<boolean>('loginOpen', { required: true })
 const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLogin: [] }>()
+const menu = ref<HTMLElement | null>(null)
+const close = () => {
+  loginOpen.value = false
+  password.value = ''
+}
+function outside(event: PointerEvent) {
+  if (loginOpen.value && !menu.value?.contains(event.target as Node)) close()
+}
+function escape(event: KeyboardEvent) {
+  if (event.key === 'Escape') close()
+}
+watch(() => props.page, close)
+onMounted(() => {
+  document.addEventListener('pointerdown', outside)
+  document.addEventListener('keydown', escape)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', outside)
+  document.removeEventListener('keydown', escape)
+})
 </script>
 <template>
   <header class="shell-header">
@@ -38,7 +59,7 @@ const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLog
       </button>
     </nav>
     <div class="shell-header-right">
-      <div class="user-menu">
+      <div class="user-menu" ref="menu">
         <button
           class="outlined-action"
           type="button"

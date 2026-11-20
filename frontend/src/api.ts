@@ -6,7 +6,7 @@ export type Dashboard = {
   timestamp: string
   error: string | null
   device_name?: string
-  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency' | 'electrical_power' | 'thermal_power' | 'cop', Metric>
+  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency' | 'electrical_power' | 'thermal_power' | 'cop' | 'pump_pwm', Metric>
   live_supported: boolean
 }
 export type Transport = { id: TransportId; name: string; configured: boolean; read_supported: boolean; reason: string }

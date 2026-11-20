@@ -117,6 +117,7 @@ function area(register: number) {
           <thead>
             <tr>
               <th>Register</th>
+              <th class="browser-code">Code</th>
               <th>Bezeichnung</th>
               <th>Aktuell</th>
               <th title="Vorheriger abweichender Wert seit Öffnen dieser Übersicht">
@@ -137,9 +138,9 @@ function area(register: number) {
               ]"
             >
               <td>{{ row.register }}</td>
+              <td class="browser-code">{{ row.code || '—' }}</td>
               <td>
-                {{ row.name || 'Register ' + row.register
-                }}<small v-if="row.code">{{ row.code }}</small>
+                {{ row.name || 'Register ' + row.register }}
               </td>
               <td :title="new Date(row.timestamp).toLocaleString('de-DE')">{{ text(row) }}</td>
               <td class="previous-register-value">{{ history[row.register]?.previous || '—' }}</td>

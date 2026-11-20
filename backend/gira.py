@@ -7,9 +7,12 @@ from datetime import datetime, timezone
 import ipaddress
 import json
 import logging
+import re
+import binascii
 import math
 import secrets
 from urllib.parse import quote
+from typing import Literal
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
 from backend import cloud_config
@@ -21,6 +24,7 @@ class ObjectConfig(BaseModel):
     key: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9@_./:-]+$")
     name: str = Field(min_length=1, max_length=60)
     unit: str = Field(default="", max_length=16)
+    text_encoding: Literal["auto", "plain", "utf8", "latin1"] = "auto"
 
 
 class Config(BaseModel):
@@ -92,7 +96,7 @@ def save(payload: Config, request: Request):
     return {"saved": True}
 
 
-def scalar(value):
+def scalar(value, text_encoding="auto"):
     if isinstance(value, dict):
         value = value.get("value")
     if isinstance(value, bool):
@@ -104,6 +108,29 @@ def scalar(value):
                 return number
         except ValueError:
             pass
+        if (
+            text_encoding != "plain"
+            and re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", value)
+            and len(value) % 4 != 1
+        ):
+            try:
+                raw = base64.b64decode(value + "=" * (-len(value) % 4), validate=True)
+                encodings = (
+                    ("utf-8",)
+                    if text_encoding == "auto"
+                    else (("latin-1",) if text_encoding == "latin1" else ("utf-8",))
+                )
+                for encoding in encodings:
+                    try:
+                        decoded = raw.decode(encoding)
+                        if decoded and all(
+                            c.isprintable() or c in "\n\r\t" for c in decoded
+                        ):
+                            return decoded[:1000]
+                    except UnicodeDecodeError:
+                        continue
+            except (ValueError, binascii.Error):
+                pass
         return value[:1000]
     if isinstance(value, (int, float)) and math.isfinite(value):
         return value
@@ -139,7 +166,10 @@ def updates(payload, allowed):
             key = "co@" + key
         if key not in allowed:
             continue
-        value = scalar(item.get("data", item.get("value")))
+        value = scalar(
+            item.get("data", item.get("value")),
+            allowed.get(key, "auto") if isinstance(allowed, dict) else "auto",
+        )
         if value is not None:
             result[key] = value
     return result
@@ -226,6 +256,11 @@ class GiraClient:
                     logger=logger,
                 ) as ws:
                     self.connected = True
+                    from backend.diagnostics import log_event
+
+                    log_event(
+                        "gira", "Gira-WebSocket verbunden; lesende Abonnements aktiv"
+                    )
                     self.error = None
                     backoff = 1
                     keys = [obj["key"] for obj in cfg["objects"]]
@@ -258,7 +293,11 @@ class GiraClient:
                                 "Einzelne Gira-Objekte konnten nicht abonniert werden"
                             )
                         for key, value in updates(
-                            payload, {k.casefold() for k in keys}
+                            payload,
+                            {
+                                obj["key"].casefold(): obj.get("text_encoding", "auto")
+                                for obj in cfg["objects"]
+                            },
                         ).items():
                             self.values[key] = {
                                 "value": value,
