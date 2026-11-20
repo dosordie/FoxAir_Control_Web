@@ -1,27 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { ref } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { api } from '../api'
 import type { UpdateStatus } from '../api'
-const props = defineProps<{ admin: boolean; secure: boolean }>()
-const updateInfo = ref<UpdateStatus | null>(null)
-const updateLoading = ref(false)
+const props = defineProps<{
+  admin: boolean
+  secure: boolean
+  updateInfo: UpdateStatus | null
+  version?: string
+  updateLoading?: boolean
+  checkError?: string
+  checkedAt?: Date | null
+}>()
+const emit = defineEmits<{ refresh: [] }>()
 const updateRequesting = ref(false)
 const updateError = ref('')
 const updateMessage = ref('')
-async function loadGitUpdateStatus() {
-  updateLoading.value = true
-  updateError.value = ''
-  try {
-    updateInfo.value = await api.updateStatus()
-  } catch (e) {
-    updateError.value = e instanceof Error ? e.message : 'Update-Status nicht erreichbar'
-  } finally {
-    updateLoading.value = false
-  }
-}
 async function submitGitUpdate() {
-  if (!props.secure || !props.admin || updateInfo.value?.update_mode !== 'release') {
+  if (!props.secure || !props.admin || props.updateInfo?.update_mode !== 'release') {
     updateError.value = 'HTTPS und Web-Administrationspasswort erforderlich.'
     return
   }
@@ -32,21 +28,13 @@ async function submitGitUpdate() {
     await api.requestUpdate('')
     updateMessage.value =
       'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert das vollständige freigegebene Release. Die Web-App kann dabei kurz neu starten.'
-    // Do not claim an installation succeeded: completion is observed separately.
+    emit('refresh')
   } catch (e) {
     updateError.value = e instanceof Error ? e.message : 'Update-Anforderung fehlgeschlagen'
   } finally {
     updateRequesting.value = false
   }
 }
-
-onMounted(loadGitUpdateStatus)
-watch(
-  () => props.admin,
-  () => {
-    void loadGitUpdateStatus()
-  },
-)
 </script>
 <template>
   <section class="settings-panel panel">
@@ -75,11 +63,11 @@ watch(
     </p>
     <div class="update-versions">
       <div>
-        <span>Installierte Version</span><strong>{{ updateInfo?.version || '—' }}</strong>
+        <span>Installierte Version</span
+        ><strong>{{ version || updateInfo?.version || '—' }}</strong>
       </div>
       <div>
-        <span>Verfügbares Release</span
-        ><strong>{{ updateInfo?.available_version || 'Noch kein vollständiges Release' }}</strong>
+        <span>Verfügbare Version</span><strong>{{ updateInfo?.available_version || '—' }}</strong>
       </div>
       <div>
         <span>Build-Kanal</span><strong>{{ updateInfo?.channel || '—' }}</strong>
@@ -124,13 +112,25 @@ watch(
       </div>
     </details>
     <p v-if="updateInfo?.update_available" class="notice">
-      <strong>Freigegebenes Release {{ updateInfo.available_version }} ist verfügbar.</strong>
+      <strong v-if="updateInfo.update_mode === 'release'"
+        >Freigegebenes Release {{ updateInfo.available_version }} ist verfügbar.</strong
+      >
+      <strong v-else>Update {{ updateInfo.available_version }} ist verfügbar.</strong>
+    </p>
+    <p v-else-if="updateInfo?.check_status === 'building'" class="notice">
+      Der passende Web-Build für work wird noch erstellt.
+    </p>
+    <p v-else-if="updateInfo?.check_status === 'unavailable'" class="section-hint">
+      Updatequelle derzeit nicht verfügbar.
     </p>
     <p
       v-else-if="updateInfo?.available_version && updateInfo?.build_consistent"
       class="success-text"
     >
-      <strong>Kein neueres freigegebenes Release verfügbar.</strong>
+      <strong v-if="updateInfo.update_mode === 'release'"
+        >Kein neueres freigegebenes Release verfügbar.</strong
+      >
+      <strong v-else>Kein Update verfügbar.</strong>
     </p>
     <p v-if="updateInfo?.update_mode === 'release' && !updateInfo?.installed" class="section-hint">
       Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code>
@@ -140,15 +140,15 @@ watch(
         type="button"
         class="outlined-action"
         :disabled="updateLoading"
-        @click="loadGitUpdateStatus"
+        @click="emit('refresh')"
       >
-        <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> GitHub-Version prüfen
+        <RefreshCw :size="16" :class="{ spinning: updateLoading }" /> Jetzt auf Updates prüfen
       </button>
       <button
         type="button"
+        v-if="updateInfo?.update_mode === 'release'"
         class="main-action"
         :disabled="
-          updateInfo?.update_mode !== 'release' ||
           !updateInfo?.update_available ||
           !updateInfo?.installed ||
           !updateInfo?.build_ready ||
@@ -165,8 +165,13 @@ watch(
       </button>
     </div>
     <p v-if="updateMessage" class="success-text">{{ updateMessage }}</p>
+    <p v-if="checkedAt" class="section-hint">
+      Zuletzt geprüft {{ checkedAt.toLocaleString('de-DE') }} · Prüfung alle 15 Minuten bei
+      geöffneter App.
+    </p>
+    <p v-if="checkError" class="read-error">{{ checkError }}</p>
     <p v-if="updateError" class="read-error">{{ updateError }}</p>
-    <p class="section-hint">
+    <p v-if="updateInfo?.update_mode === 'release'" class="section-hint">
       Für Updates oben rechts als Administrator anmelden. Die Anmeldung bleibt bis zu 30 Tage
       erhalten, auch bei einem Serverneustart. Der Installationserfolg wird durch die nächste
       Statusprüfung bestätigt.

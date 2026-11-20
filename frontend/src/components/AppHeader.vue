@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { Settings2, ShieldCheck } from 'lucide-vue-next'
+import { ArrowUpCircle, Settings2, ShieldCheck } from 'lucide-vue-next'
 import type { Page } from '../types/navigation'
 const props = defineProps<{
+  version?: string
+  updateAvailable?: boolean
   page: Page
   authenticated: boolean
   role?: string
@@ -45,7 +47,15 @@ onBeforeUnmount(() => {
       aria-label="Zur Übersicht"
     >
       <span class="brand-mark official-brand"><img src="/foxye-logo.png" alt="FoxAir-Logo" /></span>
-      <span><strong>FoxAir</strong><small>CONTROL WEB</small></span>
+      <span>
+        <strong>FoxAir</strong>
+        <span class="brand-caption">
+          <small>CONTROL WEB</small>
+          <span v-if="version" class="brand-version" :title="version">{{
+            version.split('+')[0]
+          }}</span>
+        </span>
+      </span>
     </button>
     <nav class="desktop-nav" aria-label="Hauptnavigation">
       <button :class="{ selected: page === 'home' }" @click="emit('navigate', 'home')">
@@ -59,6 +69,17 @@ onBeforeUnmount(() => {
       </button>
     </nav>
     <div class="shell-header-right">
+      <button
+        v-if="updateAvailable"
+        type="button"
+        class="update-badge"
+        title="Update verfügbar"
+        aria-label="Update verfügbar – Einstellungen öffnen"
+        @click="emit('navigate', 'settings')"
+      >
+        <ArrowUpCircle :size="17" />
+        <span>Update</span>
+      </button>
       <div class="user-menu" ref="menu">
         <button
           class="outlined-action"

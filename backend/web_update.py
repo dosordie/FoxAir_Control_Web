@@ -24,8 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TRIGGER = STATE_DIR / "update-request"
 SERVICE = "foxair-web-update.service"
 PATH_UNIT = "foxair-web-update.path"
-REMOTE_API = "https://api.github.com/repos/dosordie/FoxAir_Control_Web/branches/main"
-REMOTE_BUILD = "https://raw.githubusercontent.com/dosordie/FoxAir_Control_Web/web-dist/.build-source-sha"
+REMOTE_API = "https://api.github.com/repos/dosordie/FoxAir_Control_Web/branches/work"
+REMOTE_BUILD = "https://raw.githubusercontent.com/dosordie/FoxAir_Control_Web/web-dist-work/.build-source-sha"
 _last_remote_attempt = 0.0
 _last_remote_sha: str | None = None
 _last_remote_build_attempt = 0.0
@@ -121,7 +121,6 @@ def status() -> dict[str, Any]:
     from backend.releases import latest, newer
 
     build = info()
-    release = latest()
     container = os.getenv("FOXAIR_CONTAINER") == "1"
     mode = (
         "container"
@@ -130,26 +129,75 @@ def status() -> dict[str, Any]:
         if build["build_channel"] == "work"
         else "release"
     )
+    deployed = _deployed_sha()
     watcher = _status_unit(PATH_UNIT) if mode == "release" else {}
     service = _status_unit(SERVICE) if mode == "release" else {}
-    available = bool(
-        release
-        and (
-            newer(release["version"], build["version"])
-            or (
-                build["build_channel"] != "release"
-                and release["version"] == build["version"]
+    if mode == "container":
+        from backend.docker_updates import latest as docker_latest
+
+        release = docker_latest()
+        available = bool(
+            release
+            and (
+                newer(release["version"], build["version"])
+                or (
+                    release["version"] == build["version"]
+                    and build.get("source_commit") is not None
+                    and build["source_commit"] != release["source_commit"]
+                )
             )
         )
-    )
+        check = "checked" if release else "unavailable"
+        if release:
+            release = {
+                **release,
+                "notes_url": "https://github.com/dosordie/FoxAir_Control_Web/pkgs/container/foxair-control-web",
+            }
+    elif mode == "work":
+        head = _remote_sha()
+        artifact = _remote_build_sha()
+        release = (
+            {
+                "version": "work · " + head[:10],
+                "source_commit": head,
+                "frontend_source_commit": artifact,
+                "notes_url": "https://github.com/dosordie/FoxAir_Control_Web/tree/work",
+            }
+            if head
+            else None
+        )
+        available = bool(
+            head and head == artifact and head != build.get("source_commit")
+        )
+        check = (
+            "unavailable"
+            if not head or not artifact
+            else "checked"
+            if head == artifact
+            else "building"
+        )
+    else:
+        release = latest()
+        available = bool(
+            release
+            and (
+                newer(release["version"], build["version"])
+                or (
+                    build["build_channel"] != "release"
+                    and release["version"] == build["version"]
+                )
+            )
+        )
+        check = "checked" if release else "unavailable"
     return {
         "installed": watcher.get("LoadState") == "loaded"
         and watcher.get("ActiveState") == "active",
         "current": build.get("source_commit"),
-        "deployed": _deployed_sha(),
+        "deployed": deployed,
         "remote": release.get("source_commit") if release else None,
         "remote_build": release.get("frontend_source_commit") if release else None,
-        "build_ready": release is not None,
+        "build_ready": check == "checked",
+        "check_status": check,
         "update_available": available,
         "pending": TRIGGER.exists() if mode == "release" else False,
         "running": service.get("ActiveState") in ("active", "activating"),

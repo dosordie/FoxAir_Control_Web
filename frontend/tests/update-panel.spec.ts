@@ -4,14 +4,15 @@ import UpdatePanel from '../src/components/UpdatePanel.vue'
 let cleanup: (() => void) | undefined
 afterEach(() => { cleanup?.(); vi.unstubAllGlobals() })
 async function render(update: boolean) {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+  const updateInfo = {
     version: update ? '0.1.0' : '0.2.0', available_version: update ? '0.2.0' : '0.1.0',
     current: 'a'.repeat(40), deployed: 'a'.repeat(40), remote: 'b'.repeat(40),
     build_consistent: true, build_ready: true, update_available: update,
-    update_mode: 'release', installed: true,
-  }) })))
+    update_mode: 'release', installed: true, pending: false, running: false,
+    remote_build: null, last_result: null,
+  }
   const root = document.createElement('div'); document.body.append(root)
-  const app = createApp(UpdatePanel, { admin: true, secure: true }); app.mount(root)
+  const app = createApp(UpdatePanel, { admin: true, secure: true, updateInfo }); app.mount(root)
   cleanup = () => { app.unmount(); root.remove() }
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await nextTick(); await nextTick()
   return root

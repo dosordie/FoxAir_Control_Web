@@ -506,3 +506,9 @@ a{color:inherit}
 .setup-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#f3f4f7;padding:18px;overflow:auto}.setup-wizard{width:min(100%,540px);max-height:95dvh;overflow:auto}.setup-wizard h1{font-size:23px}.setup-wizard p{font-size:13px;line-height:1.6}.setup-wizard code{display:block;overflow-wrap:anywhere;white-space:pre-wrap;font-size:12px;background:#f3f4f6;padding:12px;border-radius:8px}.setup-wizard form,.setup-wizard label{display:grid;gap:10px}.setup-wizard form{gap:16px}.setup-wizard input{width:100%;min-width:0}
 
 .setup-wizard{border:0;margin:auto}.setup-wizard fieldset{display:grid;gap:16px;border:0;padding:0;min-width:0}.setup-wizard::backdrop{background:#f3f4f7}
+
+.brand-caption{display:flex;align-items:center;gap:6px;margin-top:4px;white-space:nowrap}
+.brand-caption small{margin-top:0}
+.brand-version{font-size:10px;color:#626b78;font-weight:700}
+.update-badge{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border:1px solid #ffd4a6;background:#fff2e4;color:#8b480e;border-radius:10px;padding:7px;font-size:12px;font-weight:700}
+@media(max-width:600px){.update-badge span{display:none}.brand-caption small{letter-spacing:.9px}.brand-caption{gap:4px}}

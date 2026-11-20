@@ -37,9 +37,16 @@ class WebUpdateTests(unittest.TestCase):
     def test_container_never_invokes_systemd_or_creates_trigger(self):
         with (
             patch.dict("os.environ", {"FOXAIR_CONTAINER": "1"}),
+            patch(
+                "backend.docker_updates.latest",
+                return_value={"version": "0.1.3", "source_commit": "b" * 40},
+            ),
             patch.object(web_update, "_status_unit") as unit,
         ):
-            self.assertEqual(web_update.status()["update_mode"], "container")
+            result = web_update.status()
+            self.assertEqual(result["update_mode"], "container")
+            self.assertTrue(result["update_available"])
+            self.assertEqual(result["available_version"], "0.1.3")
             with self.assertRaises(RuntimeError):
                 web_update.request_update()
             unit.assert_not_called()
@@ -57,8 +64,17 @@ class WebUpdateTests(unittest.TestCase):
                 },
             ),
             patch.object(web_update, "_status_unit") as unit,
+            patch.object(web_update, "_remote_sha", return_value="b" * 40),
+            patch.object(
+                web_update, "_remote_build_sha", return_value="a" * 40
+            ) as artifact,
         ):
-            self.assertEqual(web_update.status()["update_mode"], "work")
+            status = web_update.status()
+            self.assertEqual(status["update_mode"], "work")
+            self.assertEqual(status["check_status"], "building")
+            self.assertFalse(status["update_available"])
+            artifact.return_value = "b" * 40
+            self.assertTrue(web_update.status()["update_available"])
             with self.assertRaises(RuntimeError):
                 web_update.request_update()
             unit.assert_not_called()

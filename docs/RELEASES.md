@@ -17,6 +17,8 @@ bash scripts/update-work.sh
 
 Der Helfer prüft den work-/Build-SHA-Abgleich vor dem Update, führt ein Fast-Forward aus, aktualisiert Abhängigkeiten und Frontend und startet nur einen zuvor aktiven Dienst wieder. Der Zustand in `FOXAIR_STATE_DIR` bleibt erhalten. Ein eigenes `git pull --ff-only origin work` bleibt erlaubt, aktualisiert aber allein keine gebauten Dateien: danach denselben Helfer verwenden, bevor der Dienst neu gestartet wird. Scheitert eine Installation nach dem Anhalten, bleibt der Dienst sicherheitshalber gestoppt; Ursache beheben, Helfer erneut ausführen und den Dienst bewusst starten. `--no-restart` ist nur für kontrollierte Wartung gedacht.
 
+Die App prüft beim Öffnen und alle 15 Minuten im sichtbaren Tab, ob ein Update bereitsteht. Docker liest dafür die Version von GHCR `latest`, Linux Stable das vollständige GitHub-Release und `work` den Commit mit passendem Web-Build. Ein Hinweis im Kopf führt zur Versionsanzeige in den Einstellungen.
+
 Die produktive GUI hat keinen frei wählbaren Development-Kanal. Auf work ist der systemd-Release-Updateknopf gesperrt und verweist auf den manuellen Testablauf.
 
 ## Freigabe und Veröffentlichung
@@ -27,7 +29,7 @@ Der Workflow **Approved immutable stable release** wird ausschließlich manuell 
 2. Workflow auf main mit diesem Tag und Freigabeschalter ausführen. Backend-, Frontend- und Registerprüfungen laufen vor der Veröffentlichung. Ein und dasselbe gebaute Frontend wird für Linux-Paket und Docker verwendet.
 3. Das getestete amd64-Image bekommt den festen GHCR-Versionstag und OCI-Version/Revision/Source. Das Linux-Archiv enthält Code, Frontend und Manifest derselben SHA; SHA256SUMS und release-ready.json werden als Draft-Assets angehängt.
 4. Erst nach erfolgreichem **anonymem Pull des exakten Image-Digests** und Prüfung der OCI-Labels wird das GitHub Release öffentlich. Für das erste GHCR-Paket muss ein Berechtigter die Paketsichtbarkeit auf Public stellen. Falls dieser Job stoppt: Sichtbarkeit korrigieren und nur den fehlgeschlagenen Publish-Job erneut ausführen, keine Versionsimages neu bauen/überschreiben.
-5. `latest` wird erst nach dem öffentlichen Stable-Release verschoben. Bei einem Fehler dieses optionalen Aliases bleibt der feste Versionstag gültig; den Publish-Job gezielt wiederholen. Prereleases werden derzeit abgelehnt und verschieben latest nicht.
+5. `latest` wird erst nach dem öffentlichen Stable-Release verschoben. Bei einem Fehler dieses optionalen Aliases bleibt der feste Versionstag gültig; den Publish-Job gezielt wiederholen. Vorabversionen erscheinen unter eigenen Tags und verschieben den laufenden Tag `latest` bei späteren Veröffentlichungen nicht. Docker und Linux werden als Paar aus derselben Version und demselben Commit gebaut. `work` bleibt der Linux-Testzweig.
 
 Es gibt keinen `release: published`-Build mehr, der ein sichtbares Release mit noch fehlendem Image erzeugt. Updates akzeptieren nur vollständige Stable-Releases mit gültigem Fertigmanifest, Prüfsumme und übereinstimmender Quell-/Frontend-SHA. Rate-Limits, fehlende Assets oder GitHub-Ausfälle führen zu keiner Installation. Release-Assets liegen bei GitHub Releases, nicht als dauerhafte Actions-Artefakte.
 

@@ -39,6 +39,7 @@ export type CloudConfigStatus = {
 }
 export type UpdateStatus = {
   version?:string;available_version?:string|null;channel?:string;update_mode?:string;notes_url?:string|null;build_consistent?:boolean
+  check_status?: 'checked' | 'unavailable' | 'building'
   installed: boolean
   current: string | null
   deployed: string | null

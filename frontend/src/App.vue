@@ -10,6 +10,7 @@ import {
 import TimerEditor from './TimerEditor.vue'
 import CloudInsights from './CloudInsights.vue'
 import { useSharedTransport } from './composables/useSharedTransport'
+import { useUpdateStatus } from './composables/useUpdateStatus'
 import { useAdminSession } from './composables/useAdminSession'
 import AppHeader from './components/AppHeader.vue'
 import UpdatePanel from './components/UpdatePanel.vue'
@@ -77,7 +78,9 @@ const cloudKind = ref('')
 const cloudCodeSelected = ref<CloudRow | null>(null)
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
+const { status: updateStatus, version: installedVersion, loading: updateLoading, error: updateCheckError, checkedAt: updateCheckedAt, refresh: refreshUpdateStatus } = useUpdateStatus()
 const { signedIn, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
+watch(signedIn, (active) => { if (active) void refreshUpdateStatus() })
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
@@ -620,7 +623,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="app-shell">
     <SetupWizard @completed="checkAdminSession().then(() => { loginOpen = !signedIn })" />
-    <AppHeader v-model:username="username" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
+    <AppHeader :version="installedVersion" :update-available="updateStatus?.update_available" v-model:username="username" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
     <main>
@@ -867,7 +870,9 @@ onBeforeUnmount(() => {
         </section>
 
         <CloudInsights mode="device" :admin="adminAuthenticated&&secureAdminContext&&browserOnline" />
-        <UpdatePanel :admin="adminAuthenticated && browserOnline" :secure="secureAdminContext" />
+        <UpdatePanel :admin="adminAuthenticated && browserOnline" :secure="secureAdminContext"
+          :version="installedVersion" :update-info="updateStatus" :update-loading="updateLoading"
+          :check-error="updateCheckError" :checked-at="updateCheckedAt" @refresh="refreshUpdateStatus()" />
         <section class="settings-panel panel">
           <div class="section-head">
             <div><span class="section-caption">DIAGNOSE</span><h2>Verbindungsprotokoll</h2></div>
