@@ -103,7 +103,14 @@ jobs:
             sleep 2
           done
           docker exec foxair-web-smoke python -c "from backend.cloud_config import verify_admin; assert verify_admin('ci-smoke-password-only')"
-          docker inspect -f '{{.State.Health.Status}}' foxair-web-smoke
+          for i in $(seq 1 20); do
+            health="$(docker inspect -f '{{.State.Health.Status}}' foxair-web-smoke)"
+            if [[ "$health" == 'healthy' ]]; then break; fi
+            sleep 2
+          done
+          test "$health" = 'healthy' || { echo "Container not healthy: $health" >&2; exit 1; }
+          test "$(docker image inspect foxair-control-web:smoke --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}')" = "$(cat VERSION)"
+          test "$(docker image inspect foxair-control-web:smoke --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}')" = "$GITHUB_SHA"
 
       - name: Determine release tags
         if: github.event_name == 'release'
