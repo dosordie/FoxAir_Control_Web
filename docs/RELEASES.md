@@ -1,11 +1,18 @@
 # FoxAir Control Web – Releases aus main
 
 ## Festlegung
-- **`main` ist der einzige laufende Entwicklungs- und Stable-Zweig.** Kein separater Stable- oder Development-Branch, kein neuer Update-Kanal.
+- **`main` ist der Stable-/Release-Zweig.** Entwicklung und Integration dürfen auf separaten Zweigen wie **`work`** stattfinden; fertig getestete Änderungen werden nach `main` übernommen. Der produktive Update-Button bezieht ausschließlich GitHub-Releases von `main`.
 - Produktversion nach SemVer: Beginn mit **`0.1.0`**. Git-Tag und GitHub Release **`v0.1.0`**.
 - Linux/systemd, Docker/Portainer und künftig Windows-Webmodul tragen **dieselbe Web-Version** und dieselbe Release-Commit-SHA. `FoxAir_Control` Desktop bleibt eigenständig versioniert.
-- Änderungen gelangen weiter wie bisher in `main`; ein Release markiert einen **getesteten Commit von main**. Der Update-Button soll später nur die **neueste freigegebene Release-Version** installieren, nicht jeden dazwischenliegenden Commit.
+- Entwicklung über `work` (oder Feature-Branches), anschließend Review/Merge nach `main`; ein Release markiert einen **getesteten Commit von main**. Der Update-Button soll später nur die **neueste freigegebene Release-Version** installieren, nicht jeden dazwischenliegenden Commit.
 - Keine Tags/Release-Assets nachträglich austauschen. Fehlerkorrektur immer mit einer neuen Patch-Version.
+
+
+## Entwicklungs-/Test-VM auf `work`
+- Die Linux-Test-VM darf bewusst den Branch `work` auschecken und mit `git pull --ff-only origin work` aktualisieren. Das ist ein **separater manueller Entwicklungsworkflow**, kein produktiver Stable-Release und kein zweiter produktiver Release-Kanal.
+- Wichtig: **Ein Git-Pull aktualisiert zunächst nur den Quellcode**. Für die Vue-Oberfläche muss derselbe `work`-Commit gebaut bzw. ein passendes Frontend mit exakt übereinstimmender Commit-SHA bereitgestellt werden; ebenso müssen Python-Abhängigkeiten bei Änderungen aktualisiert und ggf. der Dienst neu gestartet werden.
+- Der bisherige `scripts/update.sh` verlangt ausdrücklich `main` und lädt `web-dist` mit einem `main`-SHA-Match. Er kann deshalb **nicht unverändert** für `work` verwendet werden. Work soll dafür einen klar abgegrenzten Test-VM-Ablauf schaffen (z. B. `scripts/update_dev.sh` oder manuelles `git pull` + lokaler Build), der weder `web-dist` noch produktive Release-Artefakte überschreibt.
+- Kein automatischer GHCR-`latest`-Push und keine GitHub-Releases aus `work`. Versions-/Buildanzeige auf der Test-VM: `0.1.0-dev+<shortsha>` bzw. Entwicklungsstand mit Commit, **nicht** behaupten, es sei das Release `0.1.0`.
 
 ## Bereits vorbereitet (ohne produktiven Updater-Umbau)
 - Die maschinenlesbare `VERSION` startet bei `0.1.0`; `scripts/check_release_version.py` vergleicht VERSION, FastAPI und Frontend (`package.json`, `package-lock.json`), optional den Tag.
@@ -29,7 +36,7 @@ python3 scripts/sync_registers.py --check
 Der Actions-Workflow `Release version check` kann zusätzlich über GitHub Actions manuell getestet werden. **Er erstellt keinen Tag und kein Release.**
 
 ## Verbleibende Work-Aufgaben (Issue #11)
-- Systemd-Updater `scripts/update.sh` auf releasegebundenen, gepinnten Quellcode/Frontend umstellen (bestehende Installation/State beibehalten).
+- Systemd-Updater `scripts/update.sh` für produktive Installationen auf releasegebundenen, gepinnten Quellcode/Frontend umstellen (bestehende Installation/State beibehalten). **Separaten manuellen `work`-Test-VM-Ablauf** mit zum Commit passendem Frontend vorsehen.
 - `backend/web_update.py`, `frontend/src/components/UpdatePanel.vue` und API-Version von SHA-Vergleich auf Release-Version/Status umstellen; SHA nur als technische Detailinformation.
 - Für Docker Updates nur anzeigen und Compose/Portainer-Hinweis; kein `systemctl` im Container.
 - Release-Assets und GHCR-Paket auf denselben Commit pinnen, Versionsmanifest/OCI-Labels sowie Release-Fertigstellung koordinieren.
