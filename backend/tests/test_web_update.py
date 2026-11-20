@@ -63,6 +63,24 @@ class WebUpdateTests(unittest.TestCase):
                 web_update.request_update()
             unit.assert_not_called()
 
+    def test_older_latest_release_is_not_an_upgrade(self):
+        with (
+            patch(
+                "backend.build_info.info",
+                return_value={
+                    "version": "0.2.0",
+                    "display_version": "0.2.0",
+                    "source_commit": "b" * 40,
+                    "build_channel": "release",
+                    "build_consistent": True,
+                },
+            ),
+            patch.object(web_update, "_status_unit", return_value={}),
+        ):
+            self.assertFalse(web_update.status()["update_available"])
+            with self.assertRaises(RuntimeError):
+                web_update.request_update()
+
     def test_request_creates_only_fixed_trigger_once(self):
         with TemporaryDirectory() as tmp:
             flag = Path(tmp) / "update-request"

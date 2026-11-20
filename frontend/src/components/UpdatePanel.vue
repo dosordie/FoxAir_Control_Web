@@ -31,7 +31,7 @@ async function submitGitUpdate() {
   try {
     await api.requestUpdate('')
     updateMessage.value =
-      'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert den passenden Git-Build. Die Web-App kann dabei kurz neu starten.'
+      'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert das vollständige freigegebene Release. Die Web-App kann dabei kurz neu starten.'
     // Do not claim an installation succeeded: completion is observed separately.
   } catch (e) {
     updateError.value = e instanceof Error ? e.message : 'Update-Anforderung fehlgeschlagen'
@@ -123,28 +123,14 @@ watch(
         </div>
       </div>
     </details>
-    <p v-if="updateInfo?.remote && updateInfo?.deployed === updateInfo.remote" class="success-text">
-      <strong>Release und Web-Build sind aktuell.</strong>
-    </p>
-    <p v-else-if="updateInfo?.remote && updateInfo?.deployed !== updateInfo.remote" class="notice">
-      <strong
-        >Neue Version verfügbar{{
-          updateInfo.build_ready ? ' – bereit zur Installation' : ' – Build läuft noch'
-        }}.</strong
-      >
-    </p>
-    <p v-if="updateInfo?.update_available" class="success-text">
-      Update erforderlich oder aktiver Web-Build ist noch nicht synchronisiert.
-    </p>
-    <p v-if="updateInfo?.remote && !updateInfo?.build_ready" class="section-hint">
-      GitHub Actions baut noch den passenden Web-Stand. Der Updateknopf ist bis zur Fertigstellung
-      gesperrt.
+    <p v-if="updateInfo?.update_available" class="notice">
+      <strong>Freigegebenes Release {{ updateInfo.available_version }} ist verfügbar.</strong>
     </p>
     <p
-      v-else-if="updateInfo?.remote && updateInfo?.current === updateInfo?.remote"
-      class="section-hint"
+      v-else-if="updateInfo?.available_version && updateInfo?.build_consistent"
+      class="success-text"
     >
-      Installierter Code entspricht dem verfügbaren Release-Commit.
+      <strong>Kein neueres freigegebenes Release verfügbar.</strong>
     </p>
     <p v-if="updateInfo?.update_mode === 'release' && !updateInfo?.installed" class="section-hint">
       Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code>
