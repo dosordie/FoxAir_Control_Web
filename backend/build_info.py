@@ -38,9 +38,11 @@ def validate(row):
 
 
 def git_value(*args):
+    # The service deliberately reads a root-owned checkout. Trust only this fixed
+    # application directory for read-only identity commands; never global wildcards.
     try:
         return subprocess.run(
-            ["git", "-C", str(ROOT), *args],
+            ["git", "-c", "safe.directory=" + str(ROOT), "-C", str(ROOT), *args],
             capture_output=True,
             text=True,
             timeout=2,
