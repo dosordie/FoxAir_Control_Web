@@ -1,11 +1,12 @@
-"""One-time GUI bootstrap, proven by a private per-installation setup code."""
+"""First administrator setup for direct LAN and code-protected installations."""
 
 import hmac
 import json
 import os
 import secrets
 import threading
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, Response, HTTPException
+from backend.lan_access import direct_http, enabled as lan_enabled, hostname
 from pydantic import BaseModel, Field
 from backend import cloud_config as config
 
@@ -24,12 +25,12 @@ def code_file():
 
 
 def pending():
-    return required() and code_file().exists()
+    return required() and (lan_enabled() or code_file().exists())
 
 
-def initialize():
+def initialize(*, force_code=False):
     with LOCK:
-        if not required():
+        if not required() or (lan_enabled() and not force_code):
             return
         config.STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
         try:
@@ -47,24 +48,27 @@ def initialize():
 
 
 class Complete(BaseModel):
-    code: str = Field(min_length=1, max_length=128)
+    code: str = Field(default="", max_length=128)
     password: str = Field(min_length=12, max_length=256)
 
 
 @router.get("/api/setup/status")
 def status(request: Request):
-    initialize()
-    from backend.lan_access import direct_http
-
+    if not direct_http(request):
+        initialize(force_code=True)
     return {
         "required": required(),
         "container": os.getenv("FOXAIR_CONTAINER") == "1",
         "lan_http": direct_http(request),
+        "code_required": not direct_http(request),
     }
 
 
 @router.post("/api/setup/complete")
-def complete(payload: Complete, request: Request):
+def complete(payload: Complete, request: Request, response: Response):
+    lan = direct_http(request)
+    if lan and not request.headers.get("origin"):
+        raise HTTPException(403, "Origin-Header fehlt")
     config.ensure_secure_origin(request)
     if request.headers.get("x-foxair-admin") != "1":
         raise HTTPException(403, "Anwendungs-Header fehlt")
@@ -76,14 +80,17 @@ def complete(payload: Complete, request: Request):
             raise HTTPException(
                 409, "Instanz bereits eingerichtet; bestehende Konten bleiben erhalten"
             )
-        expected = config._read_json(code_file()).get("code", "")
-        valid = bool(expected) and hmac.compare_digest(
-            expected.encode("utf-8"), payload.code.encode("utf-8")
-        )
-        config._admin_attempt_result(peer, valid)
-        if not valid or payload.password == payload.code:
-            raise HTTPException(403, "Einrichtungscode ungültig")
+        if not lan:
+            expected = config._read_json(code_file()).get("code", "")
+            valid = bool(expected) and hmac.compare_digest(
+                expected.encode("utf-8"), payload.code.encode("utf-8")
+            )
+            config._admin_attempt_result(peer, valid)
+            if not valid or payload.password == payload.code:
+                raise HTTPException(403, "Einrichtungscode ungültig")
         record = config.admin_record(payload.password)
+        if lan:
+            record["setup_lan_hostname"] = hostname(request.headers["host"])
         try:
             fd = os.open(
                 config.ADMIN_FILE,
@@ -97,11 +104,15 @@ def complete(payload: Complete, request: Request):
             handle.flush()
             os.fsync(handle.fileno())
         code_file().unlink(missing_ok=True)
-    return {"configured": True, "login_required": True}
+    if lan:
+        from backend.main import create_admin_session, set_admin_cookie
+
+        set_admin_cookie(response, create_admin_session(None), False)
+    return {"configured": True, "login_required": not lan}
 
 
 if __name__ == "__main__":
-    initialize()
+    initialize(force_code=True)
     if not required():
         raise SystemExit(
             "Bereits eingerichtet. Kein Passwort oder Benutzer wurde verändert."

@@ -619,7 +619,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <SetupWizard @completed="checkAdminSession().then(() => { loginOpen = true })" />
+    <SetupWizard @completed="checkAdminSession().then(() => { loginOpen = !signedIn })" />
     <AppHeader v-model:username="username" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 

@@ -4,8 +4,9 @@ set -euo pipefail
 export FOXAIR_PREVIEW_IMAGE="${1:?local image required}"
 compose=(docker compose -p foxair-lan-smoke -f compose.preview.yaml)
 address=192.168.253.1
-export FOXAIR_LAN_HOSTS=foxair-test.invalid
-sudo sed -i "\$a$address $FOXAIR_LAN_HOSTS" /etc/hosts
+host=foxair-test.invalid
+unset FOXAIR_LAN_HOSTS
+sudo sed -i "\$a$address $host" /etc/hosts
 sudo ip addr add "$address/32" dev lo
 cleanup() {
   "${compose[@]}" down --volumes
@@ -13,31 +14,38 @@ cleanup() {
 }
 trap cleanup EXIT
 "${compose[@]}" up -d --pull never
-base="http://$FOXAIR_LAN_HOSTS:18081"
-export NO_PROXY="${NO_PROXY:-},$FOXAIR_LAN_HOSTS,$address"
+base="http://$host:18081"
+export NO_PROXY="${NO_PROXY:-},$host,$address"
 curl -fsS --retry 10 --retry-connrefused --retry-delay 1 "http://$address:18081/api/health" >/dev/null
 curl -fsS "$base/api/health" >/dev/null
-if [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: example.invalid' "$base/")" != 403 ]]; then
-  echo "Foreign Host must be rejected" >&2
-  exit 1
-fi
-# Keep the test-only setup code in process memory.
-"${compose[@]}" exec -T foxair-web cat /var/lib/foxair-web/setup-code.json |
-  python -c '
-import http.cookiejar, json, sys, urllib.request
+python -c '
+import http.cookiejar, json, sys, urllib.error, urllib.request
 base = sys.argv[1]
-code = json.load(sys.stdin)["code"]
 browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-def call(path, data=None):
+def call(path, data=None, origin=None):
     request = urllib.request.Request(
         base + path, data=json.dumps(data).encode() if data is not None else None,
-        headers={"Origin": base, "Content-Type": "application/json", "X-FoxAir-Admin": "1"},
+        headers={"Origin": base if origin is None else origin, "Content-Type": "application/json", "X-FoxAir-Admin": "1"},
     )
     with browser.open(request, timeout=5) as response:
         return json.load(response)
-assert call("/api/setup/status")["lan_http"]
-assert call("/api/setup/complete", {"code": code, "password": "ci-preview-test-password"})["configured"]
-assert call("/api/admin/session")["lan_http"]
-assert call("/api/admin/login", {"admin_password": "ci-preview-test-password"})["authenticated"]
+status = call("/api/setup/status")
+assert status["required"] and status["lan_http"] and not status["code_required"]
+payload = {"password": "ci-preview-test-password"}
+try:
+    call("/api/setup/complete", payload, origin="http://other.invalid")
+except urllib.error.HTTPError as e:
+    assert e.code == 403
+else:
+    raise AssertionError("A foreign origin was accepted")
+result = call("/api/setup/complete", payload)
+assert result["configured"] and not result["login_required"]
+assert call("/api/admin/session")["authenticated"]
+call("/api/admin/logout", {})
+assert call("/api/admin/login", {"admin_password": payload["password"]})["authenticated"]
 assert call("/api/admin/session")["authenticated"]
 ' "$base"
+if [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: example.invalid' "http://$address:18081/")" != 403 ]]; then
+  echo "Foreign Host must be rejected after setup" >&2
+  exit 1
+fi

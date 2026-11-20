@@ -11,6 +11,7 @@ const secure = computed(
 )
 const required = ref(false),
   container = ref(false),
+  codeRequired = ref(true),
   code = ref(''),
   password = ref(''),
   repeat = ref(''),
@@ -31,6 +32,7 @@ onMounted(async () => {
       required.value = data.required
       container.value = data.container
       lanHttp.value = data.lan_http === true
+      codeRequired.value = data.code_required !== false
     }
   } catch {
     /* Server errors remain visible in the main application. */
@@ -76,10 +78,12 @@ async function complete() {
     >
       <h1 id="setup-title">FoxAir zum ersten Mal einrichten</h1>
       <p>
-        Lege dein Administrationspasswort fest. Den einmaligen Einrichtungscode erhältst du direkt
-        auf deinem Server.
+        Lege dein Administrationspasswort fest.
+        <template v-if="codeRequired">
+          Den einmaligen Einrichtungscode erhältst du auf dem Server.</template
+        >
       </p>
-      <code>{{
+      <code v-if="codeRequired">{{
         container
           ? 'docker compose exec foxair-web python -m backend.setup'
           : 'cd /opt/foxair-web/app && sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup'
@@ -95,7 +99,7 @@ async function complete() {
       </p>
       <form @submit.prevent="complete">
         <fieldset :disabled="!secure || busy">
-          <label
+          <label v-if="codeRequired"
             >Einrichtungscode<input
               class="settings-input"
               v-model="code"
