@@ -1,4 +1,4 @@
-"""Direct private IPv4 access for the Docker LAN configuration."""
+"""Direct LAN access for the Docker LAN configuration."""
 
 from ipaddress import IPv4Address, IPv4Network
 import os
@@ -35,9 +35,17 @@ def allowed(peer, host):
         target = authority.hostname
     except ValueError:
         return False
+    configured_hosts = {
+        name.strip().lower().rstrip(".")
+        for name in os.getenv("FOXAIR_LAN_HOSTS", "").split(",")
+        if name.strip()
+    }
+    target_allowed = private_ipv4(target) or (
+        target is not None and target.rstrip(".") in configured_hosts
+    )
     if peer in LOOPBACK_NAMES:
-        return target in LOOPBACK_NAMES or private_ipv4(target)
-    return private_ipv4(peer) and private_ipv4(target)
+        return target in LOOPBACK_NAMES or target_allowed
+    return private_ipv4(peer) and target_allowed
 
 
 def direct_http(request):

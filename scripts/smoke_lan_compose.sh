@@ -4,6 +4,8 @@ set -euo pipefail
 export FOXAIR_PREVIEW_IMAGE="${1:?local image required}"
 compose=(docker compose -p foxair-lan-smoke -f compose.preview.yaml)
 address=192.168.253.1
+export FOXAIR_LAN_HOSTS=foxair-test.invalid
+sudo sed -i "\$a$address $FOXAIR_LAN_HOSTS" /etc/hosts
 sudo ip addr add "$address/32" dev lo
 cleanup() {
   "${compose[@]}" down --volumes
@@ -11,8 +13,10 @@ cleanup() {
 }
 trap cleanup EXIT
 "${compose[@]}" up -d --pull never
-base="http://$address:18081"
-curl -fsS --retry 10 --retry-connrefused --retry-delay 1 "$base/api/health" >/dev/null
+base="http://$FOXAIR_LAN_HOSTS:18081"
+export NO_PROXY="${NO_PROXY:-},$FOXAIR_LAN_HOSTS,$address"
+curl -fsS --retry 10 --retry-connrefused --retry-delay 1 "http://$address:18081/api/health" >/dev/null
+curl -fsS "$base/api/health" >/dev/null
 if [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: example.invalid' "$base/")" != 403 ]]; then
   echo "Foreign Host must be rejected" >&2
   exit 1

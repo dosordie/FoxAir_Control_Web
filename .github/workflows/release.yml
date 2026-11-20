@@ -135,7 +135,7 @@ jobs:
           docker_cfg="$(mktemp -d)"
           DOCKER_CONFIG="$docker_cfg" docker pull "$registry"
           test "$(docker image inspect "$registry" --format '{{.Id}}')" = "$id"
-          sed "s|ghcr.io/dosordie/foxair-control-web:0.1.1-preview|$registry|" compose.preview.yaml > release-assets/compose.yaml
+          sed -E "s|ghcr.io/dosordie/foxair-control-web:[0-9.]+-preview|$registry|" compose.preview.yaml > release-assets/compose.yaml
           (cd release-assets && sha256sum -c SHA256SUMS)
           stage="$(mktemp -d)"
           tar -xzf "release-assets/foxair-web-${VERSION}.tar.gz" -C "$stage"

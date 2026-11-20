@@ -25,7 +25,8 @@ class TCPPeerApp:
                 scope["foxair.tcp_peer"], hosts[0]
             ):
                 await PlainTextResponse(
-                    "FoxAir: private LAN IPv4 address required", status_code=403
+                    "FoxAir: use the private LAN IP or configure the hostname in FOXAIR_LAN_HOSTS",
+                    status_code=403,
                 )(scope, receive, send)
                 return
         await self.application(scope, receive, send)

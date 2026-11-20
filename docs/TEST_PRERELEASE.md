@@ -1,4 +1,4 @@
-# FoxAir Control Web v0.1.1 · Vorabversion
+# FoxAir Control Web v0.1.2 · Vorabversion
 
 Für einen Test auf einem separaten Rechner oder in einer Test-VM. Docker (Linux amd64)
 und das Linux-Paket enthalten denselben Quellstand und dasselbe gebaute Frontend.
@@ -7,7 +7,7 @@ Für Docker genügt eine Docker-Installation auf einem Linux-amd64-Host.
 
 ## Dateien herunterladen und prüfen
 
-Die Archive und `SHA256SUMS` liegen unter [Assets](https://github.com/dosordie/FoxAir_Control_Web/releases/tag/v0.1.1).
+Die Archive und `SHA256SUMS` liegen unter [Assets](https://github.com/dosordie/FoxAir_Control_Web/releases/tag/v0.1.2).
 Die Befehle im Downloadverzeichnis ausführen. Einzelne Archive können separat geprüft werden.
 
 ```bash
@@ -16,7 +16,7 @@ sha256sum --ignore-missing -c SHA256SUMS
 
 ## Docker im LAN
 
-Die [compose.yaml](https://github.com/dosordie/FoxAir_Control_Web/releases/download/v0.1.1/compose.yaml)
+Die [compose.yaml](https://github.com/dosordie/FoxAir_Control_Web/releases/download/v0.1.2/compose.yaml)
 in denselben Testordner wie bisher herunterladen. Compose verwendet das vorhandene
 Testvolume weiter.
 
@@ -29,11 +29,11 @@ docker compose exec foxair-web python -m backend.setup
 Auf PC oder iPhone `http://<LAN-IP-des-Docker-Hosts>:18081` öffnen. Bei der ersten
 Einrichtung den Einmalcode und ein neues Admin-Passwort eingeben. Das direkte
 LAN-Setup verwendet unverschlüsseltes HTTP. Verwende es im vertrauenswürdigen
-privaten IPv4-Netz. Für externen Zugriff HTTPS mit der regulären Compose-Konfiguration
+privaten IPv4-Netz. Für einen eigenen DNS-Namen in der Datei `.env` neben der Compose-Datei beispielsweise `FOXAIR_LAN_HOSTS=foxair.home.arpa` setzen. Mehrere Namen mit Kommas trennen. Verwende nur Namen, deren DNS-Zuordnung du kontrollierst. Für externen Zugriff HTTPS mit der regulären Compose-Konfiguration
 verwenden.
 
-Alternativ das Docker-Archiv mit `docker load -i foxair-web-docker-0.1.1-amd64.tar.gz`
-importieren und Compose mit `FOXAIR_PREVIEW_IMAGE=foxair-web:0.1.1-preview docker compose up -d --pull never`
+Alternativ das Docker-Archiv mit `docker load -i foxair-web-docker-0.1.2-amd64.tar.gz`
+importieren und Compose mit `FOXAIR_PREVIEW_IMAGE=foxair-web:0.1.2-preview docker compose up -d --pull never`
 starten.
 
 ## Linux ohne Docker
@@ -43,7 +43,7 @@ der bestehende systemd-Dienst unberührt.
 
 ```bash
 mkdir foxair-preview-linux
-tar -xzf foxair-web-0.1.1.tar.gz -C foxair-preview-linux
+tar -xzf foxair-web-0.1.2.tar.gz -C foxair-preview-linux
 cd foxair-preview-linux
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r backend/requirements.txt
