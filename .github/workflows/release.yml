@@ -1,4 +1,4 @@
-name: Approved immutable stable release
+name: Approved FoxAir release
 # Preparation only. Never triggered by push or release publication.
 on:
   workflow_dispatch:
@@ -8,7 +8,11 @@ on:
         required: true
         default: v0.1.0
       approved:
-        description: Explicit approval to publish the stable release and GHCR image
+        description: Explicit approval to publish release assets
+        type: boolean
+        default: false
+      prerelease:
+        description: Publish a GitHub prerelease with Linux and Docker downloads
         type: boolean
         default: false
 permissions:
@@ -44,7 +48,9 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/check_release_version.py --tag "$TAG"
-          python -c "from backend.releases import assert_new_stable; from backend.build_info import product_version; assert_new_stable(product_version())"
+          if [[ "${{ inputs.prerelease }}" != true ]]; then
+            python -c "from backend.releases import assert_new_stable; from backend.build_info import product_version; assert_new_stable(product_version())"
+          fi
           test "$(git show origin/main:VERSION)" = "$(cat VERSION)"
           git merge-base --is-ancestor HEAD origin/main
           test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$(git rev-parse HEAD)"
@@ -85,7 +91,7 @@ jobs:
           npm run format:check --prefix frontend
           npm test --prefix frontend
           npm run build --prefix frontend
-          python scripts/build_manifest.py --source "$SOURCE_SHA" --channel release
+          python scripts/build_manifest.py --source "$SOURCE_SHA" --channel "${{ inputs.prerelease && 'prerelease' || 'release' }}"
       - name: Build and test the identical container
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
@@ -94,12 +100,49 @@ jobs:
         run: |
           docker build --build-arg FOXAIR_VERSION="$(cat VERSION)" --target runtime-prebuilt --build-arg FOXAIR_SOURCE_SHA="$SOURCE_SHA" --label org.opencontainers.image.version="$VERSION" --label org.opencontainers.image.revision="$SOURCE_SHA" --label org.opencontainers.image.source=https://github.com/dosordie/FoxAir_Control_Web -t foxair-web:release .
           bash scripts/smoke_docker.sh foxair-web:release
+      - name: Package and publish prerelease downloads
+        if: inputs.prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.source.outputs.tag }}
+          VERSION: ${{ steps.source.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          image="foxair-web:${VERSION}-preview"
+          mkdir -p release-assets
+          docker tag foxair-web:release "$image"
+          id="$(docker image inspect "$image" --format '{{.Id}}')"
+          docker save "$image" | gzip -1 > "release-assets/foxair-web-docker-${VERSION}-amd64.tar.gz"
+          docker image rm "$image" foxair-web:release
+          docker load -i "release-assets/foxair-web-docker-${VERSION}-amd64.tar.gz"
+          test "$(docker image inspect "$image" --format '{{.Id}}')" = "$id"
+          python scripts/package_release.py --image-id "$id"
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          stage="$(mktemp -d)"
+          tar -xzf "release-assets/foxair-web-${VERSION}.tar.gz" -C "$stage"
+          (
+            cd "$stage"
+            export FOXAIR_STATE_DIR="$stage/test-state"
+            python -m backend.server --host 127.0.0.1 --port 18082 > "$stage/server.log" 2>&1 &
+            pid=$!
+            trap 'kill "$pid" 2>/dev/null || true' EXIT
+            curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
+              http://127.0.0.1:18082/api/health > health.json
+            python -c 'import json, os; h=json.load(open("health.json")); b=h["build"]; assert h["ok"] and b["build_consistent"] and b["build_channel"]=="prerelease" and b["source_commit"]==os.environ["SOURCE_SHA"]'
+          )
+          gh release create "$TAG" --verify-tag --draft --prerelease --latest=false \
+            --title "FoxAir Control Web $TAG (Pre-release)" \
+            --notes-file docs/TEST_PRERELEASE.md release-assets/*
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
       - uses: docker/login-action@v3
+        if: ${{ !inputs.prerelease }}
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Publish immutable version image and complete draft assets
+        if: ${{ !inputs.prerelease }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.source.outputs.tag }}
@@ -118,6 +161,7 @@ jobs:
           python scripts/package_release.py --digest "$digest"
           gh release create "$TAG" --verify-tag --draft --title "FoxAir Control Web $TAG" --generate-notes release-assets/*
   publish:
+    if: ${{ !inputs.prerelease }}
     needs: prepare
     runs-on: ubuntu-latest
     permissions:

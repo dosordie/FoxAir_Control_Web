@@ -40,7 +40,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default=git_value("rev-parse", "HEAD"))
     parser.add_argument(
-        "--channel", choices=("work", "release", "preview"), required=True
+        "--channel", choices=("work", "release", "preview", "prerelease"), required=True
     )
     args = parser.parse_args()
     build(args.source, args.channel)

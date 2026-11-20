@@ -32,7 +32,7 @@ def validate(row):
         raise ValueError("Frontend/backend source mismatch")
     if not SHA.fullmatch(str(row.get("upstream_register_commit", ""))) or row.get(
         "build_channel"
-    ) not in ("work", "release", "preview"):
+    ) not in ("work", "release", "preview", "prerelease"):
         raise ValueError("Invalid build identity")
     return row
 
@@ -75,7 +75,9 @@ def info():
         version = (
             row["version"]
             if row["build_channel"] == "release"
-            else row["version"] + "-dev+" + row["source_commit"][:10]
+            else row["version"]
+            + ("-pre+" if row["build_channel"] == "prerelease" else "-dev+")
+            + row["source_commit"][:10]
         )
         return {**row, "display_version": version, "build_consistent": consistent}
     except (OSError, ValueError, TypeError):
