@@ -9,7 +9,7 @@ if [[ "$ROOT" != /opt/foxair-web/app ]]; then
   exit 1
 fi
 if [[ ! -s "$ROOT/frontend/dist/index.html" || ! -x /opt/foxair-web/venv/bin/python ]]; then
-  echo "Zuerst bash scripts/update.sh ausführen (Frontend und venv erforderlich)." >&2
+  echo "Zuerst passenden Work-Build bzw. freigegebenes Release und venv bereitstellen." >&2
   exit 1
 fi
 if ! id -u foxair-web >/dev/null 2>&1; then
@@ -31,6 +31,8 @@ User=foxair-web
 Group=foxair-web
 WorkingDirectory=/opt/foxair-web/app
 Environment=PYTHONDONTWRITEBYTECODE=1
+StateDirectory=foxair-web
+StateDirectoryMode=0700
 ExecStart=/opt/foxair-web/venv/bin/python -m backend.server --host 127.0.0.1 --port 8081
 Restart=on-failure
 RestartSec=5

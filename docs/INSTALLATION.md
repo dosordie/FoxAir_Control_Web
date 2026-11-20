@@ -8,11 +8,11 @@
 
 Ein Linux-Server oder Container mit **systemd**, Git, Python 3 und Virtualenv-Unterstützung, Internetzugriff sowie sudo-/Root-Zugriff für die Einrichtung. Die CI prüft mit Python 3.12. **Node.js wird auf dem Server nicht benötigt.**
 
-Die Skripte erwarten `/opt/foxair-web/app` als Installationspfad. Andere Pfade erfordern angepasste Dienstdateien und Hilfsskripte. Bei einer bestehenden Installation direkt zu [Updates](#updates) wechseln und das vorhandene Administratorpasswort beibehalten.
+Die Skripte erwarten `/opt/foxair-web/app` als Installationspfad. Andere Pfade erfordern angepasste Dienstdateien und Hilfsskripte. Bei einer bestehenden Installation zuerst [Updates](#updates) und [Release-Migration](RELEASES.md) lesen; vorhandene Konten und Konfigurationen erhalten.
 
-Vor dem ersten Aufruf von `update.sh` muss der Build für den aktuellen `main`-Commit auf der [Actions-Seite](https://github.com/dosordie/FoxAir_Control_Web/actions) erfolgreich abgeschlossen sein. Das fertige Frontend liegt dann im Branch `web-dist`.
+**Aktueller Entwicklungsstand:** `work` ist für die Test-VM vorgesehen, `main` bleibt Stable. Noch kein `v0.1.0` veröffentlicht. Vor Work-Updates den erfolgreichen Build auf der [Actions-Seite](https://github.com/dosordie/FoxAir_Control_Web/actions) abwarten; das passende Frontend liegt in `web-dist-work`.
 
-## 1. Installieren
+## 1. Frische Linux-Testinstallation auf work
 
 Auf Debian/Ubuntu:
 
@@ -20,15 +20,15 @@ Auf Debian/Ubuntu:
 sudo apt update
 sudo apt install -y git python3 python3-venv python3-pip ca-certificates curl
 sudo install -d /opt/foxair-web
-sudo git clone --branch main https://github.com/dosordie/FoxAir_Control_Web.git /opt/foxair-web/app
+sudo git clone --branch work https://github.com/dosordie/FoxAir_Control_Web.git /opt/foxair-web/app
 sudo python3 -m venv /opt/foxair-web/venv
 cd /opt/foxair-web/app
-sudo bash scripts/update.sh
+sudo bash scripts/update-work.sh
 sudo bash scripts/install_service.sh
 sudo systemctl enable foxair-web.service
 ```
 
-Das Update-Skript installiert Python-Pakete in die eigene Umgebung und übernimmt das passende Frontend. Der Dienst läuft unter `foxair-web` und lauscht zunächst **nur auf `127.0.0.1:8081`**.
+Der Work-Helfer installiert Python-Pakete in die eigene Umgebung und übernimmt das passende Frontend. Der Dienst läuft unter `foxair-web` und lauscht zunächst **nur auf `127.0.0.1:8081`**.
 
 Kontrolle:
 
@@ -39,14 +39,24 @@ sudo systemctl status foxair-web.service --no-pager
 
 Die Gesundheitsprüfung sollte unter anderem `"ok": true` zurückgeben.
 
-## 2. Administratorpasswort einrichten
+## 2. Sichere GUI-Ersteinrichtung
+
+Der neue Dienst erhält ein eigenes privates State-Verzeichnis. Bei bestehenden Units
+und deren Konfiguration wird nichts überschrieben. Frische Instanzen erzeugen einen
+zufälligen einmaligen Einrichtungscode; den Code auf dem Server abrufen:
 
 ```bash
 cd /opt/foxair-web/app
-sudo /opt/foxair-web/venv/bin/python scripts/setup_web_admin.py
+sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup
 ```
 
-Das Skript fragt das Passwort zweimal interaktiv ab; mindestens zwölf Zeichen sind erforderlich. Es speichert den Passwort-Hash im privaten Verzeichnis `/var/lib/foxair-web` und erlaubt dem Dienst dort gezielt Schreibzugriff.
+Bei abweichendem `FOXAIR_STATE_DIR` dieselbe Umgebung wie der Dienst verwenden.
+Code anschließend über HTTPS oder den lokalen SSH-Tunnel zusammen mit einem neuen,
+mindestens zwölf Zeichen langen Passwort in der Ersteinrichtungs-GUI eingeben.
+Bis dahin sind die übrigen APIs blockiert. Der Code wird danach ungültig; normal als
+`admin` anmelden. Bestehende Konten und Sitzungen werden nicht zurückgesetzt.
+Lokale administrative Passwort-Recovery ist ein separater bewusster Vorgang;
+keine State-Dateien pauschal löschen.
 
 ## 3. Oberfläche öffnen
 
@@ -85,23 +95,36 @@ Standard- und Display-Modbus lassen sich ebenfalls unter **Verbindungseinstellun
 
 ## Updates
 
-Den erfolgreichen Build des aktuellen `main`-Commits auf der [Actions-Seite](https://github.com/dosordie/FoxAir_Control_Web/actions) abwarten. Danach auf dem Server:
+**Test-VM auf work:** Nach grünem Build im bestehenden Checkout als root:
 
 ```bash
 cd /opt/foxair-web/app
-sudo bash scripts/update.sh
+sudo bash scripts/update-work.sh
 ```
 
-Das Skript gleicht Quellcode und Frontend-Commit ab und startet den laufenden FoxAir-Dienst neu. Es überschreibt keine lokalen Quellcodeänderungen. Private Einstellungen bleiben erhalten. Bei **„CI-Build … noch nicht veröffentlicht“** den fertigen Build abwarten und erneut versuchen.
+Der Helfer prüft den Quell-/Frontend-SHA-Abgleich vor der Installation und aktualisiert
+Code, venv und Build zusammen. Ein eigenes `git pull --ff-only origin work` bleibt
+möglich, aktualisiert aber allein kein Frontend: danach denselben Helfer vor dem
+Dienstneustart ausführen. Bei noch fehlendem CI-Build später erneut versuchen.
+Scheitert die Installation nach dem Anhalten, Ursache beheben und den Dienst nach
+erfolgreicher Wiederholung bewusst starten. Private Einstellungen bleiben erhalten.
 
-Optional den Updateknopf für Administratoren in der Oberfläche einrichten:
+**Bestehende produktive Installation:** Nicht einfach main in die laufende Installation
+ziehen. Erst die gesicherte [Erst-Migration mit Rollback](RELEASES.md) prüfen und
+freigeben. Der neue `scripts/update.sh`-Pfad verwendet nur vollständige Stable-Releases.
+Noch kein Produktivupdate oder Release wurde durch diese Vorbereitung ausgeführt.
 
-```bash
-cd /opt/foxair-web/app
-sudo bash scripts/install_web_update.sh
-```
+**Frische Stable-Installation nach Releasefreigabe:** Den freigegebenen Tag separat
+bereitstellen und `scripts/install_release.py` als root mit Python 3.12 ausführen.
+Der Installer legt `/opt/foxair-web/app` und die passende venv aus dem fertigen Release
+an. Danach über diesen App-Pfad `scripts/install_service.sh` aufrufen und die obige
+GUI-Ersteinrichtung durchführen. Vor der Veröffentlichung von v0.1.0 ist dieser Weg
+absichtlich noch nicht nutzbar.
 
-Der Checkout muss dafür root gehören und darf nicht durch den Webdienst oder andere Benutzer beschreibbar sein.
+Der optionale GUI-Updateknopf lässt sich nach der Release-Migration mit
+`sudo bash /opt/foxair-web/app/scripts/install_web_update.sh` einrichten. Code und
+venv müssen root gehören und dürfen nicht durch den Webdienst beschreibbar sein.
+Auf work wird dieser Produktions-Updateknopf nicht angeboten.
 
 ## Hilfe bei Problemen
 
@@ -140,10 +163,3 @@ npm run dev
 ```
 
 Die Entwicklungsversion unter `http://127.0.0.1:5173/` öffnen. Vite leitet API-Anfragen an das lokale Backend weiter.
-
-
-## Work-Teststand und künftige Release-Migration
-
-main ist der Stable-/Release-Zweig; work ist die Linux-Test-VM. Der Test-Helfer scripts/update-work.sh verbindet einen Fast-Forward von work mit dem exakt passenden web-dist-work-Frontend. Der produktive scripts/update.sh-Pfad ist in work auf geprüfte vollständige Stable-Releases vorbereitet und zieht nicht mehr laufend main. **Noch kein v0.1.0-Release und keine automatische Migration der bestehenden Installation.** Siehe [RELEASES.md](RELEASES.md), insbesondere Sicherung, Erst-Migration und Rollback.
-
-Frische Installationen erhalten eine sichere GUI-Ersteinrichtung. Im App-Verzeichnis den einmaligen Code mit derselben Service-Umgebung über die FoxAir-venv und python -m backend.setup lokal abrufen; Passwort in der HTTPS-GUI selbst festlegen. Bestehende Admin-Konten, Benutzer, Sessions und Konfigurationen bleiben bestehen. Einrichtung und produktive Updates sind separate Vorgänge.
