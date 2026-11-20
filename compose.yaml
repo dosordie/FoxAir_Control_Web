@@ -1,10 +1,10 @@
-# Example deployment; image is published to GHCR only after the first approved release.
+# Example deployment for the rolling Docker image. Set FOXAIR_IMAGE to pin a version.
 # The default loopback binding is for a reverse proxy running on the SAME Docker host.
 # Set FOXAIR_BIND_IP to the host's private LAN IP for a remote reverse proxy;
 # restrict access using a firewall and serve authenticated HTTPS externally.
 services:
   foxair-web:
-    image: ${FOXAIR_IMAGE:-ghcr.io/dosordie/foxair-control-web:0.1.0}
+    image: ${FOXAIR_IMAGE:-ghcr.io/dosordie/foxair-control-web:latest}
     container_name: foxair-web
     restart: unless-stopped
     init: true

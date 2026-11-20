@@ -1,0 +1,42 @@
+name: Initialize Docker latest
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: foxair-stable-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/dosordie/foxair-control-web
+      DIGEST: sha256:26b07319212b3173d6bfe04a7b41a854333c16f40f3d9f04b5cbedd02f46bac3
+      SOURCE_SHA: 00aebe45796694c4e831e79299056d03330c383d
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Verify existing v0.1.3 image and initialize latest
+        run: |
+          set -euo pipefail
+          source="$IMAGE@$DIGEST"
+          docker pull --platform linux/amd64 "$source"
+          test "$(docker image inspect "$source" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$SOURCE_SHA"
+          test "$(docker image inspect "$source" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = 0.1.3
+          if docker buildx imagetools inspect "$IMAGE:latest" --raw > current.json 2> lookup-error.log; then
+            test "sha256:$(sha256sum current.json | cut -d' ' -f1)" = "$DIGEST"
+          else
+            if ! grep -Eqi 'manifest unknown|not found' lookup-error.log; then
+              cat lookup-error.log >&2
+              exit 1
+            fi
+            docker buildx imagetools create --tag "$IMAGE:latest" "$source"
+          fi
+          anonymous="$(mktemp -d)"
+          DOCKER_CONFIG="$anonymous" docker pull --platform linux/amd64 "$IMAGE:latest"
+          test "$(docker image inspect "$IMAGE:latest" --format '{{.Id}}')" = "$(docker image inspect "$source" --format '{{.Id}}')"
