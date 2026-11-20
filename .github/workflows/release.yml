@@ -100,6 +100,7 @@ jobs:
         run: |
           docker build --build-arg FOXAIR_VERSION="$(cat VERSION)" --target runtime-prebuilt --build-arg FOXAIR_SOURCE_SHA="$SOURCE_SHA" --label org.opencontainers.image.version="$VERSION" --label org.opencontainers.image.revision="$SOURCE_SHA" --label org.opencontainers.image.source=https://github.com/dosordie/FoxAir_Control_Web -t foxair-web:release .
           bash scripts/smoke_docker.sh foxair-web:release
+          bash scripts/smoke_lan_compose.sh foxair-web:release
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -122,7 +123,6 @@ jobs:
           docker image rm "$image" foxair-web:release
           docker load -i "release-assets/foxair-web-docker-${VERSION}-amd64.tar.gz"
           test "$(docker image inspect "$image" --format '{{.Id}}')" = "$id"
-          bash scripts/smoke_lan_compose.sh "$image"
           python scripts/package_release.py --image-id "$id"
           registry="ghcr.io/dosordie/foxair-control-web:${VERSION}-preview"
           docker tag "$image" "$registry"
@@ -216,5 +216,7 @@ jobs:
           set -euo pipefail
           digest="$(python -c "import json; print(json.load(open('/tmp/foxair-release/release-ready.json'))['image_digest'])")"
           image=ghcr.io/dosordie/foxair-control-web
-          docker tag "$image@$digest" "$image:latest"
-          docker push "$image:latest"
+          docker buildx imagetools create --tag "$image:latest" "$image@$digest"
+          anonymous="$(mktemp -d)"
+          DOCKER_CONFIG="$anonymous" docker pull "$image:latest"
+          test "$(docker image inspect "$image:latest" --format '{{.Id}}')" = "$(docker image inspect "$image@$digest" --format '{{.Id}}')"
