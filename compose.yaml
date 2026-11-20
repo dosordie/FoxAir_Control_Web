@@ -1,0 +1,25 @@
+# Example deployment; image is published to GHCR only after the first approved release.
+# The default loopback binding is for a reverse proxy running on the SAME Docker host.
+# Set FOXAIR_BIND_IP to the host's private LAN IP for a remote reverse proxy;
+# restrict access using a firewall and serve authenticated HTTPS externally.
+services:
+  foxair-web:
+    image: ${FOXAIR_IMAGE:-ghcr.io/dosordie/foxair-control-web:latest}
+    container_name: foxair-web
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${FOXAIR_BIND_IP:-127.0.0.1}:${FOXAIR_HTTP_PORT:-8081}:8081"
+    environment:
+      FOXAIR_STATE_DIR: /var/lib/foxair-web
+    volumes:
+      - foxair-web-state:/var/lib/foxair-web
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    stop_grace_period: 20s
+
+volumes:
+  foxair-web-state:
