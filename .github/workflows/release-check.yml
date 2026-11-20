@@ -1,0 +1,40 @@
+name: Release version check
+
+on:
+  pull_request:
+    paths:
+      - VERSION
+      - frontend/package.json
+      - frontend/package-lock.json
+      - backend/main.py
+      - scripts/check_release_version.py
+      - .github/workflows/release-check.yml
+      - docs/RELEASES.md
+  push:
+    branches: [main]
+    paths:
+      - VERSION
+      - frontend/package.json
+      - frontend/package-lock.json
+      - backend/main.py
+      - scripts/check_release_version.py
+      - .github/workflows/release-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify FoxAir Web version consistency
+        run: python scripts/check_release_version.py
+      - name: Validate initial release tag (without publishing)
+        run: python scripts/check_release_version.py --tag "v$(cat VERSION)"
