@@ -152,7 +152,8 @@ def ensure_secure_origin(request: "Request") -> bool:
     trusted = {x.strip() for x in os.environ.get("FOXAIR_TRUSTED_PROXY_IPS", "").split(",") if x.strip()}
     via_proxy_https = (peer in trusted and
                        request.headers.get("x-forwarded-proto", "").lower() == "https")
-    secure = (request.url.scheme == "https" or peer in ("127.0.0.1", "::1") or via_proxy_https)
+    from backend.lan_access import direct_http
+    secure = direct_http(request) or (request.url.scheme == "https" or peer in ("127.0.0.1", "::1") or via_proxy_https)
     if not secure:
         raise HTTPException(status_code=403, detail="Administration nur über HTTPS oder SSH-Tunnel (Loopback)")
     host = request.headers.get("host", "")

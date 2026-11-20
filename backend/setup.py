@@ -52,9 +52,15 @@ class Complete(BaseModel):
 
 
 @router.get("/api/setup/status")
-def status():
+def status(request: Request):
     initialize()
-    return {"required": required(), "container": os.getenv("FOXAIR_CONTAINER") == "1"}
+    from backend.lan_access import direct_http
+
+    return {
+        "required": required(),
+        "container": os.getenv("FOXAIR_CONTAINER") == "1",
+        "lan_http": direct_http(request),
+    }
 
 
 @router.post("/api/setup/complete")

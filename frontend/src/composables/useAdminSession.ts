@@ -1,13 +1,17 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { api } from '../api'
 
 export function useAdminSession(
   onLogin: () => Promise<unknown> = async () => {},
   onLogout: () => void = () => {},
 ) {
-  const secureAdminContext =
-    window.location.protocol === 'https:' ||
-    ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+  const lanHttp = ref(false)
+  const secureAdminContext = computed(
+    () =>
+      lanHttp.value ||
+      window.location.protocol === 'https:' ||
+      ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname),
+  )
   const signedIn = ref(false)
   const username = ref('admin')
   const role = ref('reader')
@@ -37,6 +41,7 @@ export function useAdminSession(
         canOperate.value = result.authenticated && result.role !== 'reader'
         adminAuthenticated.value = result.authenticated && result.role === 'admin'
         ssoAvailable.value = result.sso_available === true
+        lanHttp.value = result.lan_http === true
       }
     } catch {
       if (!disposed) clearAuthorization()
@@ -44,7 +49,7 @@ export function useAdminSession(
   }
 
   async function loginAsAdmin() {
-    if (!secureAdminContext || !cloudAdminPassword.value || adminBusy.value) return
+    if (!secureAdminContext.value || !cloudAdminPassword.value || adminBusy.value) return
     adminBusy.value = true
     adminLoginError.value = ''
     try {
@@ -68,7 +73,7 @@ export function useAdminSession(
   }
 
   async function loginWithSso() {
-    if (!secureAdminContext || adminBusy.value || !ssoAvailable.value) return
+    if (!secureAdminContext.value || adminBusy.value || !ssoAvailable.value) return
     adminBusy.value = true
     adminLoginError.value = ''
     try {

@@ -3,6 +3,8 @@
 import argparse
 import uvicorn
 from backend.main import app
+from backend import lan_access
+from starlette.responses import PlainTextResponse
 
 
 class TCPPeerApp:
@@ -13,6 +15,19 @@ class TCPPeerApp:
         scope = dict(scope)
         if scope["type"] in ("http", "websocket"):
             scope["foxair.tcp_peer"] = (scope.get("client") or (None,))[0]
+        if scope["type"] == "http" and lan_access.enabled():
+            hosts = [
+                value.decode("latin-1")
+                for key, value in scope["headers"]
+                if key == b"host"
+            ]
+            if len(hosts) != 1 or not lan_access.allowed(
+                scope["foxair.tcp_peer"], hosts[0]
+            ):
+                await PlainTextResponse(
+                    "FoxAir: private LAN IPv4 address required", status_code=403
+                )(scope, receive, send)
+                return
         await self.application(scope, receive, send)
 
 

@@ -171,7 +171,8 @@ def admin_session_state(request: Request, response: Response):
         authenticated = True
         from backend.users import account
         user = {"username": identity.account, "role": account(identity.account)["role"]}
-    return {"authenticated": authenticated, "role": user["role"] if user else "reader",
+    from backend.lan_access import direct_http
+    return {"authenticated": authenticated, "lan_http": direct_http(request), "role": user["role"] if user else "reader",
             "username": user["username"] if user else None, "sso_available": identity is not None}
 
 

@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick } from 'vue'
+import { computed, onMounted, ref, watch, nextTick } from 'vue'
 const emit = defineEmits<{ completed: [] }>()
 const modal = ref<HTMLDialogElement | null>(null)
-const secure =
-  window.location.protocol === 'https:' ||
-  ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+const lanHttp = ref(false)
+const secure = computed(
+  () =>
+    lanHttp.value ||
+    window.location.protocol === 'https:' ||
+    ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname),
+)
 const required = ref(false),
   container = ref(false),
   code = ref(''),
@@ -26,6 +30,7 @@ onMounted(async () => {
       const data = await response.json()
       required.value = data.required
       container.value = data.container
+      lanHttp.value = data.lan_http === true
     }
   } catch {
     /* Server errors remain visible in the main application. */
@@ -80,7 +85,10 @@ async function complete() {
           : 'cd /opt/foxair-web/app && sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup'
       }}</code>
       <p>
-        Benutzername: <strong>admin</strong>. Bitte HTTPS oder einen lokalen SSH-Tunnel verwenden.
+        Benutzername: <strong>admin</strong>.
+        <template v-if="lanHttp">
+          Lokales HTTP · Passwort nur im eigenen, vertrauenswürdigen LAN eingeben.</template
+        >
       </p>
       <p v-if="!secure" class="read-error">
         Einrichtung nur über HTTPS oder einen lokalen SSH-Tunnel.

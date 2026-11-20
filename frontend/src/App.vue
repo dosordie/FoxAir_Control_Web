@@ -163,7 +163,7 @@ function operationValueLabel(code:FirstWriteCode){
 }
 function canWrite(code: FirstWriteCode): boolean {
   const source = writeSource(code)
-  return browserOnline.value && secureAdminContext && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
+  return browserOnline.value && secureAdminContext.value && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
     !writeBusy.value && !writeReading.value && !!source && source.value !== null && ['fresh', 'cached'].includes(source.quality)
 }
 async function submitCloudWrite(code: FirstWriteCode) {
@@ -619,7 +619,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <SetupWizard @completed="loginOpen=true" />
+    <SetupWizard @completed="checkAdminSession().then(() => { loginOpen = true })" />
     <AppHeader v-model:username="username" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
       v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
