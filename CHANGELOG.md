@@ -1,5 +1,11 @@
 # Änderungen
 
+## v0.1.6
+
+- Modbus-Standard, Modbus-LTE und Modbus-Display unterstützen neben IP/TCP auch USB-RS485.
+- Die Modbus-Diagnose unterscheidet zwischen Fehlern beim TCP-Verbindungsaufbau und fehlenden Antworten auf dem Bus. Wenn ein zweiter Client eine mögliche Ursache ist, zeigt FoxAir Web einen Hinweis.
+- Bei einer offenen Display-Modbus-Verbindung zeigt die Übersicht an, wenn FoxAir Web noch auf gültige Telegramme lauscht.
+
 ## v0.1.5
 
 - Die Übersicht heißt jetzt „Live-Registerübersicht“. Die Verbindungseinstellungen zeigen Cloud, Modbus-Standard, Modbus-LTE und Modbus-Display in dieser Reihenfolge.
