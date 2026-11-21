@@ -107,7 +107,7 @@ class SerialProtocolTests(TestCase):
         endpoint = self.endpoint(9600)
         bus = BusConnectionManager()
         observed = []
-        with connect_bus(endpoint) as stream:
+        with connect_bus(endpoint, transport="display") as stream:
             from backend.warmlink_protocol import WarmlinkSession
 
             session = WarmlinkSession(

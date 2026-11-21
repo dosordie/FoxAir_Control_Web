@@ -3,6 +3,7 @@
 import socket
 import time
 
+from backend.bus_stream import ModbusResponseTimeout
 from backend.rtu import with_crc
 from backend.warmlink_frames import find_frames, next_frame_pos
 from backend.diagnostics import log_event
@@ -155,7 +156,7 @@ class WarmlinkSession:
                     ):
                         log_event("lte", f"LTE Schreib-ACK: MAIN {register}")
                         return []
-            raise TimeoutError("Keine eindeutige LTE-Antwort; kein automatischer Retry")
+            raise ModbusResponseTimeout(self.endpoint.medium)
         except (OSError, ValueError):
             log_event(
                 "lte-error", "LTE-Antwort unklar oder Timeout; Verbindung gesperrt"

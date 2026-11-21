@@ -224,6 +224,14 @@ const readError = ref('')
 const selectedTransportInfo = computed(() => transports.value.find(t => t.id === selectedTransport.value))
 const transportLabel = computed(() => selectedTransportInfo.value?.name || 'Cloud')
 const isBusTransport = computed(() => ['warmlink_raw','display_modbus'].includes(selectedTransport.value))
+const busConnectionNote = computed(() => {
+  const state = busState.value
+  if (state?.error) return state.error
+  if (!state?.connected) return 'Busverbindung wird geprüft …'
+  if (!state.last_rx && selectedTransport.value === 'display_modbus') return 'Bus verbunden · lauscht auf Display-Telegramme'
+  if (!pushConnected.value) return 'Bus verbunden · Live-Übertragung verbindet …'
+  return 'Live · Bus verbunden'
+})
 const online = computed(() => isBusTransport.value ? !!busState.value?.connected : snapshot.value?.status === 'online')
 const connectionText = computed(() => isBusTransport.value
   ? busState.value?.connected ? (busState.value.last_rx ? 'Verbunden' : 'Bus verbunden · wartet auf Werte') : 'Nicht verbunden'
@@ -707,8 +715,8 @@ onBeforeUnmount(() => {
                 <label class="live-switch"><input type="checkbox" v-model="liveEnabled" /> Automatische Cloud-Abfrage</label>
                 <small>{{ liveEnabled ? 'alle ' + liveInterval + ' s · nur bei sichtbarer Übersicht' : 'deaktiviert' }}</small>
               </div>
-              <small v-if="selectedTransport==='standard_modbus'">Automatische Aktualisierung bei sichtbarer Übersicht</small>
-              <small class="bus-live-note" v-if="['warmlink_raw','display_modbus'].includes(selectedTransport)" role="status">{{ pushConnected && busState?.connected ? 'Live · Bus verbunden' : busState?.connected ? 'Bus verbunden · Live-Übertragung verbindet …' : 'Busverbindung wird geprüft …' }}</small>
+              <small v-if="selectedTransport==='standard_modbus'" role="status">{{ snapshot?.transport === selectedTransport && snapshot.error ? snapshot.error : 'Automatische Aktualisierung bei sichtbarer Übersicht' }}</small>
+              <small v-if="isBusTransport" class="bus-live-note" role="status">{{ busConnectionNote }}</small>
             </div>
           </section>
 

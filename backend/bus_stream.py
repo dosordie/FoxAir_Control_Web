@@ -5,7 +5,31 @@ import socket
 import stat
 from time import monotonic, sleep
 
+from backend.diagnostics import log_event
 from backend.settings import SERIAL_DEVICE
+
+
+class BusOpenError(OSError):
+    """The local transport could not be opened."""
+
+
+class ModbusResponseTimeout(TimeoutError):
+    def __init__(self, medium):
+        message = "Keine vollständige Modbus-Antwort"
+        if medium == "tcp":
+            message = (
+                "TCP verbunden, aber keine vollständige Modbus-Antwort. "
+                "Möglicher Verbindungskonflikt, etwa durch einen zweiten Client am Gateway."
+            )
+        super().__init__(message)
+
+
+def bus_error_message(error, fallback):
+    if isinstance(error, (BusOpenError, ModbusResponseTimeout)):
+        return str(error)
+    if isinstance(error, ConnectionError):
+        return "Verbindung nach dem Aufbau geschlossen oder unterbrochen"
+    return fallback
 
 
 class SerialStream:
@@ -50,10 +74,22 @@ class SerialStream:
         self.close()
 
 
-def connect_bus(endpoint, socket_factory=None):
+def connect_bus(endpoint, socket_factory=None, *, transport):
     if endpoint.medium == "tcp":
         factory = socket_factory or socket.create_connection
-        return factory((endpoint.host, endpoint.port), timeout=endpoint.timeout)
+        try:
+            return factory((endpoint.host, endpoint.port), timeout=endpoint.timeout)
+        except ConnectionRefusedError:
+            message = "TCP-Verbindung abgelehnt. Port und Gateway prüfen."
+        except TimeoutError:
+            message = (
+                "Zeitüberschreitung beim TCP-Verbindungsaufbau. "
+                "Gateway nicht erreichbar oder möglicherweise ausgelastet."
+            )
+        except OSError:
+            message = "TCP-Verbindung konnte nicht aufgebaut werden. Netzwerk, IP und Port prüfen."
+        log_event(transport + "-error", message)
+        raise BusOpenError(message)
 
     import serial
 
@@ -72,7 +108,7 @@ def connect_bus(endpoint, socket_factory=None):
             exclusive=True,
         )
     except (OSError, ValueError):
-        raise OSError(
-            "USB-RS485-Gerät fehlt, ist belegt oder nicht zugänglich"
-        ) from None
+        message = "USB-RS485-Gerät fehlt, ist belegt oder nicht zugänglich"
+        log_event(transport + "-error", message)
+        raise BusOpenError(message) from None
     return SerialStream(port, endpoint.baudrate)

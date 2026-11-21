@@ -12,7 +12,8 @@ import time
 
 from backend.settings import Endpoint
 from backend.bus_locks import endpoint_lock
-from backend.bus_stream import connect_bus
+from backend.bus_stream import ModbusResponseTimeout, bus_error_message, connect_bus
+from backend.diagnostics import log_event
 
 
 def crc16(payload: bytes) -> int:
@@ -45,18 +46,29 @@ def _rtu_exchange(method):
     def exchange(self, *args, **kwargs):
         try:
             return method(self, *args, **kwargs)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
             self.poisoned = True
+            if isinstance(error, ConnectionError):
+                log_event("standard-error", bus_error_message(error, ""))
             raise
 
     return exchange
 
 
 class RtuReadSession:
-    def __init__(self, sock: socket.socket, slave: int):
+    def __init__(self, sock: socket.socket, slave: int, medium: str = "tcp"):
         self.sock = sock
         self.slave = slave
+        self.medium = medium
         self.poisoned = False
+
+    def _read_response(self, size):
+        try:
+            return read_exact(self.sock, size)
+        except TimeoutError as error:
+            failure = ModbusResponseTimeout(self.medium)
+            log_event("standard-error", str(failure))
+            raise failure from error
 
     @_rtu_exchange
     def read_holding(self, register: int, count: int = 1) -> list[int]:
@@ -72,17 +84,17 @@ class RtuReadSession:
             + count.to_bytes(2, "big")
         )
         self.sock.sendall(with_crc(request))
-        header = read_exact(self.sock, 3)
+        header = self._read_response(3)
         if header[0] != self.slave:
             raise ValueError("Unerwartete Modbus-Slaveadresse")
         if header[1] == 0x83:
-            frame = header + read_exact(self.sock, 2)
+            frame = header + self._read_response(2)
             if crc16(frame[:-2]) != int.from_bytes(frame[-2:], "little"):
                 raise ValueError("CRC-Fehler in Modbus-Exception")
             raise ValueError("Modbus-Exception " + str(header[2]))
         if header[1] != 0x03 or header[2] != count * 2:
             raise ValueError("Unerwartete Modbus-Antwort")
-        frame = header + read_exact(self.sock, header[2] + 2)
+        frame = header + self._read_response(header[2] + 2)
         if crc16(frame[:-2]) != int.from_bytes(frame[-2:], "little"):
             raise ValueError("CRC-Fehler")
         return [
@@ -100,8 +112,8 @@ class RtuReadSession:
             + raw.to_bytes(2, "big")
         )
         self.sock.sendall(with_crc(body))
-        header = read_exact(self.sock, 2)
-        frame = header + read_exact(self.sock, 3 if header[1] & 128 else 6)
+        header = self._read_response(2)
+        frame = header + self._read_response(3 if header[1] & 128 else 6)
         if crc16(frame[:-2]) != int.from_bytes(frame[-2:], "little"):
             raise ValueError("CRC-Fehler im Schreib-ACK")
         expected = bytes((self.slave, 16)) + register.to_bytes(2, "big") + b"\x00\x01"
@@ -161,9 +173,9 @@ class StandardConnection:
             if self._endpoint != endpoint or self._until <= time.monotonic():
                 self._close()
             if self._socket is None:
-                self._socket = connect_bus(endpoint)
+                self._socket = connect_bus(endpoint, transport="standard")
                 self._endpoint = endpoint
-            session = RtuReadSession(self._socket, endpoint.slave)
+            session = RtuReadSession(self._socket, endpoint.slave, endpoint.medium)
             try:
                 yield session
             except BaseException:

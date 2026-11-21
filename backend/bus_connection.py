@@ -10,7 +10,7 @@ import threading
 import time
 
 from backend.bus_locks import endpoint_lock
-from backend.bus_stream import connect_bus
+from backend.bus_stream import BusOpenError, bus_error_message, connect_bus
 from backend.diagnostics import log_event
 from backend.register_cache import RegisterCache
 from backend.settings import Endpoint, warmlink_config, warmlink_endpoint
@@ -105,7 +105,12 @@ class BusConnectionManager:
         if self.cache.select_source(endpoint):
             with self._state_lock:
                 self._state["last_rx"] = None
-        sock = connect_bus(endpoint, self._socket_factory)
+        try:
+            sock = connect_bus(endpoint, self._socket_factory, transport="lte")
+        except BusOpenError as error:
+            with self._state_lock:
+                self._state["error"] = str(error)
+            raise
 
         def observe(frames):
             self.cache.observe_frames(endpoint, frames)
@@ -161,11 +166,8 @@ class BusConnectionManager:
             client = self._connect(endpoint)
             try:
                 yield client
-            except (OSError, ValueError):
-                log_event(
-                    "lte-error",
-                    "LTE-Abfrage auf gemeinsamer Verbindung abgebrochen; kein automatischer Retry",
-                )
+            except (OSError, ValueError) as error:
+                self._record_operation_error(error)
                 self._close()
                 raise
             finally:
@@ -177,6 +179,14 @@ class BusConnectionManager:
                             time.monotonic()
                             + self._config_provider().get("idle_timeout_seconds", 0)
                         )
+
+    def _record_operation_error(self, error):
+        message = bus_error_message(
+            error, "LTE-Abfrage abgebrochen; kein automatischer Retry"
+        )
+        with self._state_lock:
+            self._state["error"] = message
+        log_event("lte-error", message)
 
     @contextmanager
     def open(self, endpoint: Endpoint):
@@ -198,13 +208,13 @@ class BusConnectionManager:
             if self._stopped:
                 raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
             client = self._new_session(endpoint)
+            with self._state_lock:
+                self._state["error"] = None
             log_event("lte", "LTE verbunden; bedarfsgesteuerte Sitzung")
             try:
                 yield client
             except (OSError, ValueError) as error:
-                log_event(
-                    "lte-error", "LTE-Abfrage abgebrochen: " + type(error).__name__
-                )
+                self._record_operation_error(error)
                 raise
             finally:
                 client.sock.close()
@@ -243,13 +253,10 @@ class BusConnectionManager:
             if endpoint and self.wanted(mode):
                 self._connect(endpoint).receive(0.15)
             return 0.15
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
             self._close()
-            with self._state_lock:
-                self._state["error"] = (
-                    "LTE-Verbindung unterbrochen; erneuter Verbindungsversuch"
-                )
-            log_event("lte-error", "Dauerverbindung unterbrochen; kein Schreib-Retry")
+            if not isinstance(error, BusOpenError):
+                self._record_operation_error(error)
             return 2.0
         finally:
             lock.release()

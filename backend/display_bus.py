@@ -4,7 +4,7 @@ import socket
 import threading
 import time
 from backend.display_protocol import DisplayProtocol
-from backend.bus_stream import connect_bus
+from backend.bus_stream import BusOpenError, bus_error_message, connect_bus
 from backend.diagnostics import log_event
 from backend.settings import display_endpoint, local_bus_config
 from backend.last_values import remember_words, store
@@ -52,7 +52,9 @@ class DisplayBus:
 
     def connect(self, endpoint):
         with operation("display_modbus"):
-            sock = connect_bus(endpoint)
+            with self.lock:
+                self.handover_closed = False
+            sock = connect_bus(endpoint, transport="display")
             with self.lock:
                 self.sock = sock
             return sock
@@ -153,6 +155,7 @@ class DisplayBus:
                         self.connected = True
                         self.handover_closed = False
                         self.error = None
+                        self.last_rx = None
                         self.words = {}
                         self.source_epoch += 1
                         epoch = self.source_epoch
@@ -194,9 +197,9 @@ class DisplayBus:
                             if not allows("display_modbus"):
                                 break
                             if data:
-                                self.last_rx = time.time()
                                 count = self.protocol.feed(data)
                                 if count:
+                                    self.last_rx = time.time()
                                     log_event(
                                         "display-rx",
                                         "Display-Telegramme CRC-geprüft",
@@ -215,7 +218,7 @@ class DisplayBus:
                                     "display-sync",
                                     "Festes Display-Snapshot-Steuertelegramm gesendet",
                                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
                 with self.lock:
                     unexpected = (
                         not self.handover_closed
@@ -223,15 +226,12 @@ class DisplayBus:
                         and allows("display_modbus")
                     )
                     self.error = (
-                        "Display-Verbindung unterbrochen oder nicht erreichbar"
+                        bus_error_message(error, "Display-Verbindung unterbrochen")
                         if unexpected
                         else None
                     )
-                if unexpected:
-                    log_event(
-                        "display-error",
-                        "Display-Verbindung unterbrochen; erneuter passiver Verbindungsversuch",
-                    )
+                if unexpected and not isinstance(error, BusOpenError):
+                    log_event("display-error", self.error)
             finally:
                 with self.lock:
                     if self.protocol and self.protocol.sync["status"] == "running":
