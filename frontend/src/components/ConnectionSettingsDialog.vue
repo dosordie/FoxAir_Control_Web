@@ -83,98 +83,12 @@ const {
           Schließen
         </button>
       </header>
-      <p class="section-hint">
-        Cloud-Zugang und lokaler LTE-Anschluss. Die aktive Verbindung wählst du auf der
-        Einstellungsseite.
-      </p>
-      <section class="connection-section">
-        <div class="section-heading">
-          <div>
-            <span class="section-caption">LTE / WARMLINK</span>
-            <h2>Lokaler LTE-Bus</h2>
-          </div>
-        </div>
-        <p class="section-hint">
-          Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird
-          berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.
-        </p>
-        <p v-if="!admin" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
-        <form v-else @submit.prevent="saveLteConfig" class="cloud-form">
-          <label class="field-label" for="lte-host">IP-Adresse</label>
-          <input id="lte-host" class="settings-input" v-model="lteConfig.host" required />
-          <label class="field-label" for="lte-port">TCP-Port</label>
-          <input
-            id="lte-port"
-            class="settings-input"
-            type="number"
-            min="1"
-            max="65535"
-            v-model.number="lteConfig.port"
-            required
-          />
-          <label class="field-label" for="connection-mode">Verbindung offen halten</label>
-          <select id="connection-mode" class="settings-input" v-model="lteConfig.connection_mode">
-            <option value="on_demand">Nur bei einer Abfrage</option>
-            <option value="browser">Solange ein Browser geöffnet ist</option>
-            <option value="permanent">Dauerhaft – auch ohne Browser</option>
-          </select>
-          <p class="section-hint">
-            Browser-Modus: Schließen nach der eingestellten Zeit ohne Lebenszeichen. Dauerhaftes
-            Mithören sendet keine eigenen Lese- oder Schreibbefehle.
-          </p>
-          <template v-if="lteConfig.connection_mode === 'on_demand'">
-            <label class="field-label" for="lte-idle"
-              >TCP-Sitzung nach einer Abfrage offen halten (Sekunden)</label
-            >
-            <input
-              id="lte-idle"
-              class="settings-input"
-              type="number"
-              min="0"
-              max="3600"
-              v-model.number="lteConfig.idle_timeout_seconds"
-              required
-            />
-            <p class="section-hint">0 = sofort schließen. Weitere Abfragen verlängern die Zeit.</p>
-          </template>
-          <template v-if="lteConfig.connection_mode === 'browser'">
-            <label class="field-label" for="lte-browser"
-              >Nach letztem Browser-Lebenszeichen schließen (Sekunden)</label
-            >
-            <input
-              id="lte-browser"
-              class="settings-input"
-              type="number"
-              min="30"
-              max="3600"
-              v-model.number="lteConfig.browser_timeout_seconds"
-              required
-            />
-          </template>
-          <p role="status">
-            TCP: {{ busState?.connected ? 'Verbunden' : 'Geschlossen' }} · Modus:
-            {{
-              { on_demand: 'Bei Bedarf', browser: 'Browser geöffnet', permanent: 'Dauerhaft' }[
-                busState?.mode as 'on_demand' | 'browser' | 'permanent'
-              ] || 'Bei Bedarf'
-            }}<span v-if="busState?.error"> · {{ busState.error }}</span>
-          </p>
-          <label
-            ><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Verbindung mit Lesen und
-            freigegebenen Schreibfunktionen aktivieren</label
-          >
-          <button class="main-action" :disabled="lteBusy">
-            {{ lteBusy ? 'Speichert …' : 'LTE-Anschluss speichern' }}
-          </button>
-        </form>
-        <p v-if="lteMessage" class="section-hint" role="status">{{ lteMessage }}</p>
-        <p v-if="lteError" class="read-error" role="alert">{{ lteError }}</p>
-      </section>
+      <p class="section-hint">Die aktive Verbindung wählst du auf der Einstellungsseite.</p>
       <section class="connection-section cloud-panel">
         <div class="section-head">
           <div>
             <span class="section-caption">PHNIX / WARMLINK</span>
-            <h2>Cloud-Zugang & Geräte</h2>
+            <h2>Cloud</h2>
           </div>
           <Cloud :size="24" />
         </div>
@@ -348,6 +262,97 @@ const {
         </p>
       </section>
       <LocalBusSettings
+        bus="standard_modbus"
+        :admin="admin"
+        :secure="secure"
+        :open="connectionSettingsOpen"
+        @changed="emit('connectionsChanged', $event)"
+      />
+      <section class="connection-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-caption">LTE / WARMLINK</span>
+            <h2>Modbus-LTE</h2>
+          </div>
+        </div>
+        <p class="section-hint">
+          Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird
+          berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.
+        </p>
+        <p v-if="!admin" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
+        <form v-else @submit.prevent="saveLteConfig" class="cloud-form">
+          <label class="field-label" for="lte-host">IP-Adresse</label>
+          <input id="lte-host" class="settings-input" v-model="lteConfig.host" required />
+          <label class="field-label" for="lte-port">TCP-Port</label>
+          <input
+            id="lte-port"
+            class="settings-input"
+            type="number"
+            min="1"
+            max="65535"
+            v-model.number="lteConfig.port"
+            required
+          />
+          <label class="field-label" for="connection-mode">Verbindung offen halten</label>
+          <select id="connection-mode" class="settings-input" v-model="lteConfig.connection_mode">
+            <option value="on_demand">Nur bei einer Abfrage</option>
+            <option value="browser">Solange ein Browser geöffnet ist</option>
+            <option value="permanent">Dauerhaft – auch ohne Browser</option>
+          </select>
+          <p class="section-hint">
+            Browser-Modus: Schließen nach der eingestellten Zeit ohne Lebenszeichen. Dauerhaftes
+            Mithören sendet keine eigenen Lese- oder Schreibbefehle.
+          </p>
+          <template v-if="lteConfig.connection_mode === 'on_demand'">
+            <label class="field-label" for="lte-idle"
+              >TCP-Sitzung nach einer Abfrage offen halten (Sekunden)</label
+            >
+            <input
+              id="lte-idle"
+              class="settings-input"
+              type="number"
+              min="0"
+              max="3600"
+              v-model.number="lteConfig.idle_timeout_seconds"
+              required
+            />
+            <p class="section-hint">0 = sofort schließen. Weitere Abfragen verlängern die Zeit.</p>
+          </template>
+          <template v-if="lteConfig.connection_mode === 'browser'">
+            <label class="field-label" for="lte-browser"
+              >Nach letztem Browser-Lebenszeichen schließen (Sekunden)</label
+            >
+            <input
+              id="lte-browser"
+              class="settings-input"
+              type="number"
+              min="30"
+              max="3600"
+              v-model.number="lteConfig.browser_timeout_seconds"
+              required
+            />
+          </template>
+          <p role="status">
+            TCP: {{ busState?.connected ? 'Verbunden' : 'Geschlossen' }} · Modus:
+            {{
+              { on_demand: 'Bei Bedarf', browser: 'Browser geöffnet', permanent: 'Dauerhaft' }[
+                busState?.mode as 'on_demand' | 'browser' | 'permanent'
+              ] || 'Bei Bedarf'
+            }}<span v-if="busState?.error"> · {{ busState.error }}</span>
+          </p>
+          <label
+            ><input type="checkbox" v-model="lteConfig.enabled" /> LTE-Verbindung mit Lesen und
+            freigegebenen Schreibfunktionen aktivieren</label
+          >
+          <button class="main-action" :disabled="lteBusy">
+            {{ lteBusy ? 'Speichert …' : 'LTE-Anschluss speichern' }}
+          </button>
+        </form>
+        <p v-if="lteMessage" class="section-hint" role="status">{{ lteMessage }}</p>
+        <p v-if="lteError" class="read-error" role="alert">{{ lteError }}</p>
+      </section>
+      <LocalBusSettings
+        bus="display_modbus"
         :admin="admin"
         :secure="secure"
         :open="connectionSettingsOpen"

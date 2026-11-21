@@ -82,7 +82,7 @@ function area(register: number) {
     >
       <span
         ><span class="section-caption">REGISTER / FOXAIR_CONTROL</span
-        ><strong>Registerübersicht im Hauptfenster</strong></span
+        ><strong>Live-Registerübersicht</strong></span
       >
       <span
         >{{ open ? 'Schließen' : 'Anzeigen' }}

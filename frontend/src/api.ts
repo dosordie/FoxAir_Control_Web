@@ -171,6 +171,7 @@ export const api = {
   cloudInsight: (kind:'ota'|'metadata'|'ai')=>post<{checked_at:string;cached:boolean;available?:boolean;count?:number;items?:Record<string,string>[];source?:string;frequency_supported?:boolean|null;ai_enabled?:boolean|null;sg_supported?:boolean|null;sg_mode?:number|null}>('/api/cloud/insights/'+kind,{}),
   cloudHistory: (address:string,start:string,end:string,frequency:string)=>post<{checked_at:string;cached:boolean;unit:string;points:{time:string;value:number;incomplete:boolean}[]}>('/api/cloud/history',{address,start,end,frequency,time_zone:1}),
   displaySnapshot: () => get<LteSnapshot>('/api/local/display_modbus/state'),
+  standardLease: () => post<{ ok: boolean }>('/api/local/standard_modbus/lease', {}),
   displayLease: () => post<object>('/api/local/display_modbus/lease',{}),
   displayScan: () => post<LteScan>('/api/local/display_modbus/scan',{}),
   busLease: () => post<object>('/api/warmlink/lease',{}),

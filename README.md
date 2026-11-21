@@ -1,128 +1,89 @@
 # FoxAir Control Web
 
-**Deine FoxAir-/PHNIX-Wärmepumpe im Browser – am Computer, auf dem iPhone oder als App auf dem Homescreen.**
+**Deine FoxAir-/PHNIX-Wärmepumpe im Browser – am PC, auf dem iPhone oder als App auf dem Homescreen.**
 
-FoxAir Control Web zeigt den Anlagenzustand und Messwerte, macht Parameter durchsuchbar und ermöglicht das Ändern unterstützter Einstellungen. Die Anwendung läuft auf einem eigenen Linux-Server. Das Windows-Programm [FoxAir_Control](https://github.com/dosordie/FoxAir_Control) wird für den Betrieb nicht benötigt.
+FoxAir Control Web zeigt Livewerte, Anlagenstatus und Parameter. Die App läuft auf deinem eigenen Server und unterstützt Cloud sowie lokale Modbus-Anschlüsse.
 
-> **Beta – aktiv in Entwicklung.** Funktionen, Registerzuordnungen und Verbindungen werden laufend verbessert. Noch nicht jede Wärmepumpenvariante und jeder Anschluss sind getestet. Prüfe vor Änderungen, was ein Parameter bewirkt, und kontrolliere anschließend den zurückgelesenen Wert.
+[Docker im Heimnetz](#docker-im-heimnetz) · [Linux mit systemd](#linux-mit-systemd) · [Verbindungen](#verbindungen) · [Releases](https://github.com/dosordie/FoxAir_Control_Web/releases)
 
-[Installation](docs/INSTALLATION.md) · [Erste Schritte](#erste-schritte) · [Verbindungen](#verbindungen) · [Fehler melden](https://github.com/dosordie/FoxAir_Control_Web/issues)
+> **Beta.** Die verfügbaren Werte und Funktionen hängen von Anlage und Verbindung ab. Prüfe nach Parameteränderungen den zurückgelesenen Wert.
 
-## So sieht die App aus
-
-### Übersicht am Desktop
-
-Temperaturen, Sollwert, Durchfluss und Anlagenzustand auf einen Blick. Darunter findest du elektrische und thermische Leistung, COP sowie den Schnellzugriff auf Funktionen und Einstellungen.
-
-![Desktop-Übersicht mit Anlagenstatus, Temperaturen und Funktionskacheln](docs/screenshots/dashboard-desktop.png)
-
-### Für das iPhone gemacht
-
-Übersicht, Parameterliste und Details als Pop-up: Die Suche öffnet sich über die Lupe, Favoriten über den Stern. Nach dem Schließen eines Parameters bleibt die Listenposition erhalten.
+![FoxAir Control Web – Desktop-Übersicht](docs/screenshots/dashboard-desktop.png)
 
 <table>
   <tr>
     <th>Übersicht</th>
-    <th>Parameter finden</th>
-    <th>Details und Readback</th>
+    <th>Parameterliste</th>
+    <th>Parameterdetails</th>
   </tr>
   <tr>
-    <td align="center"><strong>Übersicht</strong><br><a href="docs/screenshots/dashboard-iphone.png"><img src="docs/screenshots/dashboard-iphone.png" width="148" alt="iPhone-Übersicht mit Wärmepumpengrafik und Messwerten"></a></td>
-    <td align="center"><strong>Parameterliste</strong><br><a href="docs/screenshots/parameters-iphone.png"><img src="docs/screenshots/parameters-iphone.png" width="148" alt="iPhone-Parameterliste mit Gruppen, Suche und Favoriten"></a></td>
-    <td align="center"><strong>Parameterdetails</strong><br><a href="docs/screenshots/parameter-details-iphone.png"><img src="docs/screenshots/parameter-details-iphone.png" width="148" alt="Parameterdetails mit Quelle, Beschreibung und Schreiben mit Readback"></a></td>
+    <td><a href="docs/screenshots/dashboard-iphone.png"><img src="docs/screenshots/dashboard-iphone.png" width="148" alt="Übersicht auf dem iPhone"></a></td>
+    <td><a href="docs/screenshots/parameters-iphone.png"><img src="docs/screenshots/parameters-iphone.png" width="148" alt="Parameterliste auf dem iPhone"></a></td>
+    <td><a href="docs/screenshots/parameter-details-iphone.png"><img src="docs/screenshots/parameter-details-iphone.png" width="148" alt="Parameterdetails auf dem iPhone"></a></td>
   </tr>
 </table>
 
-Die Screenshots zeigen Beispielzustände einer Anlage. Messwerte und verfügbare Funktionen hängen von Gerät und Verbindung ab.
+## Docker im Heimnetz
 
-## Was die App bietet
+Auf einem Linux-Host mit Docker und Compose starten. Das öffentliche Image für Linux amd64 enthält Backend und Weboberfläche.
 
-- **Übersicht:** Anlagenzustand, Temperaturen, Sollwert, Durchfluss, Verdichterfrequenz, elektrische und thermische Leistung sowie COP, soweit verfügbar.
-- **Parameter finden:** Suche nach Code, Name oder Register, sortierte Gruppen und persönliche Favoriten. Auf dem Smartphone öffnen sich Details als Dialog.
-- **Werte nachvollziehen:** Datenquelle, Zeitstempel, Beschreibungen und zuletzt bekannte Werte. Veraltete Werte werden entsprechend gekennzeichnet.
-- **Einstellungen ändern:** Unterstützte, laut Katalog schreibbare Parameter als Administrator bearbeiten. Vorprüfung und Readback kontrollieren den Auftrag; lesende Register bleiben gesperrt.
-- **Spezialfunktionen:** Dialoge für Zeitprogramme, Ruhemodus, SG-Ready, AT-Kurve, Wärmepumpen-Sollwerte und Störungen. Der Umfang hängt von Verbindung und bekannten Registerdefinitionen ab.
-- **Verlauf & Diagramme:** Historische Cloud-Daten bei Bedarf über einen Button auf der Startseite öffnen.
-- **Live-Anzeige:** Neu empfangene LTE-Buswerte erscheinen automatisch. Bei der Cloud steht eine automatische Abfrage zur Verfügung.
-- **Homescreen-App:** Auf dem iPhone zum Home-Bildschirm hinzufügen. Die Oberfläche kann zwischengespeichert werden; aktuelle Messwerte und Schreibaufträge benötigen eine Serververbindung. Offline-Aufträge werden nicht nachträglich gesendet.
+```bash
+mkdir -p ~/foxweb
+cd ~/foxweb
+wget -O compose.yaml.tmp https://raw.githubusercontent.com/dosordie/FoxAir_Control_Web/main/compose.lan.yaml &&
+mv compose.yaml.tmp compose.yaml &&
+docker compose up -d
+```
 
-## Verbindungen
+Im Browser `http://<LAN-IP-des-Hosts>:18081` oder den DNS-Namen des Hosts mit Port `18081` öffnen. Bei der ersten Einrichtung legt der erste Besucher direkt ein Admin-Passwort fest. FoxAir speichert den dafür verwendeten Namen. Weitere LAN-Namen können über `FOXAIR_LAN_HOSTS` in `.env` freigegeben werden.
 
-| Anschluss | Stand der Beta |
-| --- | --- |
-| **PHNIX Cloud** | Zugang und Geräteauswahl über die Einstellungen; Lesen und unterstützte Schreibfunktionen. Historische Diagramme benötigen den Cloud-Zugang. |
-| **LTE-/Warmlink-Modbus über TCP** | IP und Port einstellbar; gebündeltes Lesen zusammenhängender Register, Live-Buswerte und unterstützte Schreibfunktionen. Verbindungsdauer konfigurierbar. |
-| **Standard-Modbus** | RTU-over-TCP/ser2net; IP, Port und Teilnehmer in den Verbindungseinstellungen. Lesen und unterstützte Schreibfunktionen, standardmäßig deaktiviert. |
-| **Display-Modbus** | Passiver Empfang über RTU-over-TCP; manuelle Spezialfunktion „Alle Werte vom Bus lesen“. Normale Parameter-Schreibzugriffe gesperrt, standardmäßig deaktiviert. |
+Das Datenvolume enthält Konten und Verbindungen. Updates im **gleichen Compose-Ordner** ziehen das aktuelle Release, während Compose das Volume weiterverwendet:
 
-Lokale Busse nur aktivieren, wenn Anschluss und Busbelegung geklärt sind. Ein anderer Dienst oder Bus-Master kann den Zugriff beeinflussen.
+```bash
+docker compose pull && docker compose up -d
+```
 
-## Installation
+Der direkte LAN-Modus verwendet HTTP. Verwende ihn im vertrauenswürdigen Heimnetz. Für HTTPS, Reverse Proxy oder Portainer siehe die [Docker-Anleitung](docs/INSTALLATION_DOCKER.md).
 
-Für den Server gibt es einen fertigen Frontend-Build aus GitHub Actions: **Node.js ist dort nicht erforderlich.** Die Anwendung verwendet ein eigenes Python-Virtualenv und einen eigenen systemd-Dienst.
+## Linux mit systemd
 
-Die [kurze Installationsanleitung](docs/INSTALLATION.md) führt durch Einrichtung, Administratorpasswort, ersten Zugriff und Updates. Die mitgelieferten Skripte verwenden den Beispielpfad `/opt/foxair-web/app` und starten zunächst nur auf `127.0.0.1:8081`.
+Auf einem Linux-Host mit systemd, Python 3.12, venv und sudo den Installer aus dem freigegebenen Quellstand holen und ausführen. Der Installer prüft das aktuelle Stable-Paket und richtet die passende Python-Umgebung ein.
 
-## Erste Schritte
+```bash
+wget -O foxair-source.tar.gz https://github.com/dosordie/FoxAir_Control_Web/archive/refs/tags/v0.1.5.tar.gz
+mkdir -p foxair-installer
+tar -xzf foxair-source.tar.gz --strip-components=1 -C foxair-installer
+sudo python3.12 foxair-installer/scripts/install_release.py
+sudo bash /opt/foxair-web/app/scripts/install_service.sh
+sudo systemctl enable foxair-web.service
+```
 
-1. App über HTTPS oder einen lokalen SSH-Tunnel öffnen.
-2. Oben rechts mit dem separat eingerichteten **Administratorpasswort** anmelden.
-3. **Einstellungen → Verbindungseinstellungen** öffnen und Cloud-Zugang bzw. lokalen LTE-Anschluss einrichten.
-4. Auf der **Übersicht** die gewünschte Verbindung auswählen und Messwerte kontrollieren.
-5. Unter **Parameter** eine Gruppe wählen oder die Lupe verwenden. Mit dem Stern lassen sich Favoriten filtern.
-6. Einen Parameter antippen. Falls unterstützt, lässt sich ein neuer Wert mit **„Wert mit Readback senden“** übertragen.
-
-Ohne Admin-Anmeldung ist lesender Zugriff möglich. Die lokale Admin-Sitzung bleibt bis zu 30 Tage bestehen und überlebt Dienstneustarts; das Passwort wird nicht im Browser gespeichert.
-
-## Benutzer, Protokoll und Sicherung
-
-Unter **Einstellungen → Benutzer & Berechtigungen** können Administratoren lokale Konten, SSO-Zuordnungen und Sitzungen verwalten. Leser sehen Messwerte; Bediener dürfen einzeln freigegebene MAIN-Register ändern. Administratoren verwalten Verbindungen und Updates. Das bestehende Konto `admin` bleibt als Notfallzugang erhalten.
-
-Schreibaufträge erscheinen im privaten Änderungsprotokoll. Verschlüsselte Sicherungen umfassen lokale Benutzer, Cloud-Zugang und LTE-Einstellungen; Proxy-Secrets und das Notfallpasswort werden separat verwaltet. Zur Wiederherstellung ist das Sicherungspasswort erforderlich.
-
-Hinweise zur Einrichtung und zum Display-Protokoll: [Lokale Modbus-Anschlüsse](docs/LOCAL_MODBUS.md).
-
-## Zugriff und private Konfiguration
-
-Die Anmeldung schützt schreibende und administrative Aktionen nach Rolle. **Lesender Gastzugriff ist standardmäßig erlaubt und kann in der Benutzerverwaltung deaktiviert werden.** Für einen öffentlichen Zugang ist deshalb ein vorgeschalteter Zugriffsschutz mit HTTPS nötig, beispielsweise Nginx mit Authelia.
-
-Optionales Trusted-Proxy-SSO ist vorhanden und **standardmäßig deaktiviert**. Es benötigt eine ausdrücklich vertrauenswürdige Proxy-IP, ein gemeinsames Secret und eine feste Zuordnung zum vorhandenen lokalen Administratorkonto. Generische Beispiele liegen unter [deploy/](deploy/).
-
-Zugangsdaten und anlagenspezifische Einstellungen gehören ausschließlich in die private Serverkonfiguration. **Keine echten IP-Adressen, Benutzernamen, Passwörter oder unbereinigten Diagnosedaten in Issues und Commits veröffentlichen.**
-
-## Updates und Hilfe
-
-Eine vorhandene Installation aktualisieren:
+Der Dienst lauscht zunächst auf `127.0.0.1:8081`. Für die Ersteinrichtung den Einmalcode als Dienstbenutzer abrufen:
 
 ```bash
 cd /opt/foxair-web/app
-sudo bash scripts/update.sh
+sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup
 ```
 
-Der passende GitHub-Build muss zuvor erfolgreich abgeschlossen sein. Optional kann ein Updateknopf in der Weboberfläche eingerichtet werden; siehe [Installationsanleitung](docs/INSTALLATION.md#updates).
+Dann lokal, per SSH-Tunnel oder über einen HTTPS-Reverse-Proxy öffnen und das Admin-Passwort festlegen. Docker und Linux erhalten dieselbe Release-Version und denselben Quellstand. Die Linux-Testinstallation auf `work` hat einen eigenen Web-Build und Updateweg. [Linux-Anleitung](docs/INSTALLATION.md) · [Updates und Rollback](docs/RELEASES.md)
 
-Ein Problem gefunden? Bitte ein [Issue öffnen](https://github.com/dosordie/FoxAir_Control_Web/issues) und diese Angaben ergänzen:
+## Verbindungen
 
-- installierter Commit bzw. angezeigte Version,
-- verwendete Verbindung, Browser und Gerät,
-- erwartetes Verhalten, tatsächliches Verhalten und Schritte zum Nachstellen,
-- bereinigter Screenshot oder kurzer Diagnoseauszug, soweit hilfreich.
+Unter **Einstellungen → Verbindungseinstellungen** den Anschluss einrichten und anschließend in der Übersicht auswählen.
 
-## Für Mitwirkende
+| Verbindung | Verwendung |
+| --- | --- |
+| **Cloud** | PHNIX/WarmLink mit Geräteauswahl, Liveabfrage und historischen Diagrammen. |
+| **Modbus-Standard** | Eigener RTU-over-TCP-Anschluss, etwa über ser2net. Die Verbindung bleibt während der Browser-Sitzung offen. |
+| **Modbus-LTE** | WarmLink-/LTE-Bus über einen transparenten TCP-Adapter, mit Livewerten und einstellbarer Verbindungsdauer. |
+| **Modbus-Display** | Passiver Empfang vom Displaybus und manuelle Abfrage aller Register. |
 
-Vue 3 und TypeScript bilden das Frontend, FastAPI das Python-Backend. Register und Bezeichnungen stammen aus einem geprüften Snapshot von [FoxAir_Control](https://github.com/dosordie/FoxAir_Control).
+Die **Live-Registerübersicht** zeigt eingehende Werte. In den Parameterdetails stehen Quelle, Zeitstempel und Beschreibung. Unterstützte Änderungen werden mit Readback geprüft. [Lokale Modbus-Anschlüsse](docs/LOCAL_MODBUS.md) · [Gira HomeServer](docs/GIRA.md)
 
-- [Wartung und Code-Struktur](docs/MAINTENANCE.md)
-- [Register-Snapshot und Synchronisierung](docs/SNAPSHOT_SYNC.md)
-- [Allgemeine Deployment-Hinweise](docs/DEPLOYMENT.md)
-- [Lokale Entwicklungsumgebung](docs/INSTALLATION.md#lokal-entwickeln)
+## Hilfe und Mitwirkung
 
-## Lizenz
+Bei einer Fehlermeldung bitte Version, Verbindungstyp und Schritte zum Nachstellen nennen. Entferne persönliche Daten und Zugangsdaten aus Screenshots und Protokollen. [Issue melden](https://github.com/dosordie/FoxAir_Control_Web/issues) · [Entwicklung und Wartung](docs/MAINTENANCE.md)
 
-Dieses Projekt steht unter der [MIT-Lizenz](LICENSE), entsprechend der [Lizenzdatei von FoxAir_Control](https://github.com/dosordie/FoxAir_Control/blob/main/LICENSE).
+Registerkatalog und Beschreibungen stammen aus einem geprüften Stand von [FoxAir Control](https://github.com/dosordie/FoxAir_Control). Das Desktop-Programm wird für die Web-App nicht benötigt.
 
-Copyright (c) 2026 DosOrDie.
-
-Optionale zusätzliche HomeServer-Werte: [Gira-Experteneinstellungen (Beta)](docs/GIRA.md).
-
-Der Entwicklungszweig `work` erhält einen eigenen passenden Web-Build. Der geplante gemeinsame Releaseweg für Linux und Docker ist in [Releases und Updates](docs/RELEASES.md) beschrieben; `v0.1.0` ist noch nicht veröffentlicht.
+[MIT-Lizenz](LICENSE) · Copyright (c) 2026 DosOrDie

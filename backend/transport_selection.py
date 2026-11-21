@@ -58,6 +58,7 @@ def select(transport):
     from backend.bus_connection import manager as lte
     from backend.display_bus import manager as display
     from backend.register_scan import scan
+    from backend.rtu import standard_connection
 
     if transport not in IDS:
         raise ValueError("Unbekannte Verbindung")
@@ -77,6 +78,7 @@ def select(transport):
         # the new choice, so a second physical bus cannot start in parallel.
         lte.disconnect()
         display.disconnect()
+        standard_connection.disconnect()
         row = {"transport": transport, "revision": old["revision"] + 1}
         cloud_config._atomic_json(cloud_config.STATE_DIR / "active_transport.json", row)
         return row

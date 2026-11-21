@@ -1,7 +1,7 @@
 # Docker / Portainer – vorbereitete Installation
 
 > **Beta / Entwicklung auf `work`:** Die Vorbereitungen aus Draft-PR #10 sind enthalten.
-> Ein öffentliches Image `0.1.0` und ein Release werden erst nach ausdrücklicher Freigabe veröffentlicht.
+> Das öffentliche Image steht als `ghcr.io/dosordie/foxair-control-web:latest` bereit.
 > Diese Anleitung allein führt kein Update der bestehenden Linux-Installation aus.
 
 ## Architektur

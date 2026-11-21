@@ -83,10 +83,10 @@ def warmlink_endpoint() -> Endpoint | None:
 from backend.cloud_read import cloud_configured
 
 TRANSPORTS = {
-    "cloud": ("PHNIX Cloud", "Cloud"),
-    "standard_modbus": ("Standard-Modbus", "Modbus RTU"),
-    "display_modbus": ("Display-Modbus", "Display"),
-    "warmlink_raw": ("LTE-/Warmlink-Modbus", "LTE-DTU"),
+    "cloud": ("Cloud", "Cloud"),
+    "standard_modbus": ("Modbus-Standard", "Modbus RTU"),
+    "display_modbus": ("Modbus-Display", "Display"),
+    "warmlink_raw": ("Modbus-LTE", "LTE-DTU"),
 }
 
 
@@ -122,7 +122,9 @@ def local_bus_config(transport: str) -> dict:
         ),
         "enabled": row.get("enabled") is True
         or (legacy and os.getenv("FOXAIR_ENABLE_STANDARD_MODBUS", "0") == "1"),
-        "connection_mode": row.get("connection_mode", "browser"),
+        "connection_mode": "browser"
+        if transport == "standard_modbus"
+        else row.get("connection_mode", "browser"),
         "browser_timeout_seconds": row.get("browser_timeout_seconds", 90),
     }
 
@@ -221,10 +223,11 @@ def transport_info() -> list[dict]:
     configured = standard_endpoint() is not None
     cloud_enabled = cloud_configured()
     lte_enabled = warmlink_endpoint() is not None
+    display_enabled = display_endpoint() is not None
     return [
         {
             "id": "cloud",
-            "name": "PHNIX Cloud",
+            "name": "Cloud",
             "configured": cloud_enabled,
             "read_supported": cloud_enabled,
             "reason": ""
@@ -233,29 +236,29 @@ def transport_info() -> list[dict]:
         },
         {
             "id": "standard_modbus",
-            "name": "Standard-Modbus",
+            "name": "Modbus-Standard",
             "configured": configured,
             "read_supported": configured,
             "reason": ""
             if configured
-            else "Standard-Modbus deaktiviert (separater Bus kann belegt sein)",
-        },
-        {
-            "id": "display_modbus",
-            "name": "Display-Modbus",
-            "configured": display_endpoint() is not None,
-            "read_supported": display_endpoint() is not None,
-            "reason": ""
-            if display_endpoint()
-            else "Display-Anschluss in den Einstellungen aktivieren",
+            else "Modbus-Standard deaktiviert (separater Bus kann belegt sein)",
         },
         {
             "id": "warmlink_raw",
-            "name": "LTE-/Warmlink-Modbus",
+            "name": "Modbus-LTE",
             "configured": lte_enabled,
             "read_supported": lte_enabled,
             "reason": ""
             if lte_enabled
             else "LTE-Anschluss in den Einstellungen aktivieren",
+        },
+        {
+            "id": "display_modbus",
+            "name": "Modbus-Display",
+            "configured": display_enabled,
+            "read_supported": display_enabled,
+            "reason": ""
+            if display_enabled
+            else "Display-Anschluss in den Einstellungen aktivieren",
         },
     ]

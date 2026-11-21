@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
-  ChevronRight, Clock3, Gauge, HeartPulse, House,
+  ChevronRight, Clock3, Cloud, Gauge, HeartPulse, House,
   Power, RadioTower, RefreshCw,
   Settings2, SlidersHorizontal, Star,
   Sun, Thermometer, VolumeX, Waves, Wifi, Zap
@@ -222,7 +222,7 @@ const currentValue = ref<RegisterValue | null>(null)
 const readError = ref('')
 
 const selectedTransportInfo = computed(() => transports.value.find(t => t.id === selectedTransport.value))
-const transportLabel = computed(() => selectedTransportInfo.value?.name || 'PHNIX-Cloud')
+const transportLabel = computed(() => selectedTransportInfo.value?.name || 'Cloud')
 const isBusTransport = computed(() => ['warmlink_raw','display_modbus'].includes(selectedTransport.value))
 const online = computed(() => isBusTransport.value ? !!busState.value?.connected : snapshot.value?.status === 'online')
 const connectionText = computed(() => isBusTransport.value
@@ -696,10 +696,10 @@ onBeforeUnmount(() => {
             <div class="transport-inline">
               <label for="home-transport">Verbindung</label>
               <select id="home-transport" v-model="selectedTransport" :disabled="transportBusy || !adminAuthenticated">
-                <option value="cloud">PHNIX-Cloud</option>
-                <option value="standard_modbus">Standard-Modbus</option>
-                <option value="display_modbus">Display-Modbus</option>
-                <option value="warmlink_raw">LTE-/Warmlink-Modbus</option>
+                <option value="cloud">Cloud</option>
+                <option value="standard_modbus">Modbus-Standard</option>
+                <option value="warmlink_raw">Modbus-LTE</option>
+                <option value="display_modbus">Modbus-Display</option>
               </select>
               <small class="bus-live-note">Gilt für alle Geräte{{ adminAuthenticated ? '' : ' · Änderung als Administrator' }}</small>
               <small v-if="transportError" class="error-text" role="alert">{{ transportError }}</small>
@@ -845,10 +845,10 @@ onBeforeUnmount(() => {
           <p>Die ausgewählte Verbindung gilt für alle Geräte und wird automatisch synchronisiert. Unter Verbindungseinstellungen richtest du Cloud und lokale Busanschlüsse ein.</p>
           <div class="transport-options">
             <label v-for="option in (transports.length ? transports : [
-              { id: 'cloud', name: 'PHNIX Cloud', configured: false, read_supported: false, reason: '' },
-              { id: 'standard_modbus', name: 'Standard-Modbus', configured: false, read_supported: false, reason: '' },
-              { id: 'display_modbus', name: 'Display-Modbus', configured: false, read_supported: false, reason: '' },
-              { id: 'warmlink_raw', name: 'LTE-/Warmlink-Modbus', configured: false, read_supported: false, reason: '' }
+              { id: 'cloud', name: 'Cloud', configured: false, read_supported: false, reason: '' },
+              { id: 'standard_modbus', name: 'Modbus-Standard', configured: false, read_supported: false, reason: '' },
+              { id: 'warmlink_raw', name: 'Modbus-LTE', configured: false, read_supported: false, reason: '' },
+              { id: 'display_modbus', name: 'Modbus-Display', configured: false, read_supported: false, reason: '' }
             ])" :key="option.id" class="transport-option" :class="{ active: selectedTransport === option.id }">
               <input v-model="selectedTransport" type="radio" name="transport" :value="option.id" :disabled="transportBusy || !adminAuthenticated" />
               <span class="transport-option-icon"><Cloud v-if="option.id === 'cloud'" :size="21" /><Wifi v-else-if="option.id === 'standard_modbus'" :size="21" /><Gauge v-else-if="option.id === 'display_modbus'" :size="21" /><RadioTower v-else :size="21" /></span>
@@ -856,7 +856,7 @@ onBeforeUnmount(() => {
               <span class="choice-mark"></span>
             </label>
           </div>
-          <div class="settings-note"><Activity :size="18" /><p>Cloud und Standard-Modbus werden bei sichtbarer Übersicht aktualisiert. Display und LTE empfangen neue Buswerte live. Neue lokale Anschlüsse bleiben bis zur Einrichtung deaktiviert.</p></div>
+          <div class="settings-note"><Activity :size="18" /><p>Cloud und Modbus-Standard werden bei sichtbarer Übersicht aktualisiert. Display und LTE empfangen neue Buswerte live. Neue lokale Anschlüsse bleiben bis zur Einrichtung deaktiviert.</p></div>
           <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
 

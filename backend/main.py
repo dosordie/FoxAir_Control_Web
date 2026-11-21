@@ -27,7 +27,7 @@ from backend.register_definitions import (
 from backend.routes.lte import router as lte_router
 from backend.routes.parameters import router as parameter_router
 from backend.last_values import store as last_values, remember_words, fill_dashboard
-from backend.rtu import open_rtu
+from backend.rtu import open_rtu, standard_connection
 from backend.settings import standard_endpoint, warmlink_endpoint, warmlink_config, save_warmlink, transport_info, TRANSPORTS
 from backend.warmlink import open_warmlink, write_control as write_warmlink_control
 
@@ -50,6 +50,7 @@ async def lifespan(_app: FastAPI):
         stop_scan()
         await gira_client.stop()
         display_manager.stop()
+        standard_connection.disconnect()
         stop()
 
 

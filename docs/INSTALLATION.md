@@ -112,14 +112,13 @@ erfolgreicher Wiederholung bewusst starten. Private Einstellungen bleiben erhalt
 **Bestehende produktive Installation:** Nicht einfach main in die laufende Installation
 ziehen. Erst die gesicherte [Erst-Migration mit Rollback](RELEASES.md) prüfen und
 freigeben. Der neue `scripts/update.sh`-Pfad verwendet nur vollständige Stable-Releases.
-Noch kein Produktivupdate oder Release wurde durch diese Vorbereitung ausgeführt.
+Die öffentlich verfügbaren Pakete und Versionsnummern stehen auf der [Release-Seite](https://github.com/dosordie/FoxAir_Control_Web/releases).
 
-**Frische Stable-Installation nach Releasefreigabe:** Den freigegebenen Tag separat
+**Frische Stable-Installation:** Den freigegebenen Tag separat
 bereitstellen und `scripts/install_release.py` als root mit Python 3.12 ausführen.
 Der Installer legt `/opt/foxair-web/app` und die passende venv aus dem fertigen Release
 an. Danach über diesen App-Pfad `scripts/install_service.sh` aufrufen und die obige
-GUI-Ersteinrichtung durchführen. Vor der Veröffentlichung von v0.1.0 ist dieser Weg
-absichtlich noch nicht nutzbar.
+GUI-Ersteinrichtung durchführen.
 
 Der optionale GUI-Updateknopf lässt sich nach der Release-Migration mit
 `sudo bash /opt/foxair-web/app/scripts/install_web_update.sh` einrichten. Code und

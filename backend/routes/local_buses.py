@@ -8,7 +8,9 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from backend.cloud_config import require_admin, ensure_secure_origin
-from backend.settings import local_bus_config, save_local_bus
+from backend.settings import local_bus_config, save_local_bus, standard_endpoint
+from backend.rtu import standard_connection
+from backend.transport_selection import LOCK, operation
 from backend.display_bus import manager
 from backend.register_definitions import DASHBOARD_FIELDS
 
@@ -36,9 +38,29 @@ def config(transport: Transport, request: Request):
 def save(transport: Transport, payload: BusConfig, request: Request):
     require_admin(request)
     try:
-        return save_local_bus(transport, **payload.model_dump())
+        with LOCK:
+            saved = save_local_bus(transport, **payload.model_dump())
+            if transport == "standard_modbus":
+                standard_connection.disconnect()
+            return saved
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
+
+
+@router.post("/api/local/standard_modbus/lease")
+def standard_lease(request: Request):
+    ensure_secure_origin(request)
+    if request.headers.get("x-foxair-admin") != "1":
+        raise HTTPException(403, "Anwendungs-Header fehlt")
+    try:
+        with operation("standard_modbus"):
+            if standard_endpoint() is not None:
+                standard_connection.lease(
+                    local_bus_config("standard_modbus")["browser_timeout_seconds"]
+                )
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from None
+    return {"ok": True}
 
 
 @router.post("/api/local/display_modbus/scan")

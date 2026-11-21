@@ -118,6 +118,8 @@ export function useLteConnection(
         if (transport.value === 'display_modbus') await api.displayLease()
         else await api.busLease()
         if (!pushConnected.value) await refreshSnapshot()
+      } else if (transport.value === 'standard_modbus') {
+        await api.standardLease()
       } else {
         const state = await api.busConnection()
         if (!disposed && requestedGeneration === generation) busState.value = state

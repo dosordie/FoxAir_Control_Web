@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
 import type { TransportId } from '../api'
-const props = defineProps<{ admin: boolean; secure: boolean; open: boolean }>()
-const emit = defineEmits<{ changed: [transport: TransportId] }>()
 type Bus = 'display_modbus' | 'standard_modbus'
+const props = defineProps<{ bus: Bus; admin: boolean; secure: boolean; open: boolean }>()
+const emit = defineEmits<{ changed: [transport: TransportId] }>()
 type Config = {
   host: string
   port: number
@@ -22,18 +22,15 @@ const defaults = (bus: Bus): Config => ({
   connection_mode: 'browser',
   browser_timeout_seconds: 90,
 })
-const configs = ref<Record<Bus, Config>>({
-  display_modbus: defaults('display_modbus'),
-  standard_modbus: defaults('standard_modbus'),
-})
-const kinds: Bus[] = ['display_modbus', 'standard_modbus']
+const bus = props.bus
+const config = ref(defaults(bus))
 const busy = ref(false),
   message = ref('')
-async function call(bus: Bus, save = false) {
+async function call(save = false) {
   const r = await fetch('/api/local/' + bus + '/config' + (save ? '/save' : ''), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-FoxAir-Admin': '1' },
-    body: JSON.stringify(save ? configs.value[bus] : {}),
+    body: JSON.stringify(save ? config.value : {}),
   })
   const data = await r.json()
   if (!r.ok)
@@ -51,24 +48,13 @@ watch(
     message.value = ''
     if (!props.open || !props.admin || !props.secure) {
       busy.value = false
-      configs.value = {
-        display_modbus: defaults('display_modbus'),
-        standard_modbus: defaults('standard_modbus'),
-      }
+      config.value = defaults(bus)
       return
     }
     busy.value = true
     try {
-      const next = {
-        display_modbus: defaults('display_modbus'),
-        standard_modbus: defaults('standard_modbus'),
-      }
-      for (const bus of kinds) {
-        const value = await call(bus)
-        if (request !== epoch) return
-        next[bus] = value
-      }
-      configs.value = next
+      const value = await call()
+      if (request === epoch) config.value = value
     } catch (e) {
       if (request === epoch) message.value = String(e)
     } finally {
@@ -77,15 +63,15 @@ watch(
   },
   { immediate: true },
 )
-async function save(bus: Bus) {
+async function save() {
   if (!props.admin || !props.secure || !props.open || busy.value) return
   const request = epoch
   busy.value = true
   message.value = ''
   try {
-    const value = await call(bus, true)
+    const value = await call(true)
     if (request !== epoch) return
-    configs.value[bus] = value
+    config.value = value
     emit('changed', bus)
     message.value = 'Anschluss gespeichert'
   } catch (e) {
@@ -96,8 +82,8 @@ async function save(bus: Bus) {
 }
 </script>
 <template>
-  <section v-for="bus in kinds" :key="bus" class="connection-section">
-    <h2>{{ bus === 'display_modbus' ? 'Display-Modbus' : 'Standard-Modbus' }}</h2>
+  <section class="connection-section">
+    <h2>{{ bus === 'display_modbus' ? 'Modbus-Display' : 'Modbus-Standard' }}</h2>
     <p v-if="bus === 'display_modbus'" class="section-hint">
       Passiver Empfang über einen transparenten RTU/TCP-Adapter am Displaybus. Keine
       Parameterwrites. Nur „Alle Werte vom Bus lesen“ darf die feste Display-Spezialabfrage senden.
@@ -106,7 +92,7 @@ async function save(bus: Bus) {
       Eigener Standard-Modbus-Anschluss über transparentes RTU-over-TCP, etwa ser2net. Kein Modbus
       TCP mit MBAP-Header. Die Web-App ist hier der aktive Master.
     </p>
-    <form @submit.prevent="save(bus)">
+    <form @submit.prevent="save()">
       <fieldset
         :disabled="!admin || !secure || busy"
         style="border: 0; padding: 0; display: grid; gap: 12px; min-width: 0"
@@ -114,7 +100,7 @@ async function save(bus: Bus) {
         <label
           >IP-Adresse<input
             class="settings-input"
-            v-model="configs[bus].host"
+            v-model="config.host"
             placeholder="IP des TCP-/RS485-Adapters"
             autocomplete="off" /></label
         ><label
@@ -123,14 +109,14 @@ async function save(bus: Bus) {
             type="number"
             min="1"
             max="65535"
-            v-model.number="configs[bus].port" /></label
+            v-model.number="config.port" /></label
         ><label
           >Modbus-Teilnehmer<input
             class="settings-input"
             type="number"
             min="1"
             max="247"
-            v-model.number="configs[bus].slave"
+            v-model.number="config.slave"
             :disabled="bus === 'display_modbus'" /></label
         ><label
           >Antwort-Timeout (Sekunden)<input
@@ -139,26 +125,28 @@ async function save(bus: Bus) {
             min="0.25"
             max="10"
             step="0.25"
-            v-model.number="configs[bus].timeout"
+            v-model.number="config.timeout"
         /></label>
         <template v-if="bus === 'display_modbus'"
           ><label
-            >Empfang offen halten<select
-              class="settings-input"
-              v-model="configs[bus].connection_mode"
-            >
+            >Empfang offen halten<select class="settings-input" v-model="config.connection_mode">
               <option value="browser">Solange ein Browser verbunden ist</option>
               <option value="permanent">Dauerhaft auf dem Server</option>
             </select></label
-          ><label
-            >Browser-Sitzung nach letzter Verbindung (Sekunden)<input
-              class="settings-input"
-              type="number"
-              min="30"
-              max="3600"
-              v-model.number="configs[bus].browser_timeout_seconds" /></label
-        ></template>
-        <label><input type="checkbox" v-model="configs[bus].enabled" /> Anschluss aktivieren</label
+          ></template
+        >
+        <p v-else class="section-hint">
+          Verbindung bleibt offen, solange ein Browser verbunden ist.
+        </p>
+        <label v-if="bus === 'standard_modbus' || config.connection_mode === 'browser'"
+          >Nach letztem Browser-Lebenszeichen schließen (Sekunden)<input
+            class="settings-input"
+            type="number"
+            min="30"
+            max="3600"
+            v-model.number="config.browser_timeout_seconds"
+        /></label>
+        <label><input type="checkbox" v-model="config.enabled" /> Anschluss aktivieren</label
         ><button class="outlined-action" type="submit">
           {{ busy ? 'Speichert …' : 'Anschluss speichern' }}
         </button>
