@@ -2,6 +2,49 @@
 
 Beide neuen Anschlüsse bleiben standardmäßig deaktiviert. Reale IP-Adressen und Zugangsdaten gehören nur in die private Serverkonfiguration.
 
+
+## USB-RS485 direkt anschließen
+
+In den Verbindungseinstellungen des jeweiligen Busses **USB / RS485** wählen.
+Die Baudraten folgen den Standardprofilen von FoxAir Control. Alle drei verwenden
+8 Datenbits, keine Parität und ein Stoppbit.
+
+| Bus | Vorgabe | Protokoll |
+| --- | --- | --- |
+| Modbus-Standard | 9600 Baud | Aktiver RTU-Master auf eigenem Anschluss |
+| Modbus-LTE | 9600 Baud | WarmLink-Frames mit passivem Empfang und vorhandener Kollisionsprüfung |
+| Modbus-Display | 4800 Baud | Passiver Display-Empfang plus bestehende feste Snapshot-Funktion |
+
+Unter Linux bevorzugt `/dev/serial/by-id/…` verwenden. Der Gerätepfad muss für
+den Dienstbenutzer zugänglich sein, auf Debian meist über die Gruppe `dialout`.
+Eine andere Baudrate lässt sich pro Bus speichern. Die bisherige IP- und
+Port-Einstellung bleibt beim Wechsel des Verbindungswegs gespeichert.
+
+### Docker
+
+Das ausgewählte USB-Gerät im Abschnitt `foxair-web` der Compose-Datei ergänzen.
+Den Pfad links und die Zahl unter `group_add` durch die Werte vom Docker-Host
+ersetzen. Die Gruppen-ID liefert `stat -Lc '%g' /dev/serial/by-id/DEIN-ADAPTER`.
+
+```yaml
+services:
+  foxair-web:
+    devices:
+      - /dev/serial/by-id/DEIN-ADAPTER:/dev/foxair-standard
+    group_add:
+      - "20"
+```
+
+Mit `docker compose up -d` den Container neu erstellen und im Webformular
+`/dev/foxair-standard` eintragen. Weitere Adapter können unter eigenen Namen wie
+`/dev/foxair-lte` und `/dev/foxair-display` zugeordnet werden. Der Container
+braucht weder Root noch privilegierten Betrieb. Nach einem Aus- und Einstecken
+kann ein erneutes Erstellen des Containers erforderlich sein, damit Docker das
+Gerät neu zuordnet.
+
+Ein USB-Adapter kann auch am Host über ser2net bereitgestellt werden. In diesem
+Fall bleibt in der Web-App **IP / TCP** eingestellt.
+
 ## Einrichtung
 
 Als Administrator über HTTPS **Einstellungen → Verbindungseinstellungen** öffnen. Für jeden Bus die eigene IP-Adresse des seriellen TCP-Gateways und den TCP-Port eintragen. Das Gateway muss rohe Modbus-RTU-Frames inklusive CRC transparent übertragen (beispielsweise ser2net). Ein Modbus-TCP-Gateway mit MBAP-Header ist ein anderes Protokoll und wird hier nicht unterstützt. Direkte USB-/COM-Anschlüsse sind nicht Bestandteil dieses Web-Anschlusses.

@@ -32,7 +32,7 @@ def write_control(code, requested, expected):
     register = {"Power": 1011, "Mode": 1012, "H22": 1030, "R02": 1158}[code]
     scale = 10 if code == "R02" else 1
     with open_warmlink(endpoint) as client:
-        key = (endpoint.host, endpoint.port)
+        key = endpoint.connection_key()
         if time.monotonic() - _last_write.get(key, -1000) < 5:
             raise WriteConflictError(
                 "Nächster LTE-Schreibvorgang frühestens nach fünf Sekunden"

@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import BusLinkFields from './BusLinkFields.vue'
 import { ref, watch, onBeforeUnmount } from 'vue'
 import type { TransportId } from '../api'
 type Bus = 'display_modbus' | 'standard_modbus'
 const props = defineProps<{ bus: Bus; admin: boolean; secure: boolean; open: boolean }>()
 const emit = defineEmits<{ changed: [transport: TransportId] }>()
 type Config = {
+  medium: 'tcp' | 'serial'
+  serial_device: string
+  baudrate: number
   host: string
   port: number
   slave: number
@@ -14,6 +18,9 @@ type Config = {
   browser_timeout_seconds: number
 }
 const defaults = (bus: Bus): Config => ({
+  medium: 'tcp',
+  serial_device: '',
+  baudrate: bus === 'display_modbus' ? 4800 : 9600,
   host: '',
   port: 2001,
   slave: bus === 'display_modbus' ? 3 : 99,
@@ -35,7 +42,7 @@ async function call(save = false) {
   const data = await r.json()
   if (!r.ok)
     throw new Error(typeof data.detail === 'string' ? data.detail : 'Konfiguration nicht verfügbar')
-  return data as Config
+  return { ...defaults(bus), ...data } as Config
 }
 let epoch = 0
 onBeforeUnmount(() => {
@@ -85,32 +92,26 @@ async function save() {
   <section class="connection-section">
     <h2>{{ bus === 'display_modbus' ? 'Modbus-Display' : 'Modbus-Standard' }}</h2>
     <p v-if="bus === 'display_modbus'" class="section-hint">
-      Passiver Empfang über einen transparenten RTU/TCP-Adapter am Displaybus. Keine
+      Passiver Empfang am Displaybus über USB-RS485 oder einen transparenten TCP-Adapter. Keine
       Parameterwrites. Nur „Alle Werte vom Bus lesen“ darf die feste Display-Spezialabfrage senden.
     </p>
     <p v-else class="section-hint">
-      Eigener Standard-Modbus-Anschluss über transparentes RTU-over-TCP, etwa ser2net. Kein Modbus
-      TCP mit MBAP-Header. Die Web-App ist hier der aktive Master.
+      Eigener Modbus-RTU-Anschluss über USB-RS485 oder transparentes TCP, etwa ser2net. Die Web-App
+      ist hier der aktive Master.
     </p>
     <form @submit.prevent="save()">
       <fieldset
         :disabled="!admin || !secure || busy"
         style="border: 0; padding: 0; display: grid; gap: 12px; min-width: 0"
       >
+        <BusLinkFields
+          v-model:medium="config.medium"
+          v-model:host="config.host"
+          v-model:port="config.port"
+          v-model:serial-device="config.serial_device"
+          v-model:baudrate="config.baudrate"
+        />
         <label
-          >IP-Adresse<input
-            class="settings-input"
-            v-model="config.host"
-            placeholder="IP des TCP-/RS485-Adapters"
-            autocomplete="off" /></label
-        ><label
-          >TCP-Port<input
-            class="settings-input"
-            type="number"
-            min="1"
-            max="65535"
-            v-model.number="config.port" /></label
-        ><label
           >Modbus-Teilnehmer<input
             class="settings-input"
             type="number"

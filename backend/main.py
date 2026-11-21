@@ -127,7 +127,10 @@ class WarmlinkConfigUpdate(CloudAdminAction):
     idle_timeout_seconds: int = Field(default=0, ge=0, le=3600)
     browser_timeout_seconds: int = Field(default=90, ge=30, le=3600)
     connection_mode: Literal["on_demand", "browser", "permanent"] = "on_demand"
-    host: str = Field(min_length=1, max_length=64)
+    medium: Literal["tcp", "serial"] = "tcp"
+    serial_device: str = Field(default="", max_length=255)
+    baudrate: int | None = Field(default=None, ge=1200, le=115200)
+    host: str = Field(default="", max_length=64)
     port: int = Field(ge=1, le=65535)
     enabled: bool
 
@@ -142,7 +145,7 @@ def get_warmlink_config(payload: CloudAdminAction, request: Request):
 def update_warmlink_config(payload: WarmlinkConfigUpdate, request: Request):
     require_admin(request, payload.admin_password)
     try:
-        return save_warmlink(payload.host, payload.port, payload.enabled, payload.connection_mode, payload.idle_timeout_seconds, payload.browser_timeout_seconds)
+        return save_warmlink(payload.host, payload.port, payload.enabled, payload.connection_mode, payload.idle_timeout_seconds, payload.browser_timeout_seconds, medium=payload.medium, serial_device=payload.serial_device, baudrate=payload.baudrate)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except OSError:

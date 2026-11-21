@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusLinkFields from './BusLinkFields.vue'
 import LocalBusSettings from './LocalBusSettings.vue'
 import { nextTick, ref, toRef, watch } from 'vue'
 import { Cloud, Search, RefreshCw } from 'lucide-vue-next'
@@ -276,22 +277,17 @@ const {
           </div>
         </div>
         <p class="section-hint">
-          Raw-TCP-/ser2net-Anschluss, 9600 8N1, Slave 99. Vorhandener DTU-Verkehr wird
-          berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.
+          USB-RS485 oder Raw-TCP/ser2net, standardmäßig 9600 8N1, Slave 99. Vorhandener DTU-Verkehr
+          wird berücksichtigt. Bei konkurrierenden Abfragen wird abgebrochen.
         </p>
         <p v-if="!admin" class="section-hint">Zum Konfigurieren oben rechts anmelden.</p>
         <form v-else @submit.prevent="saveLteConfig" class="cloud-form">
-          <label class="field-label" for="lte-host">IP-Adresse</label>
-          <input id="lte-host" class="settings-input" v-model="lteConfig.host" required />
-          <label class="field-label" for="lte-port">TCP-Port</label>
-          <input
-            id="lte-port"
-            class="settings-input"
-            type="number"
-            min="1"
-            max="65535"
-            v-model.number="lteConfig.port"
-            required
+          <BusLinkFields
+            v-model:medium="lteConfig.medium"
+            v-model:host="lteConfig.host"
+            v-model:port="lteConfig.port"
+            v-model:serial-device="lteConfig.serial_device"
+            v-model:baudrate="lteConfig.baudrate"
           />
           <label class="field-label" for="connection-mode">Verbindung offen halten</label>
           <select id="connection-mode" class="settings-input" v-model="lteConfig.connection_mode">
@@ -333,7 +329,7 @@ const {
             />
           </template>
           <p role="status">
-            TCP: {{ busState?.connected ? 'Verbunden' : 'Geschlossen' }} · Modus:
+            Verbindung: {{ busState?.connected ? 'Verbunden' : 'Geschlossen' }} · Modus:
             {{
               { on_demand: 'Bei Bedarf', browser: 'Browser geöffnet', permanent: 'Dauerhaft' }[
                 busState?.mode as 'on_demand' | 'browser' | 'permanent'

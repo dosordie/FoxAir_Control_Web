@@ -159,7 +159,7 @@ async function get<T>(path: string): Promise<T> {
     clearTimeout(timer)
   }
 }
-export type WarmlinkConfig = {idle_timeout_seconds?:number;browser_timeout_seconds?:number;connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
+export type WarmlinkConfig = {medium?:'tcp'|'serial';serial_device?:string;baudrate?:number;idle_timeout_seconds?:number;browser_timeout_seconds?:number;connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
 export const api = {
   writeParameter:(register:number,transport:TransportId,value:string,expected:string,expected_transport?:string)=>post<CloudWriteResult>('/api/parameters/'+register+'/write',{transport,value,expected,expected_transport}),

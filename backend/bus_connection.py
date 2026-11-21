@@ -6,11 +6,11 @@ share the public endpoint lock. Background receiving never transmits.
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-import socket
 import threading
 import time
 
 from backend.bus_locks import endpoint_lock
+from backend.bus_stream import connect_bus
 from backend.diagnostics import log_event
 from backend.register_cache import RegisterCache
 from backend.settings import Endpoint, warmlink_config, warmlink_endpoint
@@ -36,7 +36,7 @@ class BusConnectionManager:
         self.cache = cache if cache is not None else RegisterCache()
         self._endpoint_provider = endpoint_provider
         self._config_provider = config_provider
-        self._socket_factory = socket_factory or socket.create_connection
+        self._socket_factory = socket_factory
         self._session_factory = session_factory
         self._state_lock = threading.RLock()
         self._io = threading.RLock()
@@ -105,9 +105,7 @@ class BusConnectionManager:
         if self.cache.select_source(endpoint):
             with self._state_lock:
                 self._state["last_rx"] = None
-        sock = self._socket_factory(
-            (endpoint.host, endpoint.port), timeout=endpoint.timeout
-        )
+        sock = connect_bus(endpoint, self._socket_factory)
 
         def observe(frames):
             self.cache.observe_frames(endpoint, frames)
@@ -200,7 +198,7 @@ class BusConnectionManager:
             if self._stopped:
                 raise RuntimeError("LTE-Verbindungsverwaltung ist beendet")
             client = self._new_session(endpoint)
-            log_event("lte", "LTE TCP verbunden; bedarfsgesteuerte Sitzung")
+            log_event("lte", "LTE verbunden; bedarfsgesteuerte Sitzung")
             try:
                 yield client
             except (OSError, ValueError) as error:
@@ -210,7 +208,7 @@ class BusConnectionManager:
                 raise
             finally:
                 client.sock.close()
-                log_event("lte", "LTE TCP-Sitzung beendet")
+                log_event("lte", "LTE-Sitzung beendet")
 
     def _receive_once(self) -> float:
         from backend.transport_selection import LOCK, allows

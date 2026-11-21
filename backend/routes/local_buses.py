@@ -19,7 +19,10 @@ Transport = Literal["display_modbus", "standard_modbus"]
 
 
 class BusConfig(BaseModel):
-    host: str = Field(max_length=64)
+    medium: Literal["tcp", "serial"] = "tcp"
+    serial_device: str = Field(default="", max_length=255)
+    baudrate: int | None = Field(default=None, ge=1200, le=115200)
+    host: str = Field(default="", max_length=64)
     port: int = Field(ge=1, le=65535)
     enabled: bool = False
     slave: int = Field(ge=1, le=247)

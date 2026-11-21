@@ -25,14 +25,24 @@ def installation_key():
     identity = [
         username,
         device,
-        lte["host"],
-        lte["port"],
-        (standard.host, standard.port, standard.slave) if standard else None,
+        lte["serial_device"] if lte["medium"] == "serial" else lte["host"],
+        ("serial", lte["baudrate"]) if lte["medium"] == "serial" else lte["port"],
+        (
+            (standard.medium, standard.serial_device, standard.baudrate, standard.slave)
+            if standard.medium == "serial"
+            else (standard.host, standard.port, standard.slave)
+        )
+        if standard
+        else None,
     ]
     from backend.settings import local_bus_config
 
     display = local_bus_config("display_modbus")
-    if display["host"]:
+    if display["medium"] == "serial":
+        identity.append(
+            ("display-serial", display["serial_device"], display["baudrate"])
+        )
+    elif display["host"]:
         identity.append(("display", display["host"], display["port"]))
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 

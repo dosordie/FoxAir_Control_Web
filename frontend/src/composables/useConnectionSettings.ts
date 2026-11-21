@@ -24,6 +24,9 @@ export function useConnectionSettings(
     cloudError = ref('')
   const selectedCloudStatus = ref<Record<string, string | number | boolean | null>>({})
   const lteConfig = ref<WarmlinkConfig>({
+    medium: 'tcp',
+    serial_device: '',
+    baudrate: 9600,
     host: '',
     port: 2001,
     enabled: false,
@@ -46,6 +49,9 @@ export function useConnectionSettings(
     selectedCloudStatus.value = {}
     accountLoaded.value = false
     lteConfig.value = {
+      medium: 'tcp',
+      serial_device: '',
+      baudrate: 9600,
       host: '',
       port: 2001,
       enabled: false,
@@ -113,7 +119,8 @@ export function useConnectionSettings(
   function loadLteConfig() {
     return adminAction(lteBusy, lteError, 'LTE-Einstellungen nicht verfügbar', async (current) => {
       const result = await api.warmlinkConfig()
-      if (current()) lteConfig.value = result
+      if (current())
+        lteConfig.value = { medium: 'tcp', serial_device: '', baudrate: 9600, ...result }
     })
   }
   function saveLteConfig() {

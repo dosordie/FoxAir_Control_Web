@@ -74,9 +74,9 @@ Unter **Einstellungen → Verbindungseinstellungen** den Anschluss einrichten un
 | Verbindung | Verwendung |
 | --- | --- |
 | **Cloud** | PHNIX/WarmLink mit Geräteauswahl, Liveabfrage und historischen Diagrammen. |
-| **Modbus-Standard** | Eigener RTU-over-TCP-Anschluss, etwa über ser2net. Die Verbindung bleibt während der Browser-Sitzung offen. |
-| **Modbus-LTE** | WarmLink-/LTE-Bus über einen transparenten TCP-Adapter, mit Livewerten und einstellbarer Verbindungsdauer. |
-| **Modbus-Display** | Passiver Empfang vom Displaybus und manuelle Abfrage aller Register. |
+| **Modbus-Standard** | Eigener Modbus-RTU-Anschluss über IP/TCP oder USB-RS485. Die Verbindung bleibt während der Browser-Sitzung offen. |
+| **Modbus-LTE** | WarmLink-/LTE-Bus über transparentes TCP oder USB-RS485, mit Livewerten und einstellbarer Verbindungsdauer. |
+| **Modbus-Display** | Passiver Empfang über TCP oder USB-RS485, mit manueller Abfrage aller Register. |
 
 Die **Live-Registerübersicht** zeigt eingehende Werte. In den Parameterdetails stehen Quelle, Zeitstempel und Beschreibung. Unterstützte Änderungen werden mit Readback geprüft. [Lokale Modbus-Anschlüsse](docs/LOCAL_MODBUS.md) · [Gira HomeServer](docs/GIRA.md)
 

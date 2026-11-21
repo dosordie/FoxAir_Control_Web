@@ -4,6 +4,7 @@ import socket
 import threading
 import time
 from backend.display_protocol import DisplayProtocol
+from backend.bus_stream import connect_bus
 from backend.diagnostics import log_event
 from backend.settings import display_endpoint, local_bus_config
 from backend.last_values import remember_words, store
@@ -51,9 +52,7 @@ class DisplayBus:
 
     def connect(self, endpoint):
         with operation("display_modbus"):
-            sock = socket.create_connection(
-                (endpoint.host, endpoint.port), timeout=endpoint.timeout
-            )
+            sock = connect_bus(endpoint)
             with self.lock:
                 self.sock = sock
             return sock

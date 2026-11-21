@@ -3,6 +3,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import os
+import ipaddress
+import re
+import stat
 import threading
 
 _config_lock = threading.RLock()
@@ -11,9 +14,87 @@ from backend.cloud_config import STATE_DIR, _read_json, _atomic_json
 WARMLINK_FILE = STATE_DIR / "warmlink.json"
 
 
+SERIAL_BAUDRATES = {
+    "standard_modbus": 9600,
+    "warmlink_raw": 9600,
+    "display_modbus": 4800,
+}
+SERIAL_DEVICE = re.compile(
+    r"/dev/(?:tty(?:USB|ACM)[0-9]+|(?:serial/by-(?:id|path)/|foxair-)[A-Za-z0-9_.:+-]+)"
+)
+
+
+def serial_fields(transport, row):
+    return {
+        "medium": row.get("medium", "tcp"),
+        "serial_device": row.get("serial_device", ""),
+        "baudrate": row.get("baudrate")
+        if row.get("baudrate") is not None
+        else SERIAL_BAUDRATES[transport],
+    }
+
+
+def validated_link(
+    transport, *, host, port, enabled, medium="tcp", serial_device="", baudrate=None
+):
+    serial_device = serial_device.strip()
+    fields = serial_fields(
+        transport,
+        {"medium": medium, "serial_device": serial_device, "baudrate": baudrate},
+    )
+    if medium not in ("tcp", "serial"):
+        raise ValueError("Unbekannter Verbindungsweg")
+    if not 1200 <= fields["baudrate"] <= 115200:
+        raise ValueError("USB-Baudrate muss zwischen 1200 und 115200 liegen")
+    if serial_device and (
+        not SERIAL_DEVICE.fullmatch(serial_device)
+        or serial_device.rsplit("/", 1)[1] in (".", "..")
+    ):
+        raise ValueError(
+            "USB-Gerät als /dev/ttyUSB…, /dev/ttyACM…, /dev/serial/by-id/… oder /dev/foxair-… angeben"
+        )
+    if medium == "serial" and enabled and not serial_device:
+        raise ValueError("USB-Gerätepfad fehlt")
+    if not 1 <= port <= 65535:
+        raise ValueError("TCP-Port muss zwischen 1 und 65535 liegen")
+    if medium == "tcp" and (host or enabled):
+        try:
+            address = ipaddress.ip_address(host.strip())
+        except ValueError:
+            raise ValueError("Bitte eine gültige lokale IP-Adresse eingeben") from None
+        if (
+            not address.is_private
+            or address.is_loopback
+            or address.is_unspecified
+            or address.is_multicast
+        ):
+            raise ValueError("Nur explizite private Bus-IP-Adressen erlaubt")
+        host = str(address)
+    return {"host": host, "port": port, **fields}
+
+
+def endpoint_from_row(transport, row):
+    if not row["enabled"]:
+        return None
+    if row["medium"] == "tcp":
+        return Endpoint(row["host"], row["port"], row["slave"], row["timeout"])
+    if row["medium"] != "serial" or not row["serial_device"]:
+        return None
+    return Endpoint(
+        "",
+        0,
+        row["slave"],
+        row["timeout"],
+        "serial",
+        row["serial_device"],
+        row["baudrate"],
+    )
+
+
 def warmlink_config() -> dict:
     row = _read_json(WARMLINK_FILE)
     return {
+        **serial_fields("warmlink_raw", row),
         "host": row.get("host", ""),
         "port": row.get("port", 2001),
         "idle_timeout_seconds": row.get("idle_timeout_seconds", 0),
@@ -31,8 +112,10 @@ def save_warmlink(
     connection_mode: str = "on_demand",
     idle_timeout_seconds: int = 0,
     browser_timeout_seconds: int = 90,
+    medium: str = "tcp",
+    serial_device: str = "",
+    baudrate: int | None = None,
 ) -> dict:
-    import ipaddress
 
     if (
         not 0 <= idle_timeout_seconds <= 3600
@@ -41,27 +124,22 @@ def save_warmlink(
         raise ValueError("Sitzungsdauer: 0–3600 Sekunden; Browser: 30–3600 Sekunden")
     if connection_mode not in ("on_demand", "browser", "permanent"):
         raise ValueError("Unbekannter Verbindungsmodus")
-    # Explicit raw TCP endpoint only; no URLs, paths, credentials or DNS rebinding.
-    try:
-        address = ipaddress.ip_address(host.strip())
-    except ValueError:
-        raise ValueError("Bitte eine gültige lokale IP-Adresse eingeben") from None
-    if (
-        not address.is_private
-        or address.is_loopback
-        or address.is_unspecified
-        or address.is_multicast
-        or not 1 <= port <= 65535
-    ):
-        raise ValueError("Lokale IP-Adresse und TCP-Port 1–65535 erforderlich")
+    link = validated_link(
+        "warmlink_raw",
+        host=host,
+        port=port,
+        enabled=enabled,
+        medium=medium,
+        serial_device=serial_device,
+        baudrate=baudrate,
+    )
     with _config_lock:
         if enabled:
-            ensure_distinct_bus(str(address), port, "warmlink_raw")
+            ensure_distinct_bus(Endpoint(**link), "warmlink_raw")
         _atomic_json(
             WARMLINK_FILE,
             {
-                "host": str(address),
-                "port": port,
+                **link,
                 "enabled": enabled,
                 "connection_mode": connection_mode,
                 "idle_timeout_seconds": idle_timeout_seconds,
@@ -72,12 +150,7 @@ def save_warmlink(
 
 
 def warmlink_endpoint() -> Endpoint | None:
-    row = warmlink_config()
-    return (
-        Endpoint(row["host"], row["port"], slave=99, timeout=5)
-        if row["enabled"]
-        else None
-    )
+    return endpoint_from_row("warmlink_raw", {**warmlink_config(), "timeout": 5})
 
 
 from backend.cloud_read import cloud_configured
@@ -96,6 +169,20 @@ class Endpoint:
     port: int
     slave: int = 0x63
     timeout: float = 2.0
+    medium: str = "tcp"
+    serial_device: str = ""
+    baudrate: int = 9600
+
+    def connection_key(self):
+        if self.medium == "tcp":
+            return ("tcp", self.host, self.port)
+        try:
+            info = os.stat(self.serial_device)
+            if stat.S_ISCHR(info.st_mode):
+                return ("serial-device", info.st_rdev)
+        except OSError:
+            pass
+        return ("serial-path", os.path.realpath(self.serial_device))
 
 
 def local_bus_config(transport: str) -> dict:
@@ -104,6 +191,7 @@ def local_bus_config(transport: str) -> dict:
     row = _read_json(STATE_DIR / (transport + ".json"))
     legacy = transport == "standard_modbus" and not row
     return {
+        **serial_fields(transport, row),
         "host": row.get(
             "host", os.getenv("FOXAIR_STANDARD_HOST", "") if legacy else ""
         ),
@@ -131,7 +219,7 @@ def local_bus_config(transport: str) -> dict:
 
 def local_endpoint(transport: str) -> Endpoint | None:
     row = local_bus_config(transport)
-    if not row["enabled"] or not row["host"]:
+    if not row["enabled"] or (row["medium"] == "tcp" and not row["host"]):
         return None
     if (
         not 1 <= row["port"] <= 65535
@@ -139,7 +227,7 @@ def local_endpoint(transport: str) -> Endpoint | None:
         or not 0.25 <= row["timeout"] <= 10
     ):
         raise ValueError("Ungültige Bus-Konfiguration")
-    return Endpoint(row["host"], row["port"], row["slave"], row["timeout"])
+    return endpoint_from_row(transport, row)
 
 
 def display_endpoint() -> Endpoint | None:
@@ -150,16 +238,16 @@ def standard_endpoint() -> Endpoint | None:
     return local_endpoint("standard_modbus")
 
 
-def ensure_distinct_bus(host, port, transport):
+def ensure_distinct_bus(endpoint, transport):
     others = []
     if transport != "warmlink_raw":
         others.append(warmlink_endpoint())
     for other in ("display_modbus", "standard_modbus"):
         if other != transport:
             others.append(local_endpoint(other))
-    if any(e and (e.host, e.port) == (host, port) for e in others):
+    if any(e and e.connection_key() == endpoint.connection_key() for e in others):
         raise ValueError(
-            "Dieser TCP-Anschluss wird bereits von einem anderen Bus verwendet"
+            "Dieser Anschluss wird bereits von einem anderen Bus verwendet"
         )
 
 
@@ -172,8 +260,10 @@ def save_local_bus(
     timeout: float = 2.0,
     connection_mode: str = "browser",
     browser_timeout_seconds: int = 90,
+    medium: str = "tcp",
+    serial_device: str = "",
+    baudrate: int | None = None,
 ):
-    import ipaddress
 
     if transport not in (
         "display_modbus",
@@ -191,21 +281,17 @@ def save_local_bus(
         raise ValueError(
             "Display-Snapshot ist nur für das bestätigte Hauptdisplay (Unit 3) freigegeben"
         )
-    if host:
-        address = ipaddress.ip_address(host.strip())
-        if (
-            not address.is_private
-            or address.is_loopback
-            or address.is_multicast
-            or address.is_unspecified
-        ):
-            raise ValueError("Nur explizite private Bus-IP-Adressen erlaubt")
-        host = str(address)
-    elif enabled:
-        raise ValueError("Bus-IP-Adresse fehlt")
-    row = dict(
+    link = validated_link(
+        transport,
         host=host,
         port=port,
+        enabled=enabled,
+        medium=medium,
+        serial_device=serial_device,
+        baudrate=baudrate,
+    )
+    row = dict(
+        **link,
         enabled=enabled,
         slave=slave,
         timeout=timeout,
@@ -214,7 +300,7 @@ def save_local_bus(
     )
     with _config_lock:
         if enabled:
-            ensure_distinct_bus(host, port, transport)
+            ensure_distinct_bus(Endpoint(**link), transport)
         _atomic_json(STATE_DIR / (transport + ".json"), row)
     return local_bus_config(transport)
 

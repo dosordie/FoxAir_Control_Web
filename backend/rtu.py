@@ -12,6 +12,7 @@ import time
 
 from backend.settings import Endpoint
 from backend.bus_locks import endpoint_lock
+from backend.bus_stream import connect_bus
 
 
 def crc16(payload: bytes) -> int:
@@ -33,7 +34,7 @@ def read_exact(sock: socket.socket, size: int) -> bytes:
         chunk = sock.recv(size - len(received))
         if not chunk:
             raise ConnectionError(
-                "ser2net-Verbindung vor vollständigem Telegramm geschlossen"
+                "RTU-Verbindung vor vollständigem Telegramm geschlossen"
             )
         received.extend(chunk)
     return bytes(received)
@@ -160,9 +161,7 @@ class StandardConnection:
             if self._endpoint != endpoint or self._until <= time.monotonic():
                 self._close()
             if self._socket is None:
-                self._socket = socket.create_connection(
-                    (endpoint.host, endpoint.port), timeout=endpoint.timeout
-                )
+                self._socket = connect_bus(endpoint)
                 self._endpoint = endpoint
             session = RtuReadSession(self._socket, endpoint.slave)
             try:

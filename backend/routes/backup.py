@@ -79,30 +79,38 @@ def restore(payload: Backup, request: Request):
                 "revision": secrets.token_hex(12),
             }
         from backend.routes.local_buses import BusConfig
-        from backend.settings import _config_lock, local_bus_config
-        import ipaddress
+        from backend.settings import (
+            Endpoint,
+            _config_lock,
+            local_bus_config,
+            validated_link,
+        )
 
         with users.LOCK, _config_lock:
             endpoints = []
-            for transport in ("display_modbus", "standard_modbus"):
-                data = rows.get(transport + ".json", local_bus_config(transport))
-                if data:
+            for transport in ("display_modbus", "standard_modbus", "warmlink_raw"):
+                data = (
+                    rows["warmlink.json"]
+                    if transport == "warmlink_raw"
+                    else rows.get(transport + ".json", local_bus_config(transport))
+                )
+                if not data:
+                    continue
+                if transport != "warmlink_raw":
                     cfg = BusConfig.model_validate(data)
                     if transport == "display_modbus" and cfg.slave != 3:
                         raise ValueError()
-                    if cfg.enabled:
-                        addr = ipaddress.ip_address(cfg.host)
-                        if (
-                            not addr.is_private
-                            or addr.is_loopback
-                            or addr.is_unspecified
-                            or addr.is_multicast
-                        ):
-                            raise ValueError()
-                        endpoints.append((str(addr), cfg.port))
-            lte = rows["warmlink.json"]
-            if lte.get("enabled"):
-                endpoints.append((lte["host"], lte["port"]))
+                link = validated_link(
+                    transport,
+                    host=data.get("host", ""),
+                    port=data.get("port", 2001),
+                    enabled=data.get("enabled", False),
+                    medium=data.get("medium", "tcp"),
+                    serial_device=data.get("serial_device", ""),
+                    baudrate=data.get("baudrate"),
+                )
+                if data.get("enabled"):
+                    endpoints.append(Endpoint(**link).connection_key())
             if len(endpoints) != len(set(endpoints)):
                 raise ValueError()
             previous = {
