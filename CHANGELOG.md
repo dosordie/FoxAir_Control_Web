@@ -1,5 +1,10 @@
 # Änderungen
 
+## v0.1.7
+
+- Administratoren können zusätzliche Hostnamen für Docker unter **Einstellungen → Webzugriff** freigeben. Die Freigabe gilt sofort, auch für Namen eines Reverse Proxys.
+- Bei einem gesperrten Hostnamen erklärt FoxAir Web, wie du ihn über die lokale IP-Adresse freigibst.
+
 ## v0.1.6
 
 - Modbus-Standard, Modbus-LTE und Modbus-Display unterstützen neben IP/TCP auch USB-RS485.

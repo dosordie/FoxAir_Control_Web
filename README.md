@@ -50,7 +50,7 @@ Der direkte LAN-Modus verwendet HTTP. Verwende ihn im vertrauenswürdigen Heimne
 Auf einem Linux-Host mit systemd, Python 3.12, venv und sudo den Installer aus dem freigegebenen Quellstand holen und ausführen. Der Installer prüft das aktuelle Stable-Paket und richtet die passende Python-Umgebung ein.
 
 ```bash
-wget -O foxair-source.tar.gz https://github.com/dosordie/FoxAir_Control_Web/archive/refs/tags/v0.1.6.tar.gz
+wget -O foxair-source.tar.gz https://github.com/dosordie/FoxAir_Control_Web/archive/refs/tags/v0.1.7.tar.gz
 mkdir -p foxair-installer
 tar -xzf foxair-source.tar.gz --strip-components=1 -C foxair-installer
 sudo python3.12 foxair-installer/scripts/install_release.py
