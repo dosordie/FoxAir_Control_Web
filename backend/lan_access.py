@@ -58,7 +58,9 @@ def normalize_hosts(names):
     for value in names:
         name = value.strip().lower().rstrip(".")
         if not valid_dns_name(name) or name in LOOPBACK_NAMES:
-            raise ValueError("Bitte nur gültige Hostnamen ohne URL, Port oder Platzhalter eingeben.")
+            raise ValueError(
+                "Bitte nur gültige Hostnamen ohne URL, Port oder Platzhalter eingeben."
+            )
         if name not in result:
             result.append(name)
     return result
@@ -72,7 +74,9 @@ def configured_hosts():
         for name in os.getenv("FOXAIR_LAN_HOSTS", "").split(",")
         if name.strip()
     }
-    setup_host = cloud_config._read_json(cloud_config.ADMIN_FILE).get("setup_lan_hostname")
+    setup_host = cloud_config._read_json(cloud_config.ADMIN_FILE).get(
+        "setup_lan_hostname"
+    )
     if isinstance(setup_host, str):
         name = setup_host.rstrip(".")
         if name not in LOOPBACK_NAMES and valid_dns_name(name):

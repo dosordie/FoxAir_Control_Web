@@ -17,12 +17,17 @@ class LanAccessTests(TestCase):
             with (
                 patch.object(cloud_config, "STATE_DIR", root),
                 patch.object(cloud_config, "ADMIN_FILE", root / "admin.json"),
-                patch.dict("os.environ", {
-                    "FOXAIR_CONTAINER": "1",
-                    "FOXAIR_LAN_HTTP": "1",
-                    "FOXAIR_LAN_HOSTS": "fixed.home.arpa",
-                }),
-                patch.object(cloud_config, "is_admin_session", return_value=False) as admin,
+                patch.dict(
+                    "os.environ",
+                    {
+                        "FOXAIR_CONTAINER": "1",
+                        "FOXAIR_LAN_HTTP": "1",
+                        "FOXAIR_LAN_HOSTS": "fixed.home.arpa",
+                    },
+                ),
+                patch.object(
+                    cloud_config, "is_admin_session", return_value=False
+                ) as admin,
             ):
                 cloud_config._atomic_json(
                     cloud_config.ADMIN_FILE, {"setup_lan_hostname": "first.home.arpa"}
@@ -37,19 +42,31 @@ class LanAccessTests(TestCase):
                 save = "/api/admin/lan-access/save"
                 alias = {"Host": "new.home.arpa:18081"}
                 self.assertEqual(client.get(health, headers=alias).status_code, 403)
-                self.assertEqual(client.post(save, json={"hosts": ["new.home.arpa"]}).status_code, 403)
+                self.assertEqual(
+                    client.post(save, json={"hosts": ["new.home.arpa"]}).status_code,
+                    403,
+                )
 
                 admin.return_value = True
-                for bad_name in ("*.home.arpa", "https://new.home.arpa", "new.home.arpa:443"):
-                    self.assertEqual(client.post(save, json={"hosts": [bad_name]}).status_code, 422)
+                for bad_name in (
+                    "*.home.arpa",
+                    "https://new.home.arpa",
+                    "new.home.arpa:443",
+                ):
+                    self.assertEqual(
+                        client.post(save, json={"hosts": [bad_name]}).status_code, 422
+                    )
                 self.assertEqual(
                     client.post(
-                        save, json={"hosts": ["new.home.arpa"]},
+                        save,
+                        json={"hosts": ["new.home.arpa"]},
                         headers={"Origin": "http://other.home.arpa"},
                     ).status_code,
                     403,
                 )
-                response = client.post(save, json={"hosts": ["NEW.Home.Arpa.", "new.home.arpa"]})
+                response = client.post(
+                    save, json={"hosts": ["NEW.Home.Arpa.", "new.home.arpa"]}
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()["hosts"], ["new.home.arpa"])
                 self.assertEqual(client.get(health, headers=alias).status_code, 200)
@@ -59,4 +76,6 @@ class LanAccessTests(TestCase):
                 self.assertEqual(client.post(save, json={"hosts": []}).status_code, 200)
                 self.assertEqual(client.get(health, headers=alias).status_code, 403)
                 for fixed in ("fixed.home.arpa", "first.home.arpa", "192.168.10.10"):
-                    self.assertEqual(client.get(health, headers={"Host": fixed}).status_code, 200)
+                    self.assertEqual(
+                        client.get(health, headers={"Host": fixed}).status_code, 200
+                    )

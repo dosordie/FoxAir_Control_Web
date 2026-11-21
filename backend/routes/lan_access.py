@@ -35,5 +35,7 @@ def save_lan_hosts(payload: LanHosts, request: Request):
         hosts = lan_access.normalize_hosts(payload.hosts)
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
-    cloud_config._atomic_json(cloud_config.STATE_DIR / "lan-access.json", {"hosts": hosts})
+    cloud_config._atomic_json(
+        cloud_config.STATE_DIR / "lan-access.json", {"hosts": hosts}
+    )
     return lan_settings()
