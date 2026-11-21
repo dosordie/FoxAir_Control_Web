@@ -70,6 +70,8 @@ from backend.gira import router as gira_router
 app.include_router(gira_router)
 from backend.setup import router as setup_router
 app.include_router(setup_router)
+from backend.routes.lan_access import router as lan_access_router
+app.include_router(lan_access_router)
 app.add_middleware(AccessMiddleware)
 
 VALID_TRANSPORTS = set(TRANSPORTS)

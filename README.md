@@ -35,7 +35,7 @@ mv compose.yaml.tmp compose.yaml &&
 docker compose up -d
 ```
 
-Im Browser `http://<LAN-IP-des-Hosts>:18081` oder den DNS-Namen des Hosts mit Port `18081` öffnen. Bei der ersten Einrichtung legt der erste Besucher direkt ein Admin-Passwort fest. FoxAir speichert den dafür verwendeten Namen. Weitere LAN-Namen können über `FOXAIR_LAN_HOSTS` in `.env` freigegeben werden.
+Im Browser `http://<LAN-IP-des-Hosts>:18081` oder den DNS-Namen des Hosts mit Port `18081` öffnen. Bei der ersten Einrichtung legt der erste Besucher direkt ein Admin-Passwort fest. FoxAir speichert den dafür verwendeten Namen. Weitere Namen lassen sich als Administrator unter **Einstellungen → Webzugriff** direkt speichern. Falls der neue Name noch gesperrt ist, FoxAir zuerst über seine LAN-IP öffnen. Namen aus `FOXAIR_LAN_HOSTS` in `.env` gelten weiterhin.
 
 Das Datenvolume enthält Konten und Verbindungen. Updates im **gleichen Compose-Ordner** ziehen das aktuelle Release, während Compose das Volume weiterverwendet:
 

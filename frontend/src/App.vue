@@ -24,6 +24,7 @@ import SetupWizard from './components/SetupWizard.vue'
 import MainRegisterBrowser from './components/MainRegisterBrowser.vue'
 import SpecialControls from './components/SpecialControls.vue'
 import AccountManagement from './components/AccountManagement.vue'
+import LanAccessSettings from './components/LanAccessSettings.vue'
 import ParameterFilters from './components/ParameterFilters.vue'
 import ParameterDetails from './components/ParameterDetails.vue'
 import LteScanSummary from './components/LteScanSummary.vue'
@@ -847,6 +848,7 @@ onBeforeUnmount(() => {
       <template v-else>
         <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindungen, Anzeigen und Verwaltung.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
         <AccountManagement v-if="adminAuthenticated" />
+        <LanAccessSettings v-if="adminAuthenticated && browserOnline" />
         <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
