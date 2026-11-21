@@ -48,6 +48,11 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/check_release_version.py --tag "$TAG"
+          notes_args=()
+          if [[ "${{ inputs.prerelease }}" == true ]]; then
+            notes_args+=(--prerelease)
+          fi
+          python scripts/release_notes.py "$TAG" "${notes_args[@]}" > /tmp/foxair-release-notes.md
           if [[ "${{ inputs.prerelease }}" != true ]]; then
             python -c "from backend.releases import assert_new_stable; from backend.build_info import product_version; assert_new_stable(product_version())"
           fi
@@ -151,7 +156,7 @@ jobs:
           )
           gh release create "$TAG" --verify-tag --draft --prerelease --latest=false \
             --title "FoxAir Control Web $TAG (Pre-release)" \
-            --notes-file docs/TEST_PRERELEASE.md release-assets/*
+            --notes-file /tmp/foxair-release-notes.md release-assets/*
           gh release edit "$TAG" --draft=false --prerelease --latest=false
       - name: Publish immutable version image and complete draft assets
         if: ${{ !inputs.prerelease }}
@@ -171,7 +176,7 @@ jobs:
           docker push "$image:$VERSION"
           digest="$(docker image inspect "$image:$VERSION" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
           python scripts/package_release.py --digest "$digest"
-          gh release create "$TAG" --verify-tag --draft --title "FoxAir Control Web $TAG" --generate-notes release-assets/*
+          gh release create "$TAG" --verify-tag --draft --title "FoxAir Control Web $TAG" --notes-file /tmp/foxair-release-notes.md release-assets/*
   publish:
     if: ${{ !inputs.prerelease }}
     needs: prepare

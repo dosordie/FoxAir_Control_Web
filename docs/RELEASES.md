@@ -1,6 +1,6 @@
-# Gemeinsame Web-Releases (Vorbereitung auf work)
+# Gemeinsame Web-Releases
 
-**Noch kein v0.1.0 veröffentlicht. main ist Stable/Release, work bleibt Entwicklung. Kein automatisches Produktivdeployment.** Das Desktop-Projekt hat eigene Versionsnummern.
+**`main` ist der Release-Zweig. `work` bleibt der Entwicklungszweig für die Test-VM.** Das Desktop-Projekt hat eigene Versionsnummern.
 
 ## Versionsvertrag
 
@@ -23,9 +23,9 @@ Die produktive GUI hat keinen frei wählbaren Development-Kanal. Auf work ist de
 
 ## Freigabe und Veröffentlichung
 
-Der Workflow **Approved immutable stable release** wird ausschließlich manuell auf main mit ausdrücklicher Freigabe ausgeführt. Der bereits freigegebene Tag `vX.Y.Z` muss existieren und auf einen main-Commit zeigen; der Workflow erzeugt keinen Tag. Bisher freigegebene Versionen und Images werden nicht überschrieben.
+Der Workflow **Approved FoxAir release** wird ausschließlich manuell auf main mit ausdrücklicher Freigabe ausgeführt. Der bereits freigegebene Tag `vX.Y.Z` muss existieren und auf einen main-Commit zeigen; der Workflow erzeugt keinen Tag. Bisher freigegebene Versionen und Images werden nicht überschrieben.
 
-1. Nach Nutzerfreigabe work prüfen/übernehmen, den exakten main-Commit freigeben und einmalig taggen. Erstes Release ist v0.1.0.
+1. Nach Nutzerfreigabe work prüfen/übernehmen, den exakten main-Commit freigeben und einmalig taggen. Vor dem Taggen einen kurzen Abschnitt `## vX.Y.Z` mit Stichpunkten im [Changelog](../CHANGELOG.md) ergänzen. Der Workflow verwendet diesen Abschnitt für die GitHub-Release-Notizen und bricht bei fehlenden Einträgen vor dem Build ab.
 2. Workflow auf main mit diesem Tag und Freigabeschalter ausführen. Backend-, Frontend- und Registerprüfungen laufen vor der Veröffentlichung. Ein und dasselbe gebaute Frontend wird für Linux-Paket und Docker verwendet.
 3. Das getestete amd64-Image bekommt den festen GHCR-Versionstag und OCI-Version/Revision/Source. Das Linux-Archiv enthält Code, Frontend und Manifest derselben SHA; SHA256SUMS und release-ready.json werden als Draft-Assets angehängt.
 4. Erst nach erfolgreichem **anonymem Pull des exakten Image-Digests** und Prüfung der OCI-Labels wird das GitHub Release öffentlich. Für das erste GHCR-Paket muss ein Berechtigter die Paketsichtbarkeit auf Public stellen. Falls dieser Job stoppt: Sichtbarkeit korrigieren und nur den fehlgeschlagenen Publish-Job erneut ausführen, keine Versionsimages neu bauen/überschreiben.
