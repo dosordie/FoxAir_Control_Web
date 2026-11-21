@@ -1,0 +1,8 @@
+{
+  "build_channel": "work",
+  "frontend_source_commit": "1ccb9a92b710f5ae4380b0d97948b3a9de2d3ece",
+  "schema": 1,
+  "source_commit": "1ccb9a92b710f5ae4380b0d97948b3a9de2d3ece",
+  "upstream_register_commit": "34ce0ed5b1152456af3c7b33bf47e6d31e76a965",
+  "version": "0.1.6"
+}
