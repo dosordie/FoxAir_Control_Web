@@ -4,7 +4,7 @@
 
 FoxAir Control Web zeigt Livewerte, Anlagenstatus und Parameter. Die App läuft auf deinem eigenen Server und unterstützt Cloud sowie lokale Modbus-Anschlüsse.
 
-[Docker im Heimnetz](#docker-im-heimnetz) · [Linux mit systemd](#linux-mit-systemd) · [Verbindungen](#verbindungen) · [Releases](https://github.com/dosordie/FoxAir_Control_Web/releases)
+[Docker im Heimnetz](#docker-im-heimnetz) · [Linux mit systemd](#linux-mit-systemd) · [Verbindungen](#verbindungen) · [Releases](https://github.com/dosordie/FoxAir_Control_Web/releases) · [Changelog](CHANGELOG.md)
 
 > **Beta.** Die verfügbaren Werte und Funktionen hängen von Anlage und Verbindung ab. Prüfe nach Parameteränderungen den zurückgelesenen Wert.
 
