@@ -24,10 +24,14 @@ class TCPPeerApp:
             if len(hosts) != 1 or not lan_access.allowed(
                 scope["foxair.tcp_peer"], hosts[0]
             ):
-                await PlainTextResponse(
-                    "FoxAir: use the private LAN IP or configure the hostname in FOXAIR_LAN_HOSTS",
-                    status_code=403,
-                )(scope, receive, send)
+                message = (
+                    "FoxAir: Dieser Hostname ist noch nicht freigegeben. "
+                    "FoxAir über die private LAN-IP öffnen und den Namen als Administrator "
+                    "unter Einstellungen → Webzugriff eintragen."
+                    if lan_access.private_peer(scope["foxair.tcp_peer"])
+                    else "FoxAir: Direkter HTTP-Zugriff ist nur aus privaten IPv4-Netzen möglich."
+                )
+                await PlainTextResponse(message, status_code=403)(scope, receive, send)
                 return
         await self.application(scope, receive, send)
 
