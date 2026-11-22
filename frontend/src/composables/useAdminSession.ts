@@ -13,6 +13,7 @@ export function useAdminSession(
       ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname),
   )
   const signedIn = ref(false)
+  const sessionChecked = ref(false)
   const username = ref('admin')
   const role = ref('reader')
   const canOperate = ref(false)
@@ -45,6 +46,8 @@ export function useAdminSession(
       }
     } catch {
       if (!disposed) clearAuthorization()
+    } finally {
+      if (!disposed) sessionChecked.value = true
     }
   }
 
@@ -117,6 +120,7 @@ export function useAdminSession(
     cloudAdminPassword.value = ''
   })
   return {
+    sessionChecked,
     secureAdminContext,
     signedIn,
     username,

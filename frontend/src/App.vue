@@ -80,7 +80,7 @@ const cloudCodeSelected = ref<CloudRow | null>(null)
 let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const { status: updateStatus, version: installedVersion, loading: updateLoading, error: updateCheckError, checkedAt: updateCheckedAt, refresh: refreshUpdateStatus } = useUpdateStatus()
-const { signedIn, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
+const { signedIn, sessionChecked, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
 watch(signedIn, (active) => { if (active) void refreshUpdateStatus() })
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
@@ -602,6 +602,7 @@ watch([liveEnabled, liveInterval], () => {
 })
 onMounted(async () => {
   syncRoute()
+  const session = checkAdminSession()
   window.addEventListener('hashchange', syncRoute)
   document.addEventListener('visibilitychange', onVisibilityChange)
   document.addEventListener('keydown', closeSpecialOnEscape)
@@ -612,7 +613,7 @@ onMounted(async () => {
     // Backend not reachable; show unavailable values, never demo values.
   }
   await initializeTransport()
-  await Promise.all([loadDashboard(), loadCloudValues(), checkAdminSession()])
+  await Promise.all([loadDashboard(), loadCloudValues(), session])
   try { specialDialogs.value = (await api.specialDialogs()).items } catch { specialDialogs.value = [] }
   if (page.value === 'settings') await loadCloudLogs()
   scheduleRefresh()
@@ -847,6 +848,14 @@ onBeforeUnmount(() => {
 
       <template v-else>
         <section class="page-heading"><div><span class="section-caption">ANWENDUNG</span><h1>App-Einstellungen</h1><p>Verbindungen, Anzeigen und Verwaltung.</p></div><button class="back-link" @click="navigate('home')"><ArrowLeft :size="17" /> Übersicht</button></section>
+        <section v-if="sessionChecked && !adminAuthenticated" class="settings-panel settings-note settings-auth">
+          <ShieldCheck :size="18" aria-hidden="true" />
+          <div>
+            <p v-if="!signedIn"><strong>Du bist nicht angemeldet.</strong> Melde dich als Administrator an, um alle Einstellungen zu sehen und zu ändern.</p>
+            <p v-else>Du bist angemeldet. Für Webzugriff, Experteneinstellungen und weitere Verwaltungsfunktionen brauchst du Administratorrechte.</p>
+            <button v-if="!signedIn" type="button" class="outlined-action" @click="loginOpen = true">Anmelden</button>
+          </div>
+        </section>
         <AccountManagement v-if="adminAuthenticated" />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>

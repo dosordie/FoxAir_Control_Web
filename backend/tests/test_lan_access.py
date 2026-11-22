@@ -23,6 +23,7 @@ class LanAccessTests(TestCase):
                         "FOXAIR_CONTAINER": "1",
                         "FOXAIR_LAN_HTTP": "1",
                         "FOXAIR_LAN_HOSTS": "fixed.home.arpa",
+                        "FOXAIR_TRUSTED_PROXY_IPS": "",
                     },
                 ),
                 patch.object(
@@ -42,6 +43,16 @@ class LanAccessTests(TestCase):
                 save = "/api/admin/lan-access/save"
                 alias = {"Host": "new.home.arpa:18081"}
                 self.assertEqual(client.get(health, headers=alias).status_code, 403)
+                login = client.post(
+                    "/api/admin/login",
+                    json={"admin_password": "test-password"},
+                    headers={
+                        "Origin": "https://192.168.10.10:18081",
+                        "X-Forwarded-Proto": "https",
+                    },
+                )
+                self.assertEqual(login.status_code, 403)
+                self.assertIn("Dein Browser verwendet HTTPS", login.json()["detail"])
                 self.assertEqual(
                     client.post(save, json={"hosts": ["new.home.arpa"]}).status_code,
                     403,

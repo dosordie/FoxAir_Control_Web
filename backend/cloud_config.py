@@ -153,7 +153,8 @@ def ensure_secure_origin(request: "Request") -> bool:
     via_proxy_https = (peer in trusted and
                        request.headers.get("x-forwarded-proto", "").lower() == "https")
     from backend.lan_access import direct_http
-    secure = direct_http(request) or (request.url.scheme == "https" or peer in ("127.0.0.1", "::1") or via_proxy_https)
+    lan_http = direct_http(request)
+    secure = lan_http or (request.url.scheme == "https" or peer in ("127.0.0.1", "::1") or via_proxy_https)
     if not secure:
         raise HTTPException(status_code=403, detail="Administration nur über HTTPS oder SSH-Tunnel (Loopback)")
     host = request.headers.get("host", "")
@@ -162,7 +163,18 @@ def ensure_secure_origin(request: "Request") -> bool:
     external_scheme = "https" if via_proxy_https else request.url.scheme
     origin = request.headers.get("origin")
     if origin and origin.rstrip("/") != f"{external_scheme}://{host}".rstrip("/"):
-        raise HTTPException(status_code=403, detail="Unzulässiger Origin")
+        detail = (
+            "FoxAir hat die Anfrage abgelehnt, weil die Browser-Adresse nicht "
+            "mit der erwarteten Adresse übereinstimmt. Öffne FoxAir über "
+            "seine gewohnte Adresse und versuche es erneut."
+        )
+        if lan_http and not via_proxy_https and origin.startswith("https://"):
+            detail = (
+                "Dein Browser verwendet HTTPS, aber FoxAir erkennt die Verbindung "
+                "als HTTP. Prüfe die HTTPS- und Vertrauens-Einstellungen des "
+                "Reverse Proxys oder melde dich direkt über die LAN-IP an."
+            )
+        raise HTTPException(status_code=403, detail=detail)
     return external_scheme == "https"
 
 

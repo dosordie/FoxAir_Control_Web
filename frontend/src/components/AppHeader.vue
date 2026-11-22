@@ -18,6 +18,7 @@ const password = defineModel<string>('password', { required: true })
 const loginOpen = defineModel<boolean>('loginOpen', { required: true })
 const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLogin: [] }>()
 const menu = ref<HTMLElement | null>(null)
+const usernameInput = ref<HTMLInputElement | null>(null)
 const close = () => {
   loginOpen.value = false
   password.value = ''
@@ -29,6 +30,13 @@ function escape(event: KeyboardEvent) {
   if (event.key === 'Escape') close()
 }
 watch(() => props.page, close)
+watch(
+  loginOpen,
+  (open) => {
+    if (open) usernameInput.value?.focus()
+  },
+  { flush: 'post' },
+)
 onMounted(() => {
   document.addEventListener('pointerdown', outside)
   document.addEventListener('keydown', escape)
@@ -126,7 +134,11 @@ onBeforeUnmount(() => {
               Mit Authelia anmelden
             </button>
             <label class="field-label"
-              >Benutzername<input class="settings-input" v-model="username" autocomplete="username"
+              >Benutzername<input
+                ref="usernameInput"
+                class="settings-input"
+                v-model="username"
+                autocomplete="username"
             /></label>
             <label class="field-label" for="header-password">Passwort</label>
             <input

@@ -2,6 +2,7 @@ import {createApp,defineComponent,h,nextTick,reactive} from 'vue'
 import {it,expect,vi,afterEach} from 'vitest'
 import AppHeader from '../src/components/AppHeader.vue'
 import SetupWizard from '../src/components/SetupWizard.vue'
+import App from '../src/App.vue'
 let cleanup:(()=>void)|undefined
 afterEach(()=>{cleanup?.();vi.unstubAllGlobals()})
 const flush=async()=>{await Promise.resolve();await Promise.resolve();await nextTick();await nextTick()}
@@ -30,4 +31,32 @@ it('requires matching new passwords and completes the one-time setup without sil
  root.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await flush()
  expect(completed).toHaveBeenCalledOnce();expect(root.querySelector('dialog')).toBeNull()
  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+
+it('shows the guest notice in settings and opens the account form from its button', async () => {
+  const oldHash = window.location.hash
+  window.history.replaceState(null, '', '#/settings')
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    ok: true,
+    json: async () => url === '/api/admin/session'
+      ? { authenticated: false, role: 'reader' }
+      : { items: [], values: {}, metrics: {}, transport: 'cloud', required: false },
+  })))
+  const root = document.createElement('div')
+  document.body.append(root)
+  const app = createApp(App)
+  cleanup = () => {
+    app.unmount()
+    root.remove()
+    window.history.replaceState(null, '', oldHash || window.location.pathname)
+  }
+  app.mount(root)
+
+  await vi.waitFor(() => expect(root.querySelector('.settings-auth')?.textContent).toContain('Du bist nicht angemeldet.'))
+  root.querySelector<HTMLButtonElement>('.settings-auth button')!.click()
+  await nextTick()
+  const username = root.querySelector('.login-popover input[autocomplete="username"]')
+  expect(username).not.toBeNull()
+  expect(document.activeElement).toBe(username)
 })
