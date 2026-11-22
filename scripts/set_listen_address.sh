@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Configure the FoxAir HTTP listener without touching any other service.
 # Example: sudo bash scripts/set_listen_address.sh 192.168.1.50
+# Direct LAN administration: sudo bash scripts/set_listen_address.sh 192.168.1.50 --lan-http
 # Revert:  sudo bash scripts/set_listen_address.sh --local
 set -euo pipefail
 
@@ -9,8 +10,8 @@ if (( EUID != 0 )); then
   exit 1
 fi
 
-if (( $# != 1 )); then
-  echo "Aufruf: sudo bash scripts/set_listen_address.sh <private-LAN-IP|--local>" >&2
+if (( $# < 1 || $# > 2 )) || [[ $# == 2 && ( "$1" == "--local" || "$2" != "--lan-http" ) ]]; then
+  echo "Aufruf: sudo bash scripts/set_listen_address.sh <private-LAN-IP|--local> [--lan-http]" >&2
   exit 2
 fi
 
@@ -19,6 +20,8 @@ UNIT_FILE="/etc/systemd/system/$UNIT"
 DROPIN_DIR="/etc/systemd/system/$UNIT.d"
 DROPIN="$DROPIN_DIR/20-listen-address.conf"
 HOST="$1"
+LAN_HTTP=0
+if [[ "${2:-}" == "--lan-http" ]]; then LAN_HTTP=1; fi
 
 if [[ ! -f "$UNIT_FILE" ]]; then
   echo "FoxAir-Systemdienst fehlt: $UNIT_FILE" >&2
@@ -61,6 +64,7 @@ cleanup() {
 trap cleanup EXIT
 cat > "$tmp" <<EOF
 [Service]
+Environment=FOXAIR_LAN_HTTP=$LAN_HTTP
 ExecStart=
 ExecStart=/opt/foxair-web/venv/bin/python -m backend.server --host $HOST --port 8081
 EOF
@@ -86,4 +90,6 @@ else
 fi
 
 echo "FoxAir-HTTP-Listener: $HOST:8081"
-echo "Hinweis: Der MVP besitzt noch keine eigene Anmeldung. Nur in vertrauenswürdigem LAN freigeben und Port 8081 per Firewall begrenzen."
+if [[ "$LAN_HTTP" == 1 ]]; then
+  echo "Direkte Web-Anmeldung per HTTP im privaten LAN ist aktiv."
+fi

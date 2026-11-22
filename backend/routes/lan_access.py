@@ -1,4 +1,4 @@
-"""Manage additional names for direct Docker LAN access."""
+"""Manage additional names for direct LAN access."""
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -32,7 +32,7 @@ def lan_status(request: Request):
 def save_lan_hosts(payload: LanHosts, request: Request):
     cloud_config.require_admin(request)
     if not lan_access.enabled():
-        raise HTTPException(409, "Direkter Docker-LAN-Zugriff ist deaktiviert.")
+        raise HTTPException(409, "Direkter LAN-Zugriff ist deaktiviert.")
     try:
         hosts = lan_access.normalize_hosts(payload.hosts)
         proxy_ips = (

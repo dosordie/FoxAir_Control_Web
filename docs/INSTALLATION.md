@@ -78,7 +78,18 @@ sudo bash scripts/set_listen_address.sh <PRIVATE_LAN_IP>
 sudo bash scripts/set_trusted_proxy.sh <PRIVATE_PROXY_IP>
 ```
 
-Nur die tatsächliche einzelne Proxy-IP als vertrauenswürdig eintragen. Der Proxy muss `X-Forwarded-Proto` passend setzen. Unverschlüsseltes LAN-HTTP ist nicht für die Web-Administration vorgesehen. Weitere Hinweise: [Deployment](DEPLOYMENT.md).
+Nur die tatsächliche einzelne Proxy-IP als vertrauenswürdig eintragen. Der Proxy muss `X-Forwarded-Proto` passend setzen. Weitere Hinweise: [Deployment](DEPLOYMENT.md).
+
+### Direkte Anmeldung aus dem Heimnetz
+
+Für HTTP-Adminzugriff ohne Reverse Proxy die eigene private IPv4-Adresse des Linux-Hosts einsetzen:
+
+```bash
+cd /opt/foxair-web/app
+sudo bash scripts/set_listen_address.sh <PRIVATE_LAN_IP> --lan-http
+```
+
+Anschließend im Browser die LAN-IP mit Port 8081 aufrufen. Bei einer neuen Installation lässt sich das Admin-Passwort direkt im Browser einrichten. Bestehende Konten bleiben erhalten. Zusätzliche Hostnamen und vertrauenswürdige Proxy-IP-Adressen lassen sich unter **Einstellungen → Webzugriff** speichern. HTTP überträgt Anmeldedaten unverschlüsselt. Verwende diesen Modus im vertrauenswürdigen Heimnetz.
 
 ## 4. Verbindung einrichten
 

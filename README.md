@@ -65,6 +65,8 @@ cd /opt/foxair-web/app
 sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup
 ```
 
+Für direkten HTTP-Zugriff von anderen Geräten im Heimnetz siehe [LAN-Modus für Linux](docs/INSTALLATION.md#direkte-anmeldung-aus-dem-heimnetz).
+
 Dann lokal, per SSH-Tunnel oder über einen HTTPS-Reverse-Proxy öffnen und das Admin-Passwort festlegen. Docker und Linux erhalten dieselbe Release-Version und denselben Quellstand. Die Linux-Testinstallation auf `work` hat einen eigenen Web-Build und Updateweg. [Linux-Anleitung](docs/INSTALLATION.md) · [Updates und Rollback](docs/RELEASES.md)
 
 ## Verbindungen

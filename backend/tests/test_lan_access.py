@@ -20,7 +20,7 @@ class LanAccessTests(TestCase):
                 patch.dict(
                     "os.environ",
                     {
-                        "FOXAIR_CONTAINER": "1",
+                        "FOXAIR_CONTAINER": "0",
                         "FOXAIR_LAN_HTTP": "1",
                         "FOXAIR_LAN_HOSTS": "fixed.home.arpa",
                         "FOXAIR_TRUSTED_PROXY_IPS": "",
@@ -30,15 +30,42 @@ class LanAccessTests(TestCase):
                     cloud_config, "is_admin_session", return_value=False
                 ) as admin,
             ):
-                cloud_config._atomic_json(
-                    cloud_config.ADMIN_FILE, {"setup_lan_hostname": "first.home.arpa"}
-                )
                 client = TestClient(
                     TCPPeerApp(app),
                     base_url="http://192.0.2.1",  # Default Host is set explicitly below.
                     client=("192.168.150.25", 50000),
                     headers={"Host": "192.168.10.10:18081", "X-FoxAir-Admin": "1"},
                 )
+                setup_headers = {
+                    "Host": "first.home.arpa:18081",
+                    "Origin": "http://first.home.arpa:18081",
+                }
+                setup = client.get("/api/setup/status", headers=setup_headers).json()
+                self.assertFalse(setup["container"])
+                self.assertFalse(setup["code_required"])
+                password = "test-only-password"
+                with (
+                    patch(
+                        "backend.main.create_admin_session", return_value="test-session"
+                    ),
+                    patch("backend.main.revoke_admin_session"),
+                ):
+                    self.assertEqual(
+                        client.post(
+                            "/api/setup/complete",
+                            json={"password": password},
+                            headers=setup_headers,
+                        ).status_code,
+                        200,
+                    )
+                    self.assertEqual(
+                        client.post(
+                            "/api/admin/login",
+                            json={"admin_password": password},
+                            headers=setup_headers,
+                        ).status_code,
+                        200,
+                    )
                 health = "/api/health"
                 save = "/api/admin/lan-access/save"
                 alias = {"Host": "new.home.arpa:18081"}

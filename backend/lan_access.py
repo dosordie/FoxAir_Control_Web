@@ -1,4 +1,4 @@
-"""Direct LAN access for the Docker LAN configuration."""
+"""Direct LAN access for Docker and systemd."""
 
 from ipaddress import IPv4Address, IPv4Network, ip_address
 import os
@@ -12,7 +12,7 @@ LOOPBACK_NAMES = ("localhost", "127.0.0.1", "::1")
 
 
 def enabled():
-    return os.getenv("FOXAIR_CONTAINER") == "1" and os.getenv("FOXAIR_LAN_HTTP") == "1"
+    return os.getenv("FOXAIR_LAN_HTTP") == "1"
 
 
 def private_ipv4(value):
