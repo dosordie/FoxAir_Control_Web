@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { GiraItem } from '../api'
-const emit = defineEmits<{ values: [GiraItem[]] }>()
+const emit = defineEmits<{ values: [GiraItem[]]; saved: [] }>()
 const props = defineProps<{ settings?: boolean; admin?: boolean; secure?: boolean }>()
 type Config = {
   enabled: boolean
@@ -104,6 +104,7 @@ async function save() {
       cfg.value.password = ''
       cfg.value.clear_password = false
       message.value = 'Experteneinstellungen gespeichert'
+      emit('saved')
       await load()
     }
   } catch (error) {

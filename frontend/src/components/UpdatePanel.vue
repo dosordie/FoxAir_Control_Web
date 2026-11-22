@@ -17,8 +17,12 @@ const updateRequesting = ref(false)
 const updateError = ref('')
 const updateMessage = ref('')
 async function submitGitUpdate() {
-  if (!props.secure || !props.admin || props.updateInfo?.update_mode !== 'release') {
-    updateError.value = 'HTTPS und Web-Administrationspasswort erforderlich.'
+  if (
+    !props.secure ||
+    !props.admin ||
+    !['release', 'work'].includes(props.updateInfo?.update_mode || '')
+  ) {
+    updateError.value = 'Für Updates als Administrator über einen zugelassenen Zugang anmelden.'
     return
   }
   updateRequesting.value = true
@@ -27,7 +31,7 @@ async function submitGitUpdate() {
   try {
     await api.requestUpdate('')
     updateMessage.value =
-      'Update angefordert. Der getrennte FoxAir-Updater prüft und installiert das vollständige freigegebene Release. Die Web-App kann dabei kurz neu starten.'
+      'Update angefordert. FoxAir prüft und installiert den passenden Stand. Die Web-App kann dabei kurz neu starten.'
     emit('refresh')
   } catch (e) {
     updateError.value = e instanceof Error ? e.message : 'Update-Anforderung fehlgeschlagen'
@@ -50,8 +54,8 @@ async function submitGitUpdate() {
       Web-App.
     </p>
     <p v-else-if="updateInfo?.update_mode === 'work'" class="section-hint">
-      Entwicklungsstand für die Test-VM. Mit <code>bash scripts/update-work.sh</code> Code und
-      passendes Frontend aktualisieren.
+      Testinstallation auf work. Ein Update wird verfügbar, sobald der passende Frontend-Build
+      fertig ist.
     </p>
     <p v-else class="section-hint">
       Updates verwenden ausschließlich vollständige freigegebene Releases mit zusammengehörigem
@@ -132,8 +136,12 @@ async function submitGitUpdate() {
       >
       <strong v-else>Kein Update verfügbar.</strong>
     </p>
-    <p v-if="updateInfo?.update_mode === 'release' && !updateInfo?.installed" class="section-hint">
-      Einmalig als root im LXC: <code>bash scripts/install_web_update.sh</code>
+    <p
+      v-if="updateInfo?.update_mode !== 'container' && updateInfo && !updateInfo.installed"
+      class="section-hint"
+    >
+      Einmalig auf dem Server als root:
+      <code>bash /opt/foxair-web/app/scripts/install_web_update.sh</code>
     </p>
     <div class="update-actions">
       <button
@@ -146,7 +154,7 @@ async function submitGitUpdate() {
       </button>
       <button
         type="button"
-        v-if="updateInfo?.update_mode === 'release'"
+        v-if="updateInfo && updateInfo.update_mode !== 'container'"
         class="main-action"
         :disabled="
           !updateInfo?.update_available ||
@@ -171,7 +179,7 @@ async function submitGitUpdate() {
     </p>
     <p v-if="checkError" class="read-error">{{ checkError }}</p>
     <p v-if="updateError" class="read-error">{{ updateError }}</p>
-    <p v-if="updateInfo?.update_mode === 'release'" class="section-hint">
+    <p v-if="updateInfo && updateInfo.update_mode !== 'container'" class="section-hint">
       Für Updates oben rechts als Administrator anmelden. Die Anmeldung bleibt bis zu 30 Tage
       erhalten, auch bei einem Serverneustart. Der Installationserfolg wird durch die nächste
       Statusprüfung bestätigt.

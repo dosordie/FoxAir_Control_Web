@@ -34,6 +34,7 @@ for candidate in paths:
         raise SystemExit("Unsafe updater code permissions; keep installation root-owned")
 PY
 
+updater=update.sh
 if [[ -d "$app/.git" ]]; then
   origin="$(git -C "$app" remote get-url origin)"
   case "$origin" in
@@ -41,7 +42,7 @@ if [[ -d "$app/.git" ]]; then
     *) echo "Unerwartete Git-Quelle; Update-Auslöser nicht installiert." >&2; exit 1 ;;
   esac
   if [[ "$(git -C "$app" branch --show-current)" == work ]]; then
-    echo "work verwendet den manuellen update-work.sh-Helfer." >&2; exit 1
+    updater=update-work.sh
   fi
 else
   # Release packages deliberately contain no mutable Git checkout.
@@ -50,9 +51,9 @@ fi
 
 install -d -m 0700 -o foxair-web -g foxair-web "$state"
 
-cat > "$unitdir/foxair-web-update.service" <<'EOF'
+cat > "$unitdir/foxair-web-update.service" <<EOF
 [Unit]
-Description=Update FoxAir Control Web from complete immutable release
+Description=Update FoxAir Control Web
 Wants=network-online.target
 After=network-online.target
 ConditionPathExists=/var/lib/foxair-web/update-request
@@ -63,7 +64,7 @@ User=root
 Group=root
 WorkingDirectory=/opt/foxair-web/app
 ExecStartPre=/usr/bin/rm -f /var/lib/foxair-web/update-request
-ExecStart=/usr/bin/bash /opt/foxair-web/app/scripts/update.sh
+ExecStart=/usr/bin/bash /opt/foxair-web/app/scripts/$updater
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

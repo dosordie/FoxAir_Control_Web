@@ -24,7 +24,10 @@ class LocalOverviewTests(TestCase):
                 "mobile": ["compressor_starts", "evaporator"],
             }
             cloud_config._atomic_json(overview.config_path(), profiles)
-            self.assertEqual(overview.settings(), profiles)
+            self.assertEqual(
+                overview.settings(),
+                {**profiles, "mobile_columns": 3, "desktop_columns": 8},
+            )
             blocks = overview.standard_ranges(STANDARD_DASHBOARD_BLOCKS)
             self.assertEqual(
                 blocks[len(STANDARD_DASHBOARD_BLOCKS) :],

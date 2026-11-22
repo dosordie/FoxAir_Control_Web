@@ -32,6 +32,10 @@ fi
 echo "==> work und passenden Build vor Installation prüfen"
 git fetch origin work
 source_sha="$(git rev-parse origin/work)"
+if ! git merge-base --is-ancestor HEAD "$source_sha"; then
+  echo "Das Update ist kein Fast-Forward. Der Dienst bleibt in seinem aktuellen Zustand." >&2
+  exit 1
+fi
 
 echo "==> Fertiges Frontend aus separatem Git-Build-Branch laden"
 git fetch --depth=1 origin +refs/heads/web-dist-work:refs/remotes/origin/web-dist-work

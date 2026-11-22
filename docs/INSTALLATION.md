@@ -128,7 +128,7 @@ GUI-Ersteinrichtung durchführen.
 Der optionale GUI-Updateknopf lässt sich nach der Release-Migration mit
 `sudo bash /opt/foxair-web/app/scripts/install_web_update.sh` einrichten. Code und
 venv müssen root gehören und dürfen nicht durch den Webdienst beschreibbar sein.
-Auf work wird dieser Produktions-Updateknopf nicht angeboten.
+Für eine Testinstallation auf work richtet dasselbe Skript den work-Updatehelfer ein. Der GUI-Knopf wird freigegeben, sobald der passende Frontend-Build verfügbar ist.
 
 ## Hilfe bei Problemen
 

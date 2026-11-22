@@ -1,5 +1,6 @@
 import type { OverviewField, OverviewLayout } from './overview'
 
+export type GiraOption = { layout_key: string; name: string; object_key: string }
 export type GiraItem = { id: number; layout_key: string; name: string; unit: string; value: string | number | null; timestamp: string | null; quality: string }
 export type HistorySettings = { enabled: boolean; retention_days: number; fields: { register: number; label: string; unit: string }[] }
 export type HistoryPoint = { time: string; value: number; min?: number; max?: number; source?: string }
@@ -203,7 +204,7 @@ export const api = {
   adminSession: () => get<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean; lan_http?: boolean }>('/api/admin/session'),
   overview: () => get<OverviewLayout>('/api/overview'),
   saveOverview: (layout: OverviewLayout) => post<OverviewLayout>('/api/overview', layout),
-  giraState: () => get<{items: GiraItem[]}>('/api/expert/gira/state'),
+  giraOverviewOptions: () => post<{items: GiraOption[]}>('/api/expert/gira/overview-options', {}),
   historySettings: () => get<HistorySettings>('/api/history/local/settings'),
   saveHistorySettings: (enabled: boolean, retention_days: number) => post<HistorySettings>('/api/history/local/settings', { enabled, retention_days }),
   localHistory: (register: number, days: number) => get<HistorySeries>('/api/history/local?' + new URLSearchParams({ register: String(register), days: String(days) })),

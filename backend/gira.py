@@ -41,6 +41,10 @@ class Config(BaseModel):
     objects: list[ObjectConfig] = Field(default_factory=list, max_length=24)
 
 
+def layout_key(key):
+    return "gira:" + hashlib.sha256(key.casefold().encode()).hexdigest()[:24]
+
+
 def config():
     return {
         **Config().model_dump(),
@@ -75,6 +79,21 @@ def validate(payload):
     if len(keys) != len(set(keys)):
         raise ValueError()
     return row
+
+
+@router.post("/api/expert/gira/overview-options")
+def overview_options(request: Request):
+    cloud_config.require_admin(request)
+    return {
+        "items": [
+            {
+                "layout_key": layout_key(item["key"]),
+                "name": item["name"],
+                "object_key": item["key"],
+            }
+            for item in config()["objects"]
+        ]
+    }
 
 
 @router.post("/api/expert/gira/save")
@@ -202,8 +221,7 @@ class GiraClient:
             items.append(
                 {
                     "id": index,
-                    "layout_key": "gira:"
-                    + hashlib.sha256(obj["key"].casefold().encode()).hexdigest()[:24],
+                    "layout_key": layout_key(obj["key"]),
                     "name": obj["name"],
                     "unit": obj["unit"],
                     "value": row["value"] if row else None,

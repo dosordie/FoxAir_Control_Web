@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { api, type GiraItem } from '../api'
+import { computed, ref, watch } from 'vue'
+import { api, type GiraOption } from '../api'
 import {
   defaultOverview,
   overviewFields,
@@ -8,20 +8,54 @@ import {
   type OverviewProfile,
 } from '../overview'
 
-const props = defineProps<{ layout: OverviewLayout; gira: GiraItem[] }>()
+const props = defineProps<{ layout: OverviewLayout; giraRevision: number }>()
 const emit = defineEmits<{ saved: [OverviewLayout] }>()
 const profile = ref<OverviewProfile>('desktop')
+const columnsKey = computed(() =>
+  profile.value === 'mobile' ? 'mobile_columns' : 'desktop_columns',
+)
 const draft = ref<OverviewLayout>(structuredClone(defaultOverview))
 const busy = ref(false)
+const gira = ref<GiraOption[]>([])
+const giraError = ref('')
+watch(
+  () => props.giraRevision,
+  async (_, __, onCleanup) => {
+    let active = true
+    onCleanup(() => {
+      active = false
+    })
+    try {
+      const result = await api.giraOverviewOptions()
+      if (active) {
+        gira.value = result.items ?? []
+        giraError.value = ''
+      }
+    } catch (cause) {
+      if (active) giraError.value = (cause as Error).message
+    }
+  },
+  { immediate: true },
+)
 const message = ref('')
 const error = ref('')
 watch(
   () => props.layout,
   (value) => {
-    draft.value = { mobile: [...value.mobile], desktop: [...value.desktop] }
+    draft.value = {
+      ...defaultOverview,
+      ...value,
+      mobile: [...value.mobile],
+      desktop: [...value.desktop],
+    }
   },
   { immediate: true },
 )
+
+function restoreDefault() {
+  draft.value[profile.value] = [...defaultOverview[profile.value]]
+  draft.value[columnsKey.value] = defaultOverview[columnsKey.value]
+}
 
 function toggle(key: string, checked: boolean) {
   const keys = draft.value[profile.value]
@@ -54,7 +88,16 @@ async function save() {
       <option value="desktop">Tablet und PC</option>
       <option value="mobile">Smartphone</option>
     </select>
-    <p class="section-hint">{{ draft[profile].length }} von 12 Werten ausgewählt.</p>
+    <label class="field-label" for="overview-columns">Werte pro Zeile</label>
+    <select id="overview-columns" v-model.number="draft[columnsKey]" class="settings-input">
+      <option v-for="count in profile === 'mobile' ? 4 : 8" :key="count" :value="count">
+        {{ count }}
+      </option>
+    </select>
+    <p class="section-hint">
+      {{ draft[profile].length }} von 12 Werten ausgewählt (einschließlich Gira).
+    </p>
+    <p v-if="giraError" class="read-error" role="alert">Gira-Liste: {{ giraError }}</p>
     <fieldset :disabled="busy" class="overview-options">
       <legend>Werte im oberen Bereich</legend>
       <label v-for="(field, key) in overviewFields" :key="key" class="settings-check">
@@ -66,14 +109,14 @@ async function save() {
         />
         {{ field.label }}
       </label>
-      <label v-for="(item, index) in gira" :key="item.layout_key" class="settings-check">
+      <label v-for="item in gira" :key="item.layout_key" class="settings-check">
         <input
           type="checkbox"
           :checked="draft[profile].includes(item.layout_key)"
           :disabled="draft[profile].length >= 12 && !draft[profile].includes(item.layout_key)"
           @change="toggle(item.layout_key, ($event.target as HTMLInputElement).checked)"
         />
-        {{ item.name || 'Gira-Objekt ' + (index + 1) }}
+        {{ item.name || item.object_key }}
       </label>
       <label
         v-for="key in draft[profile].filter(
@@ -86,12 +129,7 @@ async function save() {
         verfügbar
       </label>
     </fieldset>
-    <button
-      type="button"
-      class="outlined-action"
-      :disabled="busy"
-      @click="draft[profile] = [...defaultOverview[profile]]"
-    >
+    <button type="button" class="outlined-action" :disabled="busy" @click="restoreDefault">
       Standard wiederherstellen
     </button>
     <button type="button" class="outlined-action" :disabled="busy" @click="save">

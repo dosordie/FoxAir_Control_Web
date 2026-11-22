@@ -123,11 +123,13 @@ async function openOperation(code:'Power'|'Mode'|'H22'){
 const connectionSettingsOpen = ref(false)
 const overviewLayout = ref<OverviewLayout>(defaultOverview)
 const giraItems = ref<GiraItem[]>([])
+const giraRevision = ref(0)
+const metricColumns = computed(() => mobileProfile ? overviewLayout.value.mobile_columns : overviewLayout.value.desktop_columns)
 const mobileProfile = /iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent)
 async function loadOverview() {
   try {
     const layout = await api.overview()
-    if (Array.isArray(layout.mobile) && Array.isArray(layout.desktop)) overviewLayout.value = layout
+    if (Array.isArray(layout.mobile) && Array.isArray(layout.desktop)) overviewLayout.value = { ...defaultOverview, ...layout }
   } catch { /* Retain the available layout during a connection interruption. */ }
 }
 const targetEditor = ref<HTMLDialogElement | null>(null)
@@ -402,6 +404,7 @@ const readings = computed(() => {
       const item = giraItems.value.find(row => row.layout_key === key)
       return [{ key, label: item?.name || '', unit: item?.unit || '', icon: knxIcon,
         text: displayMetric(item ? { ...item, raw: null, timestamp: item.timestamp || '' } as Metric : null),
+        textParts: item && typeof item.value === 'string' && !/^[-+]?[0-9]+(?:[.,][0-9]+)?$/.test(item.value.trim()) ? item.value.split(/([-+]?[0-9]+(?:[.,:][0-9]+)*)/).filter(Boolean) : null,
         stale: item?.quality === 'stale' }]
     }
     if (!Object.hasOwn(overviewFields, key)) return []
@@ -410,7 +413,7 @@ const readings = computed(() => {
     const stale = field === 'spread'
       ? snapshot.value?.metrics.return?.quality === 'stale' || snapshot.value?.metrics.supply?.quality === 'stale'
       : row?.quality === 'stale'
-    return [{ key, ...overviewFields[field], stale,
+    return [{ key, ...overviewFields[field], stale, textParts: null,
       text: field === 'spread' ? deltaText(waterSpread.value) : displayMetric(row ?? null) }]
   })
 })
@@ -622,8 +625,6 @@ async function readRegister() {
 }
 watch(page, async (value) => {
   if (value === 'home' || value === 'settings') void loadOverview()
-  if (value !== 'settings') return
-  try { giraItems.value = (await api.giraState()).items } catch { /* Optional integration. */ }
 })
 watch([canEditTarget, selectedTransport], () => targetEditor.value?.close())
 watch(selectedTransport, (value) => {
@@ -728,12 +729,12 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
-            <div v-if="readings.length" class="hero-metrics" :style="{'--overview-desktop': Math.min(6, readings.length), '--overview-tablet': Math.min(4, readings.length), '--overview-mobile': Math.min(3, readings.length), '--overview-narrow': Math.min(2, readings.length)}">
+            <div v-if="readings.length" class="hero-metrics" :style="{'--overview-desktop': Math.min(metricColumns, readings.length), '--overview-tablet': Math.min(mobileProfile ? metricColumns : 6, metricColumns, readings.length), '--overview-mobile': Math.min(metricColumns, mobileProfile ? 4 : 3, readings.length), '--overview-narrow': Math.min(metricColumns, 2, readings.length)}">
               <div v-for="item in readings" :key="item.key" class="hero-metric"
                 :class="['reading-'+item.key, { 'is-stale': item.stale }]"
                 :title="readingHint(item.key)">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
-                <strong>{{ item.text }} <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
+                <strong :class="{'gira-text':item.textParts}"><template v-if="item.textParts"><span v-for="(part, index) in item.textParts" :key="index" :class="{'gira-number': /^[+-]?[0-9]/.test(part)}">{{ part }}</span></template><template v-else>{{ item.text }}</template> <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
                 <span v-if="item.label" class="metric-label">{{ item.label }}</span>
                 <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">UP {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
               </div>
@@ -908,7 +909,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <AccountManagement v-if="adminAuthenticated" />
-        <OverviewSettings v-if="adminAuthenticated" :layout="overviewLayout" :gira="giraItems" @saved="overviewLayout = $event" />
+        <OverviewSettings v-if="adminAuthenticated" :layout="overviewLayout" :gira-revision="giraRevision" @saved="overviewLayout = $event" />
         <LocalHistory v-if="adminAuthenticated" settings />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
@@ -959,7 +960,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <LanAccessSettings v-if="adminAuthenticated && browserOnline" />
-        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" @values="giraItems = $event" />
+        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" @saved="giraRevision++" />
       </template>
     </main>
 

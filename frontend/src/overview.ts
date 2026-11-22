@@ -29,8 +29,10 @@ export const overviewFields = {
 
 export type OverviewField = keyof typeof overviewFields
 export type OverviewProfile = 'mobile' | 'desktop'
-export type OverviewLayout = Record<OverviewProfile, string[]>
+export type OverviewLayout = Record<OverviewProfile, string[]> & { mobile_columns: number; desktop_columns: number }
 export const defaultOverview: OverviewLayout = {
+  mobile_columns: 3,
+  desktop_columns: 8,
   mobile: ['return', 'supply', 'spread', 'flow', 'tank', 'outdoor'],
   desktop: ['flow', 'tank', 'outdoor', 'return', 'supply', 'spread'],
 }

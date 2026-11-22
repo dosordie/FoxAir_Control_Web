@@ -466,7 +466,8 @@ def optional_dashboard_codes():
     from backend.register_definitions import DIAGNOSTIC_FIELDS
     from backend.routes.overview import settings
 
-    keys = {key for profile in settings().values() for key in profile}
+    layout = settings()
+    keys = set(layout["mobile"]) | set(layout["desktop"])
     wanted = {register: key for key, register in DIAGNOSTIC_FIELDS.items() if key in keys}
     if not wanted:
         return {}

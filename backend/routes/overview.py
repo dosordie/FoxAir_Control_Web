@@ -28,6 +28,8 @@ def settings():
     saved = cloud_config._read_json(config_path())
     mobile = ["return", "supply", "spread", "flow", "tank", "outdoor"]
     return {
+        "mobile_columns": saved.get("mobile_columns", 3),
+        "desktop_columns": saved.get("desktop_columns", 8),
         "mobile": saved.get("mobile", mobile),
         "desktop": saved.get("desktop", DEFAULT),
     }
@@ -36,13 +38,15 @@ def settings():
 class Layout(BaseModel):
     mobile: list[str] = Field(max_length=12)
     desktop: list[str] = Field(max_length=12)
+    mobile_columns: int = Field(default=3, ge=1, le=4)
+    desktop_columns: int = Field(default=8, ge=1, le=8)
 
 
 @router.post("/api/overview")
 def save(payload: Layout, request: Request):
     cloud_config.require_admin(request)
     profiles = payload.model_dump()
-    for keys in profiles.values():
+    for keys in (payload.mobile, payload.desktop):
         if len(set(keys)) != len(keys) or any(
             key not in OPTIONS and not re.fullmatch(r"gira:[0-9a-f]{24}", key)
             for key in keys
@@ -58,7 +62,7 @@ def standard_ranges(blocks):
     extra = sorted(
         {
             DASHBOARD_FIELDS[key]
-            for keys in selected.values()
+            for keys in (selected["mobile"], selected["desktop"])
             for key in keys
             if key in DIAGNOSTIC_FIELDS
             and not any(

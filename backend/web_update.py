@@ -130,8 +130,8 @@ def status() -> dict[str, Any]:
         else "release"
     )
     deployed = _deployed_sha()
-    watcher = _status_unit(PATH_UNIT) if mode == "release" else {}
-    service = _status_unit(SERVICE) if mode == "release" else {}
+    watcher = _status_unit(PATH_UNIT) if mode != "container" else {}
+    service = _status_unit(SERVICE) if mode != "container" else {}
     if mode == "container":
         from backend.docker_updates import latest as docker_latest
 
@@ -199,7 +199,7 @@ def status() -> dict[str, Any]:
         "build_ready": check == "checked",
         "check_status": check,
         "update_available": available,
-        "pending": TRIGGER.exists() if mode == "release" else False,
+        "pending": TRIGGER.exists() if mode != "container" else False,
         "running": service.get("ActiveState") in ("active", "activating"),
         "last_result": service.get("Result"),
         "version": build["display_version"],
@@ -217,17 +217,25 @@ def request_update() -> dict[str, Any]:
 
     if os.getenv("FOXAIR_CONTAINER") == "1":
         raise RuntimeError("Container über Compose oder Portainer aktualisieren")
-    if info()["build_channel"] == "work":
-        raise RuntimeError("Test-VM manuell mit scripts/update-work.sh aktualisieren")
-    candidate = latest()
     installed = info()
-    if candidate is None:
-        raise RuntimeError("Kein vollständiges freigegebenes Release verfügbar")
-    if not newer(candidate["version"], installed["version"]) and not (
-        candidate["version"] == installed["version"]
-        and installed["build_channel"] != "release"
-    ):
-        raise RuntimeError("Kein neueres freigegebenes Release verfügbar")
+    if installed["build_channel"] == "work":
+        head = _remote_sha()
+        artifact = _remote_build_sha()
+        if not head or head != artifact:
+            raise RuntimeError(
+                "Für work ist noch kein passender Frontend-Build verfügbar"
+            )
+        if head == installed.get("source_commit"):
+            raise RuntimeError("work ist bereits aktuell")
+    else:
+        candidate = latest()
+        if candidate is None:
+            raise RuntimeError("Kein vollständiges freigegebenes Release verfügbar")
+        if not newer(candidate["version"], installed["version"]) and not (
+            candidate["version"] == installed["version"]
+            and installed["build_channel"] != "release"
+        ):
+            raise RuntimeError("Kein neueres freigegebenes Release verfügbar")
     watcher = _status_unit(PATH_UNIT)
     if watcher.get("LoadState") != "loaded" or watcher.get("ActiveState") != "active":
         raise RuntimeError("Update-Hilfsdienst noch nicht eingerichtet")

@@ -51,8 +51,9 @@ class WebUpdateTests(unittest.TestCase):
                 web_update.request_update()
             unit.assert_not_called()
 
-    def test_work_mode_never_invokes_systemd_or_requests_production_update(self):
+    def test_work_update_requires_matching_frontend_and_uses_fixed_trigger(self):
         with (
+            TemporaryDirectory() as tmp,
             patch(
                 "backend.build_info.info",
                 return_value={
@@ -63,7 +64,16 @@ class WebUpdateTests(unittest.TestCase):
                     "build_consistent": True,
                 },
             ),
-            patch.object(web_update, "_status_unit") as unit,
+            patch.object(
+                web_update,
+                "_status_unit",
+                side_effect=lambda name: {
+                    "LoadState": "loaded",
+                    "ActiveState": "active"
+                    if name == web_update.PATH_UNIT
+                    else "inactive",
+                },
+            ),
             patch.object(web_update, "_remote_sha", return_value="b" * 40),
             patch.object(
                 web_update, "_remote_build_sha", return_value="a" * 40
@@ -73,11 +83,15 @@ class WebUpdateTests(unittest.TestCase):
             self.assertEqual(status["update_mode"], "work")
             self.assertEqual(status["check_status"], "building")
             self.assertFalse(status["update_available"])
-            artifact.return_value = "b" * 40
-            self.assertTrue(web_update.status()["update_available"])
-            with self.assertRaises(RuntimeError):
-                web_update.request_update()
-            unit.assert_not_called()
+            flag = Path(tmp) / "update-request"
+            with patch.object(web_update, "TRIGGER", flag):
+                with self.assertRaisesRegex(RuntimeError, "Frontend-Build"):
+                    web_update.request_update()
+                self.assertFalse(flag.exists())
+                artifact.return_value = "b" * 40
+                self.assertTrue(web_update.status()["update_available"])
+                self.assertEqual(web_update.request_update(), {"requested": True})
+                self.assertEqual(flag.read_bytes(), b"")
 
     def test_older_latest_release_is_not_an_upgrade(self):
         with (

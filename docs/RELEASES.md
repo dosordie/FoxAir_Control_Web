@@ -19,7 +19,7 @@ Der Helfer prüft den work-/Build-SHA-Abgleich vor dem Update, führt ein Fast-F
 
 Die App prüft beim Öffnen und alle 15 Minuten im sichtbaren Tab, ob ein Update bereitsteht. Docker liest dafür die Version von GHCR `latest`, Linux Stable das vollständige GitHub-Release und `work` den Commit mit passendem Web-Build. Ein Hinweis im Kopf führt zur Versionsanzeige in den Einstellungen.
 
-Die produktive GUI hat keinen frei wählbaren Development-Kanal. Auf work ist der systemd-Release-Updateknopf gesperrt und verweist auf den manuellen Testablauf.
+Linux-Installationen auf work und Stable können nach einmaliger Einrichtung per GUI aktualisiert werden. Als root auf dem Server `bash /opt/foxair-web/app/scripts/install_web_update.sh` ausführen. Der Helfer richtet den passenden Updatebefehl für die vorhandene Installation ein. Ein Wechsel des Updatekanals ist eine separate Serveraufgabe.
 
 ## Freigabe und Veröffentlichung
 
