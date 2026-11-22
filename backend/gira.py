@@ -4,6 +4,7 @@ import asyncio
 import base64
 from contextlib import suppress
 from datetime import datetime, timezone
+import hashlib
 import ipaddress
 import json
 import logging
@@ -22,7 +23,7 @@ router = APIRouter()
 
 class ObjectConfig(BaseModel):
     key: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9@_./:-]+$")
-    name: str = Field(min_length=1, max_length=60)
+    name: str = Field(default="", max_length=60)
     unit: str = Field(default="", max_length=16)
     text_encoding: Literal["auto", "plain", "utf8", "latin1"] = "auto"
 
@@ -68,6 +69,7 @@ def validate(payload):
         row["host"] = str(addr)
     for item in row["objects"]:
         key = item["key"].strip()
+        item["name"] = item["name"].strip()
         item["key"] = "CO@" + (key[3:] if key.casefold().startswith("co@") else key)
     keys = [item["key"].casefold() for item in row["objects"]]
     if len(keys) != len(set(keys)):
@@ -200,6 +202,8 @@ class GiraClient:
             items.append(
                 {
                     "id": index,
+                    "layout_key": "gira:"
+                    + hashlib.sha256(obj["key"].casefold().encode()).hexdigest()[:24],
                     "name": obj["name"],
                     "unit": obj["unit"],
                     "value": row["value"] if row else None,

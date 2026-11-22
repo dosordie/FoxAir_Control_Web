@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { GiraItem } from '../api'
+const emit = defineEmits<{ values: [GiraItem[]] }>()
 const props = defineProps<{ settings?: boolean; admin?: boolean; secure?: boolean }>()
 type Config = {
   enabled: boolean
@@ -19,6 +21,7 @@ type State = {
   connected: boolean
   error: string | null
   items: {
+    layout_key: string
     id: number
     name: string
     unit: string
@@ -41,6 +44,10 @@ const empty = (): Config => ({
 })
 const cfg = ref(empty()),
   state = ref<State>({ enabled: false, connected: false, error: null, items: [] })
+watch(
+  () => state.value.items,
+  (items) => emit('values', items),
+)
 const open = ref(false),
   busy = ref(false),
   message = ref('')
@@ -233,10 +240,9 @@ onBeforeUnmount(() => {
                   required
               /></label>
               <label
-                >Bezeichnung<input
+                >Bezeichnung (optional)<input
                   class="settings-input"
                   v-model="object.name"
-                  required
                   maxlength="60"
               /></label>
               <label
@@ -288,7 +294,7 @@ onBeforeUnmount(() => {
       >
         <strong
           >{{ display(item.value) }} <small v-if="item.unit">{{ item.unit }}</small></strong
-        ><small>{{ item.name }}</small>
+        ><small v-if="item.name">{{ item.name }}</small>
       </div>
     </div>
   </div>

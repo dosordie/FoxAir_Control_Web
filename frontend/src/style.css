@@ -421,8 +421,6 @@ a{color:inherit}
   .unit-container .unit.illustrated-unit{width:min(78%,300px)}
   .heatpump-status-icons{transform:translateX(75%)}.heatpump-state{width:34px;height:34px}
   .transport-inline .bus-live-note{grid-column:1/-1;font-size:11px;margin-top:3px}
-  .hero-metric.reading-return{order:0}.hero-metric.reading-supply{order:1}.hero-metric.reading-spread{order:2}
-  .hero-metric.reading-flow{order:3}.hero-metric.reading-tank{order:4}.hero-metric.reading-outdoor{order:5}
   .content-columns>.operating-panel{order:-1}
   .register-browser-table{font-size:11px}.register-browser-table th:first-child{width:52px}.register-browser-table th:nth-child(2){width:34%}
   .register-browser-table th,.register-browser-table td{padding:9px 4px}.register-browser-table .previous-register-value{font-size:10px}
@@ -514,3 +512,13 @@ a{color:inherit}
 .brand-version{font-size:10px;color:#626b78;font-weight:700}
 .update-badge{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border:1px solid #ffd4a6;background:#fff2e4;color:#8b480e;border-radius:10px;padding:7px;font-size:12px;font-weight:700}
 @media(max-width:600px){.update-badge span{display:none}.brand-caption small{letter-spacing:.9px}.brand-caption{gap:4px}}
+
+.overview-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:4px 12px;border:0;padding:12px 0}
+.measurement-chart{margin:12px 0}
+.measurement-chart svg text{fill:#47515f;font-size:19px}
+.target-edit{font:inherit;color:inherit;background:#ffffff12;border:1px solid #ffffff7a;border-radius:18px;cursor:pointer}
+.hero-metric strong{overflow-wrap:anywhere}
+.hero-metrics[style]{grid-template-columns:repeat(var(--overview-desktop),minmax(0,1fr));row-gap:16px}
+@media(max-width:1000px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-tablet),minmax(0,1fr))}}
+@media(max-width:800px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-mobile),minmax(0,1fr))}}
+@media(max-width:350px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-narrow),minmax(0,1fr))}}

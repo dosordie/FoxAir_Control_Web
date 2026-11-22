@@ -193,7 +193,7 @@ onMounted(async () => {
             v-model="password"
             autocomplete="new-password" /></label
         ><label
-          >Freigegebene MAIN-Register, mit Komma getrennt<input
+          >Freigegebene Modbus-Register, mit Komma getrennt<input
             class="settings-input"
             v-model="registers"
             placeholder="z. B. 1012,1158" /></label

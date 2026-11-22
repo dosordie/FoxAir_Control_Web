@@ -1,3 +1,9 @@
+import type { OverviewField, OverviewLayout } from './overview'
+
+export type GiraItem = { id: number; layout_key: string; name: string; unit: string; value: string | number | null; timestamp: string | null; quality: string }
+export type HistorySettings = { enabled: boolean; retention_days: number; fields: { register: number; label: string; unit: string }[] }
+export type HistoryPoint = { time: string; value: number; min?: number; max?: number; source?: string }
+export type HistorySeries = { label: string; unit: string; points: HistoryPoint[]; step_seconds?: number }
 export type TransportId = 'cloud' | 'standard_modbus' | 'display_modbus' | 'warmlink_raw'
 export type Metric = { value: number | string; unit: string; raw: number | null; quality: string; timestamp: string; source_code?: string; label?: string } | null
 export type Dashboard = {
@@ -6,7 +12,7 @@ export type Dashboard = {
   timestamp: string
   error: string | null
   device_name?: string
-  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency' | 'electrical_power' | 'thermal_power' | 'cop' | 'pump_pwm', Metric>
+  metrics: Record<'power' | 'mode' | 'flow' | 'tank' | 'outdoor' | 'return' | 'supply' | 'target' | 'base_target' | 'silent' | 'compressor_frequency' | 'electrical_power' | 'thermal_power' | 'cop' | 'pump_pwm', Metric> & Partial<Record<Exclude<OverviewField, 'spread'>, Metric>>
   live_supported: boolean
 }
 export type Transport = { id: TransportId; name: string; configured: boolean; read_supported: boolean; reason: string }
@@ -195,6 +201,12 @@ export const api = {
     return get<{items:Register[];catalog_size:number}>('/api/registers?'+parameters)
   },
   adminSession: () => get<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean; lan_http?: boolean }>('/api/admin/session'),
+  overview: () => get<OverviewLayout>('/api/overview'),
+  saveOverview: (layout: OverviewLayout) => post<OverviewLayout>('/api/overview', layout),
+  giraState: () => get<{items: GiraItem[]}>('/api/expert/gira/state'),
+  historySettings: () => get<HistorySettings>('/api/history/local/settings'),
+  saveHistorySettings: (enabled: boolean, retention_days: number) => post<HistorySettings>('/api/history/local/settings', { enabled, retention_days }),
+  localHistory: (register: number, days: number) => get<HistorySeries>('/api/history/local?' + new URLSearchParams({ register: String(register), days: String(days) })),
   lanAccess: () => post<LanAccess>('/api/admin/lan-access', {}),
   saveLanAccess: (hosts: string[], proxy_ips: string[]) => post<LanAccess>('/api/admin/lan-access/save', {hosts, proxy_ips}),
   adminSsoLogin: () => post<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean }>('/api/admin/sso/login', {}),

@@ -461,16 +461,39 @@ def _reader() -> CloudReader:
     return _client
 
 
+def optional_dashboard_codes():
+    from backend.cloud_state import catalog
+    from backend.register_definitions import DIAGNOSTIC_FIELDS
+    from backend.routes.overview import settings
+
+    keys = {key for profile in settings().values() for key in profile}
+    wanted = {register: key for key, register in DIAGNOSTIC_FIELDS.items() if key in keys}
+    if not wanted:
+        return {}
+    definitions = load_registers()
+    options = {}
+    for entry in catalog():
+        register = entry.get("register")
+        if register not in wanted or entry.get("confidence") != "confirmed":
+            continue
+        key = wanted[register]
+        code = entry["code"]
+        if key not in options or code == definitions.get(str(register), {}).get("code"):
+            options[key] = code
+    return options
+
+
 def read_dashboard(*, live: bool = False) -> dict[str, Any]:
     from backend.cloud_state import live_codes, merge, log_event
     from backend.device_name import refresh_name
+    optional_codes = optional_dashboard_codes()
     with _cloud_lock:
         client = _reader()
         refresh_name(client)
         if live:
             client.app_heartbeat()
         codes = list(dict.fromkeys([CLOUD_REGISTERS[r] for r in DASHBOARD_MAPPING.values()]
-                                    + (live_codes() if live else [])))
+                                    + list(optional_codes.values()) + (live_codes() if live else [])))
         values: dict[str, dict[str, Any]] = {}
         for offset in range(0, len(codes), 50):
             chunk = codes[offset:offset+50]
@@ -487,7 +510,12 @@ def read_dashboard(*, live: bool = False) -> dict[str, Any]:
     merge(values)
     log_event("live" if live else "read", "Cloud-Livewerte aktualisiert" if live
               else "Cloud-Übersicht gelesen", count=len(values))
-    return project_dashboard(values)
+    output = project_dashboard(values)
+    for key, code in optional_codes.items():
+        row = values.get(code)
+        if row and row.get('value') is not None:
+            output[key] = {**row, 'raw': None, 'quality': row.get('quality', 'fresh')}
+    return output
 
 
 def cached_dashboard() -> dict[str, Any]:

@@ -159,6 +159,8 @@ def remember_words(endpoint, start, words, *, transport="warmlink_raw", timestam
             "timestamp": stamp,
         }
     store.remember(rows, scope=scope)
+    from backend.local_history import record
+    record(rows, scope)
 
 
 def remember_cloud(rows, account):
@@ -203,6 +205,8 @@ def remember_cloud(rows, account):
             "display_value": label,
         }
     store.remember(values, scope=scope)
+    from backend.local_history import record
+    record(values, scope)
 
 
 def fill_dashboard(snapshot):

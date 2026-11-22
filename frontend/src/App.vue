@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
+  Activity, ArrowLeft, ArrowRight, Bell,
   ChevronRight, Clock3, Cloud, Gauge, HeartPulse, House,
   Power, RadioTower, RefreshCw,
   Settings2, SlidersHorizontal, Star,
-  Sun, Thermometer, VolumeX, Waves, Wifi, Zap
+  Sun, Thermometer, VolumeX, Wifi, Zap
 } from 'lucide-vue-next'
 import TimerEditor from './TimerEditor.vue'
 import CloudInsights from './CloudInsights.vue'
@@ -17,6 +17,10 @@ import UpdatePanel from './components/UpdatePanel.vue'
 import ConnectionSettingsDialog from './components/ConnectionSettingsDialog.vue'
 import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
+import OverviewSettings from './components/OverviewSettings.vue'
+import LocalHistory from './components/LocalHistory.vue'
+import { defaultOverview, knxIcon, overviewFields, type OverviewField, type OverviewLayout } from './overview'
+import type { GiraItem } from './api'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
 import ExpertGira from './components/ExpertGira.vue'
@@ -117,6 +121,36 @@ async function openOperation(code:'Power'|'Mode'|'H22'){
   await refreshOperation()
 }
 const connectionSettingsOpen = ref(false)
+const overviewLayout = ref<OverviewLayout>(defaultOverview)
+const giraItems = ref<GiraItem[]>([])
+const mobileProfile = /iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent)
+async function loadOverview() {
+  try {
+    const layout = await api.overview()
+    if (Array.isArray(layout.mobile) && Array.isArray(layout.desktop)) overviewLayout.value = layout
+  } catch { /* Retain the available layout during a connection interruption. */ }
+}
+const targetEditor = ref<HTMLDialogElement | null>(null)
+const targetDefinition = ref<Register | null>(null)
+const targetError = ref('')
+const targetLoading = ref(false)
+const canEditTarget = computed(() => canOperate.value && browserOnline.value &&
+  secureAdminContext.value && selectedTransport.value !== 'display_modbus')
+async function openTargetEditor() {
+  if (!canEditTarget.value) return
+  targetEditor.value?.showModal()
+  targetError.value = ''
+  if (targetDefinition.value) return
+  targetLoading.value = true
+  try {
+    targetDefinition.value = (await api.registers('1158')).items.find(item => item.register === 1158) ?? null
+    if (!targetDefinition.value) targetError.value = 'Heizungs-Basissollwert nicht verfügbar.'
+  } catch (cause) {
+    targetError.value = (cause as Error).message
+  } finally {
+    targetLoading.value = false
+  }
+}
 const historyOpen=ref(false)
 const historyDialogElement=ref<HTMLDialogElement|null>(null)
 watch(historyOpen, async opened=>{
@@ -361,13 +395,25 @@ function readingHint(key: string) {
   const hints: Record<string,string> = {flow:'Volumenstrom des Heizwassers. Die Pumpen-PWM zeigt die gemeldete Ansteuerung aus Register 2115; bei ausgeschalteter Pumpe kann der Registerwert trotzdem 100 % sein.',tank:'Temperatur im Warmwasserspeicher.',outdoor:'Gemessene Außentemperatur.',return:'Eintritt des Heizwassers in die Wärmepumpe (Rücklauf).',supply:'Austritt des erwärmten Heizwassers aus der Wärmepumpe (Vorlauf).'}
   return hints[key] || ''
 }
-const readings = computed(() => [
-  { key: 'flow', label: 'Durchfluss', icon: Waves, unit: 'm³/h' },
-  { key: 'tank', label: 'Warmwasser', icon: Thermometer, unit: '°C' },
-  { key: 'outdoor', label: 'Außen', icon: Sun, unit: '°C' },
-  { key: 'return', label: 'Eintritt', icon: ArrowDownLeft, unit: '°C' },
-  { key: 'supply', label: 'Austritt', icon: ArrowUpRight, unit: '°C' },
-] as const)
+const readings = computed(() => {
+  const keys = overviewLayout.value[mobileProfile ? 'mobile' : 'desktop']
+  return keys.flatMap(key => {
+    if (key.startsWith('gira:')) {
+      const item = giraItems.value.find(row => row.layout_key === key)
+      return [{ key, label: item?.name || '', unit: item?.unit || '', icon: knxIcon,
+        text: displayMetric(item ? { ...item, raw: null, timestamp: item.timestamp || '' } as Metric : null),
+        stale: item?.quality === 'stale' }]
+    }
+    if (!Object.hasOwn(overviewFields, key)) return []
+    const field = key as OverviewField
+    const row = field === 'spread' ? null : snapshot.value?.metrics[field]
+    const stale = field === 'spread'
+      ? snapshot.value?.metrics.return?.quality === 'stale' || snapshot.value?.metrics.supply?.quality === 'stale'
+      : row?.quality === 'stale'
+    return [{ key, ...overviewFields[field], stale,
+      text: field === 'spread' ? deltaText(waterSpread.value) : displayMetric(row ?? null) }]
+  })
+})
 
 function displayMetric(metric: Metric, fallback = '—'): string {
   if (metric?.value === null || metric?.value === undefined) return fallback
@@ -574,6 +620,12 @@ async function readRegister() {
     if (generation === parameterReadGeneration) reading.value = false
   }
 }
+watch(page, async (value) => {
+  if (value === 'home' || value === 'settings') void loadOverview()
+  if (value !== 'settings') return
+  try { giraItems.value = (await api.giraState()).items } catch { /* Optional integration. */ }
+})
+watch([canEditTarget, selectedTransport], () => targetEditor.value?.close())
 watch(selectedTransport, (value) => {
   currentValue.value = null
   lteWriteSources.value = {}
@@ -603,6 +655,7 @@ watch([liveEnabled, liveInterval], () => {
 onMounted(async () => {
   syncRoute()
   const session = checkAdminSession()
+  void loadOverview()
   window.addEventListener('hashchange', syncRoute)
   document.addEventListener('visibilitychange', onVisibilityChange)
   document.addEventListener('keydown', closeSpecialOnEscape)
@@ -663,7 +716,10 @@ onBeforeUnmount(() => {
               </div>
               <div class="target-temperature">
                 <span class="overline" title="Aktuell von der Regelung gewählter Wassersollwert (Register 2014), einschließlich aktiver Wetterkompensation.">Aktueller Sollwert</span>
-                <div class="temp-adjust target-readonly">
+                <button v-if="canEditTarget" type="button" class="temp-adjust target-edit" aria-label="Heizungs-Basissollwert einstellen" @click="openTargetEditor">
+                  <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
+                </button>
+                <div v-else class="temp-adjust target-readonly">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                 </div>
                 <span class="target-delta" title="Austritt minus aktueller Sollwert. Positive Werte bedeuten: Austritt ist wärmer als der Sollwert.">Δ VL–Soll: {{ deltaText(supplyDelta) }} K</span>
@@ -672,19 +728,14 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
-            <div class="hero-metrics">
+            <div v-if="readings.length" class="hero-metrics" :style="{'--overview-desktop': Math.min(6, readings.length), '--overview-tablet': Math.min(4, readings.length), '--overview-mobile': Math.min(3, readings.length), '--overview-narrow': Math.min(2, readings.length)}">
               <div v-for="item in readings" :key="item.key" class="hero-metric"
-                :class="['reading-'+item.key, { 'is-stale': snapshot?.metrics[item.key]?.quality === 'stale' }]"
+                :class="['reading-'+item.key, { 'is-stale': item.stale }]"
                 :title="readingHint(item.key)">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
-                <strong>{{ metric(item.key) }} <small class="metric-unit">{{ item.unit }}</small></strong>
-                <span class="metric-label">{{ item.label }}</span>
+                <strong>{{ item.text }} <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
+                <span v-if="item.label" class="metric-label">{{ item.label }}</span>
                 <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">UP {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
-              </div>
-              <div class="hero-metric reading-spread" :class="{ 'is-stale': snapshot?.metrics.supply?.quality === 'stale' || snapshot?.metrics.return?.quality === 'stale' }">
-                <Waves :size="24" :stroke-width="1.8" />
-                <strong>{{ deltaText(waterSpread) }} <small class="metric-unit">K</small></strong>
-                <span class="metric-label" title="Temperaturdifferenz zwischen Austritt und Eintritt der Wärmepumpe.">Spreizung VL/RL</span>
               </div>
             </div>
           </div>
@@ -742,7 +793,7 @@ onBeforeUnmount(() => {
             <section class="panel operating-panel">
               <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div></div>
               <PowerSummary :metrics="snapshot?.metrics" />
-              <ExpertGira />
+              <ExpertGira @values="giraItems = $event" />
               <div class="operation-row">
                 <button type="button" class="operation operation-button" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
                 <button type="button" class="operation operation-button" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
@@ -788,7 +839,7 @@ onBeforeUnmount(() => {
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
-                <span class="register-title">{{ entry.name }}<small>MAIN {{ entry.register }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
+                <span class="register-title">{{ entry.name }}<small>{{ entry.register }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
                 <span class="register-measure" :class="{ unknown: currentRegisterValue(entry.register)?.value == null,
                     'is-stale': currentRegisterValue(entry.register)?.quality === 'stale' }"
                   :title="relativeTimestamp(currentRegisterValue(entry.register)?.timestamp)">
@@ -805,7 +856,7 @@ onBeforeUnmount(() => {
                 :class="{ active: cloudCodeSelected?.code === entry.code }" @click="selectCloudParameter(entry)">
                 <span class="register-code">{{ entry.code }}</span>
                 <span class="register-title">{{ entry.name }}
-                  <small>{{ entry.register ? 'MAIN ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
+                  <small>{{ entry.register ? 'Register ' + entry.register : 'Nur Cloud' }} · {{ entry.kind }}</small></span>
                 <span class="register-measure" :class="{ unknown: entry.value == null, 'is-stale': entry.quality === 'stale' }" :title="relativeTimestamp(entry.timestamp)">
                   {{ entry.display_value ?? textValue(entry.value) }} <small>{{ entry.unit }}</small>
                   <small v-if="entry.quality === 'stale'">veraltet</small>
@@ -822,7 +873,7 @@ onBeforeUnmount(() => {
               <span class="register-code large">{{ cloudCodeSelected.code }}</span>
               <ParameterValue label="Cloud-Wert" :value="cloudCodeSelected.display_value ?? cloudCodeSelected.value" :unit="cloudCodeSelected.unit" :timestamp="cloudCodeSelected.timestamp" :quality="cloudCodeSelected.quality" />
               <div class="detail-metadata">
-                <span>MAIN-Zuordnung <strong>{{ cloudCodeSelected.register ?? 'nicht bestätigt' }}</strong></span>
+                <span>Modbus-Zuordnung <strong>{{ cloudCodeSelected.register ?? 'nicht bestätigt' }}</strong></span>
                 <span>Cloud-Kategorie <strong>{{ cloudCodeSelected.kind }}</strong></span>
                 <span>Mapping-Confidence <strong>{{ cloudCodeSelected.confidence || 'unbekannt' }}</strong></span>
                 <span>Quelle <strong>Cloud</strong></span><span>Unterstützung <strong>{{ cloudCodeSelected.supported ? 'Wert vorhanden' : 'kein Wert' }}</strong></span>
@@ -832,7 +883,7 @@ onBeforeUnmount(() => {
             </template>
             <template v-else-if="!cloudView && selectedRegister">
               <span class="section-caption">PARAMETERDETAILS</span>
-              <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || 'MAIN' }}</span><h2>{{ selectedRegister.name }}</h2></div><button type="button" class="favorite-button" :class="{selected:isFavorite(selectedRegister.register)}" :aria-pressed="isFavorite(selectedRegister.register)" :aria-label="isFavorite(selectedRegister.register)?'Favorit entfernen':'Als Favorit merken'" @click="toggleFavorite(selectedRegister.register)"><Star :size="23" :fill="isFavorite(selectedRegister.register)?'currentColor':'none'" /></button></div>
+              <div class="detail-top"><div><span class="register-code large">{{ selectedRegister.code || selectedRegister.register }}</span><h2>{{ selectedRegister.name }}</h2></div><button type="button" class="favorite-button" :class="{selected:isFavorite(selectedRegister.register)}" :aria-pressed="isFavorite(selectedRegister.register)" :aria-label="isFavorite(selectedRegister.register)?'Favorit entfernen':'Als Favorit merken'" @click="toggleFavorite(selectedRegister.register)"><Star :size="23" :fill="isFavorite(selectedRegister.register)?'currentColor':'none'" /></button></div>
               <ParameterValue :value="currentRegisterValue(selectedRegister.register)?.display_value ?? selectedRegister.cloud?.display_value ?? currentRegisterValue(selectedRegister.register)?.value ?? selectedRegister.cloud?.value" :unit="currentRegisterValue(selectedRegister.register)?.unit ?? selectedRegister.cloud?.unit ?? ''" :timestamp="currentRegisterValue(selectedRegister.register)?.timestamp ?? selectedRegister.cloud?.timestamp" :quality="currentRegisterValue(selectedRegister.register)?.quality" />
               <div class="detail-metadata"><span>Modbus-Register <strong>{{ selectedRegister.register }}</strong></span><span>Gruppe <strong>{{ selectedRegister.group }}</strong></span><span>Typ <strong>{{ selectedRegister.type }}</strong></span><span>Zugriff <strong>{{ selectedRegister.mode }}</strong></span><span>Quelle <strong>{{ valueSource(selectedRegister.register) }}</strong></span></div>
               <h3 class="parameter-description-title">Beschreibung & Hinweise</h3>
@@ -857,6 +908,8 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <AccountManagement v-if="adminAuthenticated" />
+        <OverviewSettings v-if="adminAuthenticated" :layout="overviewLayout" :gira="giraItems" @saved="overviewLayout = $event" />
+        <LocalHistory v-if="adminAuthenticated" settings />
         <section class="settings-panel panel">
           <div class="section-head"><div><span class="section-caption">VERBINDUNG</span><h2>Transport auswählen</h2><button class="outlined-action" :aria-expanded="connectionSettingsOpen" @click="connectionSettingsOpen = !connectionSettingsOpen">Verbindungseinstellungen</button></div><ShieldCheck :size="24" /></div>
           <p>Die ausgewählte Verbindung gilt für alle Geräte und wird automatisch synchronisiert. Unter Verbindungseinstellungen richtest du Cloud und lokale Busanschlüsse ein.</p>
@@ -906,7 +959,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <LanAccessSettings v-if="adminAuthenticated && browserOnline" />
-        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" />
+        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" @values="giraItems = $event" />
       </template>
     </main>
 
@@ -914,6 +967,7 @@ onBeforeUnmount(() => {
     <dialog ref="historyDialogElement" class="connection-dialog panel" aria-labelledby="history-dialog-title" @close="historyOpen=false" @cancel="historyOpen=false">
       <div class="connection-dialog-content">
         <header class="connection-dialog-header"><div><span class="section-caption">VERLAUF</span><h2 id="history-dialog-title">Verlauf &amp; Diagramme</h2></div><button class="outlined-action" aria-label="Verlauf schließen" @click="historyOpen=false">Schließen</button></header>
+        <LocalHistory v-if="historyOpen" />
         <CloudInsights v-if="historyOpen" mode="history" :admin="adminAuthenticated&&secureAdminContext&&browserOnline" />
       </div>
     </dialog>
@@ -922,6 +976,15 @@ onBeforeUnmount(() => {
       :bus-state="busState" :cloud-overview="cloudOverview" @login="loginAsAdmin" @logout="logoutAsAdmin"
       @connections-changed="reloadTransportOptions" @refresh-cloud="loadCloudValues" />
 
+    <dialog ref="targetEditor" class="operation-dialog panel" aria-labelledby="target-editor-title">
+      <div class="special-top"><h2 id="target-editor-title">Heizungs-Basissollwert</h2><button type="button" class="outlined-action" @click="targetEditor?.close()">Schließen</button></div>
+      <p>Aktuell wirksamer Sollwert: {{ snapshot?.metrics.target?.source_code === '2014' ? metric('target') + ' °C' : '—' }}</p>
+      <p class="section-hint">Die Heizkurve kann den wirksamen Sollwert gegenüber dem eingestellten Basiswert verändern.</p>
+      <p v-if="targetLoading" role="status">Parameter wird geladen …</p>
+      <p v-if="targetError" class="read-error" role="alert">{{ targetError }}</p>
+      <ParameterEditor v-if="targetDefinition && canEditTarget" :key="selectedTransport" :register="targetDefinition"
+        :transport="selectedTransport" :admin="canEditTarget" :value="currentRegisterValue(1158)" @updated="loadDashboard(false)" />
+    </dialog>
     <dialog ref="operationDialogElement" class="operation-dialog panel" aria-labelledby="operation-title" @close="operationCode=null" @cancel="operationCode=null">
       <div class="special-top"><h2 id="operation-title">{{ operationCode?operationLabels[operationCode]:'' }}</h2><button class="outlined-action" aria-label="Betriebsdialog schließen" @click="operationCode=null">Schließen</button></div>
       <template v-if="operationCode">
@@ -964,7 +1027,7 @@ onBeforeUnmount(() => {
             :class="{ 'is-stale': entry.quality === 'stale' }">
             <span class="register-code">{{ entry.register ?? entry.code }}</span>
             <span class="register-title">{{ entry.name }}
-              <small>{{ entry.register != null ? 'MAIN ' + entry.register : 'Nur Cloud' }}</small>
+              <small>{{ entry.register != null ? 'Register ' + entry.register : 'Nur Cloud' }}</small>
             </span>
             <strong :title="relativeTimestamp(entry.timestamp)">{{ textValue(entry.value) }} {{ entry.unit }}</strong>
           </div>

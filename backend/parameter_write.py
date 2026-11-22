@@ -190,6 +190,7 @@ def convert_baseline(register, entry, expected, source, target):
 
 def write(register, transport, requested, expected, *, expected_transport=None):
     from backend.transport_selection import allows
+
     if not allows(transport):
         raise WriteValidationError("Andere Verbindung ist global ausgewählt")
     if transport == "display_modbus":
@@ -315,7 +316,7 @@ def write(register, transport, requested, expected, *, expected_transport=None):
         except (OSError, ValueError):
             log_event(
                 "write-error",
-                f"Parameter MAIN {register}: Antwort unklar; keine Wiederholung",
+                f"Parameterregister {register}: Antwort unklar; keine Wiederholung",
             )
             return {
                 "status": "unconfirmed",
@@ -325,7 +326,7 @@ def write(register, transport, requested, expected, *, expected_transport=None):
         confirmed = actual == word
         log_event(
             "write",
-            f"Parameter MAIN {register}: Readback {'bestätigt' if confirmed else 'abweichend'}",
+            f"Parameterregister {register}: Readback {'bestätigt' if confirmed else 'abweichend'}",
         )
         return {
             "status": "confirmed" if confirmed else "unconfirmed",

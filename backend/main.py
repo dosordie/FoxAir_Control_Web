@@ -1,4 +1,5 @@
 """FoxAir HTTP API: authentication, validated actions and transport presentation."""
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +22,7 @@ from backend.cloud_dialogs import definitions as cloud_dialog_definitions, refre
 from backend.cloud_write import write_control, WriteValidationError, WriteConflictError
 from backend.web_update import status as web_update_status, request_update as web_request_update
 from backend.register_definitions import (
-    DASHBOARD_FIELDS, LTE_DASHBOARD_BLOCKS as LTE_READ_BLOCKS,
+    DASHBOARD_FIELDS, DIAGNOSTIC_FIELDS, LTE_DASHBOARD_BLOCKS as LTE_READ_BLOCKS,
     STANDARD_DASHBOARD_BLOCKS as READ_BLOCKS,
 )
 from backend.routes.lte import router as lte_router
@@ -44,6 +45,14 @@ async def lifespan(_app: FastAPI):
     gira_client.start()
     start()
     display_manager.start()
+    from backend.local_history import FLUSH_SECONDS, flush
+
+    async def save_history():
+        while True:
+            await asyncio.sleep(FLUSH_SECONDS)
+            await asyncio.to_thread(flush)
+
+    history_task = asyncio.create_task(save_history())
     try:
         yield
     finally:
@@ -52,6 +61,9 @@ async def lifespan(_app: FastAPI):
         display_manager.stop()
         standard_connection.disconnect()
         stop()
+        history_task.cancel()
+        await asyncio.gather(history_task, return_exceptions=True)
+        await asyncio.to_thread(flush, final=True)
 
 
 from backend.build_info import product_version, info as build_info
@@ -72,6 +84,10 @@ from backend.setup import router as setup_router
 app.include_router(setup_router)
 from backend.routes.lan_access import router as lan_access_router
 app.include_router(lan_access_router)
+from backend.routes.overview import router as overview_router, standard_ranges
+from backend.local_history import router as history_router
+app.include_router(overview_router)
+app.include_router(history_router)
 app.add_middleware(AccessMiddleware)
 
 VALID_TRANSPORTS = set(TRANSPORTS)
@@ -523,8 +539,8 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
         from backend.bus_connection import observed_metrics, status as connection_status
         metrics = observed_metrics(DASHBOARD_FIELDS, warmlink_endpoint())
         snapshot['metrics'].update(metrics)
-        fresh = sum(item['quality'] == 'observed' for item in metrics.values())
-        snapshot['status'] = 'online' if fresh == len(DASHBOARD_FIELDS) else ('partial' if fresh else 'unavailable')
+        fresh = sum(item['quality'] == 'observed' for key, item in metrics.items() if key not in DIAGNOSTIC_FIELDS)
+        snapshot['status'] = 'online' if fresh == len(DASHBOARD_FIELDS) - len(DIAGNOSTIC_FIELDS) else ('partial' if fresh else 'unavailable')
         snapshot['error'] = connection_status()['error']
         return fill_dashboard(snapshot)  # No socket creation or active read in this path.
     if transport == "cloud":
@@ -532,8 +548,8 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
             metrics = cloud_dashboard(live=live)
             for key, item in metrics.items():
                 snapshot["metrics"][key] = {**item, "timestamp": item.get("timestamp") or snapshot["timestamp"]} if item else None
-            count = sum(item is not None for item in snapshot["metrics"].values())
-            snapshot["status"] = "online" if count == len(DASHBOARD_FIELDS) else ("partial" if count else "unavailable")
+            count = sum(item is not None for key, item in metrics.items() if key not in DIAGNOSTIC_FIELDS)
+            snapshot["status"] = "online" if count == len(DASHBOARD_FIELDS) - len(DIAGNOSTIC_FIELDS) else ("partial" if count else "unavailable")
             if not count:
                 snapshot["error"] = "Keine unterstützten Cloud-Werte zurückgegeben"
             # First successful dashboard read starts a background full catalog
@@ -564,7 +580,7 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
     errors: list[str] = []
     try:
         with (open_warmlink(endpoint) if transport == "warmlink_raw" else open_rtu(endpoint)) as session:
-            for start, count in (LTE_READ_BLOCKS if transport=='warmlink_raw' else READ_BLOCKS):
+            for start, count in (LTE_READ_BLOCKS if transport=='warmlink_raw' else standard_ranges(READ_BLOCKS)):
                 try:
                     values = session.read_holding(start, count)
                     words.update({start + i: raw for i, raw in enumerate(values)})

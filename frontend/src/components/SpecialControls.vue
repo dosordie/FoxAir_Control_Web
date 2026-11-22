@@ -111,7 +111,7 @@ function display(register: number) {
     </section>
     <div class="special-card-grid">
       <article v-for="entry in definitions" :key="entry.register" class="special-control-card">
-        <span class="register-code">{{ entry.code || 'MAIN ' + entry.register }}</span>
+        <span class="register-code">{{ entry.code || 'Register ' + entry.register }}</span>
         <h3>{{ entry.name }}</h3>
         <p
           class="special-current"

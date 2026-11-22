@@ -17,7 +17,21 @@ STANDARD_DASHBOARD_BLOCKS = (
     (2115, 1),
 )
 LTE_DASHBOARD_BLOCKS = ((1011, 20), (1158, 1), (2012, 66), (2115, 1))
+DIAGNOSTIC_FIELDS = {
+    "evaporator": 2049,
+    "evi_in": 2063,
+    "evi_out": 2064,
+    "fan_one": 2074,
+    "fan_two": 2075,
+    "compressor_starts": 2023,
+    "compressor_hours": 2032,
+    "buffer_temperature": 2052,
+    "low_pressure": 2069,
+    "discharge_temperature": 2053,
+    "suction_temperature": 2051,
+}
 DASHBOARD_FIELDS = {
+    **DIAGNOSTIC_FIELDS,
     "power": 1011,
     "mode": 2012,
     "flow": 2077,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {ref} from 'vue'
+import HistoryChart from './components/HistoryChart.vue'
 import {api} from './api'
 withDefaults(defineProps<{admin:boolean;mode?:'history'|'device'}>(),{mode:'device'})
 const busy=ref(false),error=ref(''),address=ref('2046'),days=ref(1)
@@ -23,20 +24,17 @@ async function load(kind:'history'|'ota'|'metadata'|'ai'){
   if(kind==='history'){
    const end=new Date(),start=new Date(end.getTime()-days.value*86400000)
    const format=(d:Date)=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Etc/GMT-1',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d)
-   history.value=await api.cloudHistory(address.value,format(start),format(end),days.value>1?'month':'day')
+   const selected = address.value
+   history.value=await api.cloudHistory(selected,format(start),format(end),days.value>1?'month':'day')
+   historyLabel.value = historyLabels[selected] || 'Messwert'
   }else if(kind==='ota')ota.value=await api.cloudInsight(kind)
   else if(kind==='ai')ai.value=await api.cloudInsight(kind)
   else {metadata.value=await api.cloudInsight(kind);enums.value={}}
  }catch(e){error.value=e instanceof Error?e.message:'Cloud-Abfrage fehlgeschlagen'}
  finally{busy.value=false}
 }
-const chart=computed(()=>{
- const points=history.value?.points||[]
- if(points.length<2)return ''
- const low=Math.min(...points.map(p=>p.value)),high=Math.max(...points.map(p=>p.value))
- const first=new Date(points[0]!.time).getTime(),last=new Date(points[points.length-1]!.time).getTime()
- return points.map(p=>`${20+(new Date(p.time).getTime()-first)/Math.max(1,last-first)*560},${150-(p.value-low)/Math.max(.1,high-low)*130}`).join(' ')
-})
+const historyLabels: Record<string,string> = {'2046':'Austritt','2045':'Eintritt','2047':'Warmwasser','2048':'Außen','2078+9':'Tages-Stromverbrauch'}
+const historyLabel = ref('')
 </script>
 <template>
  <section class="settings-panel panel">
@@ -52,7 +50,7 @@ const chart=computed(()=>{
   <div v-if="mode==='history'&&history">
    <p class="section-hint">{{ history.points.length }} Messpunkte · {{ history.unit }} · Abfrage {{ new Date(history.checked_at).toLocaleString('de-DE') }} {{ history.cached?'(Cache)':'' }}</p>
    <p v-if="history.points.length" class="section-hint">Wertebereich: {{ Math.min(...history.points.map(p=>p.value)).toLocaleString('de-DE') }}–{{ Math.max(...history.points.map(p=>p.value)).toLocaleString('de-DE') }} {{ history.unit }}</p>
-   <svg v-if="chart" viewBox="0 0 600 175" class="history-chart" role="img" aria-label="Zeitlicher Verlauf der Cloud-Messwerte"><path d="M20 10V150H585" fill="none" stroke="#c5cbd2"/><polyline :points="chart" fill="none" stroke="#e87f2d" stroke-width="3"/><text x="20" y="170" font-size="11">{{ history.points[0]?.time.slice(5,16) }}</text><text x="580" y="170" text-anchor="end" font-size="11">{{ history.points[history.points.length-1]?.time.slice(5,16) }}</text></svg>
+   <HistoryChart v-if="history.points.length" :points="history.points" :label="historyLabel" :unit="history.unit" cloud />
    <p v-if="history.points.some(p=>p.incomplete)" class="section-hint">Der laufende Tag kann unvollständig sein. Ein dort gemeldeter Nullwert ist kein bestätigter Nullverbrauch.</p>
    <p v-if="!history.points.length">Keine Messpunkte im gewählten Zeitraum.</p>
    <details><summary>Messpunkte mit Zeitstempeln</summary><div class="history-points"><div v-for="point in history.points" :key="point.time"><time>{{ point.time }}</time><strong>{{ point.value.toLocaleString('de-DE') }} {{ history.unit }}</strong><span v-if="point.incomplete">Laufender Tag – möglicherweise unvollständig</span></div></div></details>

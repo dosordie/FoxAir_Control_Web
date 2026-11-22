@@ -74,7 +74,7 @@ class WarmlinkSession:
                 self.foreign_since = time.monotonic()
                 log_event(
                     "lte-observed",
-                    f"Beobachtete FC3-Anfrage: MAIN {f[2]}, Anzahl {f[3]}",
+                    f"Beobachtete FC3-Anfrage: Register {f[2]}, Anzahl {f[3]}",
                 )
             elif (
                 f[9] == "read-response"
@@ -120,7 +120,7 @@ class WarmlinkSession:
     def exchange(self, request, mode, register, count):
         self.quiet()
         self.inflight_request = request
-        log_event("lte", f"LTE TX: {mode}, MAIN {register}, Anzahl {count}")
+        log_event("lte", f"LTE TX: {mode}, Register {register}, Anzahl {count}")
         self.sock.sendall(request)
         deadline = time.monotonic() + self.endpoint.timeout
         try:
@@ -142,7 +142,7 @@ class WarmlinkSession:
                             )
                         log_event(
                             "lte",
-                            f"LTE RX: MAIN {register}, Anzahl {count}, CRC gültig",
+                            f"LTE RX: Register {register}, Anzahl {count}, CRC gültig",
                         )
                         return [
                             int.from_bytes(payload[i : i + 2], "big")
@@ -154,7 +154,7 @@ class WarmlinkSession:
                         and start == register
                         and length == count
                     ):
-                        log_event("lte", f"LTE Schreib-ACK: MAIN {register}")
+                        log_event("lte", f"LTE Schreib-ACK: Register {register}")
                         return []
             raise ModbusResponseTimeout(self.endpoint.medium)
         except (OSError, ValueError):

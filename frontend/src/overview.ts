@@ -1,0 +1,37 @@
+import {
+  ArrowDownLeft, ArrowUpRight, Activity, Clock, Fan, Gauge, Network,
+  Snowflake, Sun, Thermometer, Waves, Zap,
+} from 'lucide-vue-next'
+
+export const overviewFields = {
+  flow: { label: 'Durchfluss', icon: Waves, unit: 'm³/h' },
+  tank: { label: 'Warmwasser', icon: Thermometer, unit: '°C' },
+  outdoor: { label: 'Außen', icon: Sun, unit: '°C' },
+  return: { label: 'Eintritt', icon: ArrowDownLeft, unit: '°C' },
+  supply: { label: 'Austritt', icon: ArrowUpRight, unit: '°C' },
+  spread: { label: 'Spreizung VL/RL', icon: Waves, unit: 'K' },
+  electrical_power: { label: 'Elektrische Leistung', icon: Zap, unit: 'kW' },
+  thermal_power: { label: 'Thermische Leistung', icon: Sun, unit: 'kW' },
+  cop: { label: 'COP', icon: Gauge, unit: '' },
+  evaporator: { label: 'Verdampfer', icon: Snowflake, unit: '°C' },
+  evi_in: { label: 'EVI-Eintritt', icon: ArrowDownLeft, unit: '°C' },
+  evi_out: { label: 'EVI-Austritt', icon: ArrowUpRight, unit: '°C' },
+  fan_one: { label: 'Lüfter 1', icon: Fan, unit: 'U/min' },
+  fan_two: { label: 'Lüfter 2', icon: Fan, unit: 'U/min' },
+  compressor_starts: { label: 'Verdichterstarts', icon: Activity, unit: '' },
+  compressor_hours: { label: 'Verdichterlaufzeit', icon: Clock, unit: 'h' },
+  buffer_temperature: { label: 'Puffertank', icon: Thermometer, unit: '°C' },
+  low_pressure: { label: 'Niederdruck', icon: Gauge, unit: 'bar' },
+  discharge_temperature: { label: 'Heißgas', icon: Thermometer, unit: '°C' },
+  suction_temperature: { label: 'Sauggas', icon: Thermometer, unit: '°C' },
+  compressor_frequency: { label: 'Verdichterfrequenz', icon: Gauge, unit: 'Hz' },
+} as const
+
+export type OverviewField = keyof typeof overviewFields
+export type OverviewProfile = 'mobile' | 'desktop'
+export type OverviewLayout = Record<OverviewProfile, string[]>
+export const defaultOverview: OverviewLayout = {
+  mobile: ['return', 'supply', 'spread', 'flow', 'tank', 'outdoor'],
+  desktop: ['flow', 'tank', 'outdoor', 'return', 'supply', 'spread'],
+}
+export const knxIcon = Network
