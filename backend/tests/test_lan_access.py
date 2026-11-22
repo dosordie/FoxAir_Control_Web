@@ -81,6 +81,54 @@ class LanAccessTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()["hosts"], ["new.home.arpa"])
                 self.assertEqual(client.get(health, headers=alias).status_code, 200)
+
+                self.assertEqual(
+                    client.post(
+                        save, json={"hosts": [], "proxy_ips": ["192.168.150.0/24"]}
+                    ).status_code,
+                    422,
+                )
+                self.assertEqual(
+                    client.post(
+                        save,
+                        json={
+                            "hosts": ["new.home.arpa"],
+                            "proxy_ips": ["192.168.150.25"],
+                        },
+                    ).status_code,
+                    200,
+                )
+                forwarded = {
+                    **alias,
+                    "Origin": "https://new.home.arpa:18081",
+                    "X-Forwarded-Proto": "https",
+                }
+                self.assertEqual(
+                    client.post(
+                        save, json={"hosts": ["new.home.arpa"]}, headers=forwarded
+                    ).json()["proxy_ips"],
+                    ["192.168.150.25"],
+                )
+                forged = {
+                    **forwarded,
+                    "Origin": "https://other.home.arpa",
+                    "X-Forwarded-Host": "other.home.arpa",
+                }
+                self.assertEqual(
+                    client.post(save, json={"hosts": []}, headers=forged).status_code,
+                    403,
+                )
+                other_peer = TestClient(
+                    TCPPeerApp(app), client=("192.168.150.26", 50000)
+                )
+                self.assertEqual(
+                    other_peer.post(
+                        save,
+                        json={"hosts": []},
+                        headers={**forwarded, "X-FoxAir-Admin": "1"},
+                    ).status_code,
+                    403,
+                )
                 external = TestClient(TCPPeerApp(app), client=("203.0.113.25", 50000))
                 self.assertEqual(external.get(health, headers=alias).status_code, 403)
 

@@ -10,12 +10,14 @@ router = APIRouter()
 
 class LanHosts(BaseModel):
     hosts: list[str] = Field(max_length=32)
+    proxy_ips: list[str] | None = Field(default=None, max_length=32)
 
 
 def lan_settings():
     return {
         "enabled": lan_access.enabled(),
         "hosts": lan_access.saved_hosts(),
+        "proxy_ips": lan_access.saved_proxy_ips(),
         "configured_hosts": sorted(lan_access.configured_hosts()),
     }
 
@@ -33,9 +35,15 @@ def save_lan_hosts(payload: LanHosts, request: Request):
         raise HTTPException(409, "Direkter Docker-LAN-Zugriff ist deaktiviert.")
     try:
         hosts = lan_access.normalize_hosts(payload.hosts)
+        proxy_ips = (
+            lan_access.saved_proxy_ips()
+            if payload.proxy_ips is None
+            else lan_access.normalize_proxy_ips(payload.proxy_ips)
+        )
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
     cloud_config._atomic_json(
-        cloud_config.STATE_DIR / "lan-access.json", {"hosts": hosts}
+        cloud_config.STATE_DIR / "lan-access.json",
+        {"hosts": hosts, "proxy_ips": proxy_ips},
     )
     return lan_settings()

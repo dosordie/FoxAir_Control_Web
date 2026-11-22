@@ -5,6 +5,7 @@ import { api, type LanAccess } from '../api'
 
 const state = ref<LanAccess | null>(null)
 const names = ref('')
+const proxyIps = ref('')
 const saving = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -13,6 +14,7 @@ onMounted(async () => {
   try {
     state.value = await api.lanAccess()
     names.value = state.value.hosts.join(', ')
+    proxyIps.value = state.value.proxy_ips.join(', ')
   } catch (cause) {
     error.value = (cause as Error).message
   }
@@ -27,9 +29,14 @@ async function save() {
       .split(',')
       .map((name) => name.trim())
       .filter(Boolean)
-    state.value = await api.saveLanAccess(hosts)
+    const addresses = proxyIps.value
+      .split(',')
+      .map((ip) => ip.trim())
+      .filter(Boolean)
+    state.value = await api.saveLanAccess(hosts, addresses)
+    proxyIps.value = state.value.proxy_ips.join(', ')
     names.value = state.value.hosts.join(', ')
-    notice.value = 'Gespeichert. Die Namen sind sofort freigegeben.'
+    notice.value = 'Gespeichert. Die Einstellungen gelten sofort.'
   } catch (cause) {
     error.value = (cause as Error).message
   } finally {
@@ -64,8 +71,25 @@ async function save() {
       <p v-if="state.configured_hosts.length" class="section-hint">
         Bereits eingerichtet: {{ state.configured_hosts.join(', ') }}
       </p>
+      <label for="lan-proxy-ips" class="field-label"
+        >IP-Adressen vertrauenswürdiger HTTPS-Reverse-Proxys</label
+      >
+      <input
+        id="lan-proxy-ips"
+        v-model="proxyIps"
+        class="settings-input"
+        type="text"
+        aria-describedby="lan-proxy-ips-hint"
+        autocomplete="off"
+        spellcheck="false"
+        :disabled="saving"
+      />
+      <p id="lan-proxy-ips-hint" class="section-hint">
+        Gib die IP des Nginx-Servers ein, wie sie bei FoxAir ankommt. Mehrere IP-Adressen mit Komma
+        trennen.
+      </p>
       <button type="submit" class="outlined-action" :disabled="saving">
-        {{ saving ? 'Wird gespeichert …' : 'Namen speichern' }}
+        {{ saving ? 'Wird gespeichert …' : 'Webzugriff speichern' }}
       </button>
     </form>
     <p v-if="error" class="read-error" role="alert">{{ error }}</p>

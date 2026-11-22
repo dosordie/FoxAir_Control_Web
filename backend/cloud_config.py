@@ -150,15 +150,18 @@ def ensure_secure_origin(request: "Request") -> bool:
     from fastapi import HTTPException
     peer = request.client.host if request.client else ""
     trusted = {x.strip() for x in os.environ.get("FOXAIR_TRUSTED_PROXY_IPS", "").split(",") if x.strip()}
-    via_proxy_https = (peer in trusted and
-                       request.headers.get("x-forwarded-proto", "").lower() == "https")
-    from backend.lan_access import direct_http
+    from backend.lan_access import direct_http, saved_proxy_ips
     lan_http = direct_http(request)
+    ui_proxy = lan_http and peer in saved_proxy_ips()
+    via_proxy_https = (
+        (peer in trusted or ui_proxy)
+        and request.headers.get("x-forwarded-proto", "").lower() == "https"
+    )
     secure = lan_http or (request.url.scheme == "https" or peer in ("127.0.0.1", "::1") or via_proxy_https)
     if not secure:
         raise HTTPException(status_code=403, detail="Administration nur über HTTPS oder SSH-Tunnel (Loopback)")
     host = request.headers.get("host", "")
-    if via_proxy_https and request.headers.get("x-forwarded-host"):
+    if via_proxy_https and peer in trusted and request.headers.get("x-forwarded-host"):
         host = request.headers["x-forwarded-host"]
     external_scheme = "https" if via_proxy_https else request.url.scheme
     origin = request.headers.get("origin")

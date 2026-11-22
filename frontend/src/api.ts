@@ -26,7 +26,7 @@ export type Register = {
 }
 export type RegisterValue = { register: number; raw: number | null; value: string | number; unit: string; transport: string; timestamp: string; quality: string;edit_value?:string|number;display_value?:string|null;code?:string;name?:string;group?:string }
 export type LteScan = {status:'idle'|'running'|'complete'|'partial'|'error';completed:number;total:number;error:string|null}
-export type LanAccess = { enabled: boolean; hosts: string[]; configured_hosts: string[] }
+export type LanAccess = { enabled: boolean; hosts: string[]; configured_hosts: string[]; proxy_ips: string[] }
 export type ConnectionState = {connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number;pending_read?:{register:number;count:number;age_seconds:number;ambiguous:boolean}|null}
 export type LteSnapshot = {values:Record<string,RegisterValue>;metrics:Partial<Dashboard['metrics']>;connection:ConnectionState;scan:LteScan;removed?:string[];reset?:boolean}
 
@@ -196,7 +196,7 @@ export const api = {
   },
   adminSession: () => get<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean; lan_http?: boolean }>('/api/admin/session'),
   lanAccess: () => post<LanAccess>('/api/admin/lan-access', {}),
-  saveLanAccess: (hosts: string[]) => post<LanAccess>('/api/admin/lan-access/save', {hosts}),
+  saveLanAccess: (hosts: string[], proxy_ips: string[]) => post<LanAccess>('/api/admin/lan-access/save', {hosts, proxy_ips}),
   adminSsoLogin: () => post<{ authenticated: boolean; role: string; username?: string; sso_available?: boolean }>('/api/admin/sso/login', {}),
   adminLogin: (admin_password: string, username = "admin") =>
     post<{ authenticated: boolean; role: string; username?: string }>('/api/admin/login', { admin_password, username }),

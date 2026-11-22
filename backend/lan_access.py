@@ -1,6 +1,6 @@
 """Direct LAN access for the Docker LAN configuration."""
 
-from ipaddress import IPv4Address, IPv4Network
+from ipaddress import IPv4Address, IPv4Network, ip_address
 import os
 import re
 from urllib.parse import urlsplit
@@ -84,11 +84,35 @@ def configured_hosts():
     return environment
 
 
-def saved_hosts():
+def saved_settings():
     from backend import cloud_config
 
-    row = cloud_config._read_json(cloud_config.STATE_DIR / "lan-access.json")
-    hosts = row.get("hosts")
+    return cloud_config._read_json(cloud_config.STATE_DIR / "lan-access.json")
+
+
+def saved_proxy_ips():
+    addresses = saved_settings().get("proxy_ips")
+    return addresses if isinstance(addresses, list) else []
+
+
+def normalize_proxy_ips(values):
+    addresses = []
+    for value in values:
+        try:
+            address = ip_address(value.strip())
+            if address.is_unspecified or address.is_multicast or "%" in str(address):
+                raise ValueError()
+        except ValueError:
+            raise ValueError(
+                "Bitte einzelne Proxy-IP-Adressen ohne Netzmaske oder Port eingeben."
+            ) from None
+        if str(address) not in addresses:
+            addresses.append(str(address))
+    return addresses
+
+
+def saved_hosts():
+    hosts = saved_settings().get("hosts")
     return hosts if isinstance(hosts, list) else []
 
 
