@@ -31,9 +31,10 @@ User=foxair-web
 Group=foxair-web
 WorkingDirectory=/opt/foxair-web/app
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=FOXAIR_LAN_HTTP=1
 StateDirectory=foxair-web
 StateDirectoryMode=0700
-ExecStart=/opt/foxair-web/venv/bin/python -m backend.server --host 127.0.0.1 --port 8081
+ExecStart=/opt/foxair-web/venv/bin/python -m backend.server --host 0.0.0.0 --port 8081
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -47,7 +48,7 @@ MemoryMax=256M
 WantedBy=multi-user.target
 EOF
   chmod 0644 "$UNIT"
-  echo "FoxAir-Dienst neu angelegt."
+  echo "FoxAir-Dienst neu angelegt. Im Heimnetz http://<LAN-IP>:8081 aufrufen und das Admin-Passwort festlegen."
 fi
 bash "$ROOT/scripts/install_stream_shutdown.sh"
 systemctl daemon-reload

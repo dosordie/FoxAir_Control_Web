@@ -58,16 +58,7 @@ sudo bash /opt/foxair-web/app/scripts/install_service.sh
 sudo systemctl enable foxair-web.service
 ```
 
-Der Dienst lauscht zunächst auf `127.0.0.1:8081`. Für die Ersteinrichtung den Einmalcode als Dienstbenutzer abrufen:
-
-```bash
-cd /opt/foxair-web/app
-sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup
-```
-
-Für direkten HTTP-Zugriff von anderen Geräten im Heimnetz siehe [LAN-Modus für Linux](docs/INSTALLATION.md#direkte-anmeldung-aus-dem-heimnetz).
-
-Dann lokal, per SSH-Tunnel oder über einen HTTPS-Reverse-Proxy öffnen und das Admin-Passwort festlegen. Docker und Linux erhalten dieselbe Release-Version und denselben Quellstand. Die Linux-Testinstallation auf `work` hat einen eigenen Web-Build und Updateweg. [Linux-Anleitung](docs/INSTALLATION.md) · [Updates und Rollback](docs/RELEASES.md)
+Die Weboberfläche ist bei einer Neuinstallation unter `http://<LAN-IP>:8081` im privaten Heimnetz erreichbar. Beim ersten Aufruf legst du dein Admin-Passwort direkt im Browser fest. Vorhandene Dienste und Konten bleiben bei Updates erhalten. [Linux-Anleitung](docs/INSTALLATION.md) · [Updates und Rollback](docs/RELEASES.md)
 
 ## Verbindungen
 

@@ -10,7 +10,7 @@ Ein Linux-Server oder Container mit **systemd**, Git, Python 3 und Virtualenv-Un
 
 Die Skripte erwarten `/opt/foxair-web/app` als Installationspfad. Andere Pfade erfordern angepasste Dienstdateien und Hilfsskripte. Bei einer bestehenden Installation zuerst [Updates](#updates) und [Release-Migration](RELEASES.md) lesen; vorhandene Konten und Konfigurationen erhalten.
 
-**Aktueller Entwicklungsstand:** `work` ist für die Test-VM vorgesehen, `main` bleibt Stable. Noch kein `v0.1.0` veröffentlicht. Vor Work-Updates den erfolgreichen Build auf der [Actions-Seite](https://github.com/dosordie/FoxAir_Control_Web/actions) abwarten; das passende Frontend liegt in `web-dist-work`.
+**Aktueller Entwicklungsstand:** `work` ist für die Test-VM vorgesehen, `main` bleibt Stable. Vor Work-Updates den erfolgreichen Build auf der [Actions-Seite](https://github.com/dosordie/FoxAir_Control_Web/actions) abwarten; das passende Frontend liegt in `web-dist-work`.
 
 ## 1. Frische Linux-Testinstallation auf work
 
@@ -28,7 +28,7 @@ sudo bash scripts/install_service.sh
 sudo systemctl enable foxair-web.service
 ```
 
-Der Work-Helfer installiert Python-Pakete in die eigene Umgebung und übernimmt das passende Frontend. Der Dienst läuft unter `foxair-web` und lauscht zunächst **nur auf `127.0.0.1:8081`**.
+Der Work-Helfer installiert Python-Pakete in die eigene Umgebung und übernimmt das passende Frontend. Der Dienst läuft unter `foxair-web` und ist im privaten LAN auf **Port 8081** erreichbar.
 
 Kontrolle:
 
@@ -41,26 +41,13 @@ Die Gesundheitsprüfung sollte unter anderem `"ok": true` zurückgeben.
 
 ## 2. Sichere GUI-Ersteinrichtung
 
-Der neue Dienst erhält ein eigenes privates State-Verzeichnis. Bei bestehenden Units
-und deren Konfiguration wird nichts überschrieben. Frische Instanzen erzeugen einen
-zufälligen einmaligen Einrichtungscode; den Code auf dem Server abrufen:
+Rufe auf einem Gerät im Heimnetz `http://<LAN-IP>:8081/` auf, etwa über die private IPv4-Adresse des Servers. FoxAir zeigt beim ersten Start die Passwortmaske. Vergib ein Passwort mit mindestens zwölf Zeichen. Danach wirst du automatisch als `admin` angemeldet.
 
-```bash
-cd /opt/foxair-web/app
-sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup
-```
+Der Installer behält vorhandene Dienste, Konten und Konfigurationen bei. Bei einer Installation mit deaktiviertem LAN-Modus gibt `sudo -u foxair-web /opt/foxair-web/venv/bin/python -m backend.setup` den Einrichtungscode auf dem Server aus. Gib ihn in der Ersteinrichtung per HTTPS oder lokalem SSH-Tunnel ein.
 
-Bei abweichendem `FOXAIR_STATE_DIR` dieselbe Umgebung wie der Dienst verwenden.
-Code anschließend über HTTPS oder den lokalen SSH-Tunnel zusammen mit einem neuen,
-mindestens zwölf Zeichen langen Passwort in der Ersteinrichtungs-GUI eingeben.
-Bis dahin sind die übrigen APIs blockiert. Der Code wird danach ungültig; normal als
-`admin` anmelden. Bestehende Konten und Sitzungen werden nicht zurückgesetzt.
-Lokale administrative Passwort-Recovery ist ein separater bewusster Vorgang;
-keine State-Dateien pauschal löschen.
+## 3. Weitere Zugriffswege
 
-## 3. Oberfläche öffnen
-
-Für den ersten Zugriff auf dem **eigenen Computer** einen SSH-Tunnel öffnen. Vor dem Ausführen die Platzhalter `<SSH_USER>` und `<SERVER_HOST>` ersetzen:
+Bei einer bestehenden Installation mit lokal gebundenem Dienst kannst du am **eigenen Computer** einen SSH-Tunnel öffnen. Vor dem Ausführen die Platzhalter `<SSH_USER>` und `<SERVER_HOST>` ersetzen:
 
 ```bash
 ssh -N -L 8081:127.0.0.1:8081 <SSH_USER>@<SERVER_HOST>
@@ -82,7 +69,7 @@ Nur die tatsächliche einzelne Proxy-IP als vertrauenswürdig eintragen. Der Pro
 
 ### Direkte Anmeldung aus dem Heimnetz
 
-Für HTTP-Adminzugriff ohne Reverse Proxy die eigene private IPv4-Adresse des Linux-Hosts einsetzen:
+Bei bestehenden systemd-Diensten kannst du den LAN-Modus nach dem Update zuschalten. Setze die private IPv4-Adresse des Linux-Hosts ein:
 
 ```bash
 cd /opt/foxair-web/app
@@ -123,6 +110,13 @@ erfolgreicher Wiederholung bewusst starten. Private Einstellungen bleiben erhalt
 **Bestehende produktive Installation:** Nicht einfach main in die laufende Installation
 ziehen. Erst die gesicherte [Erst-Migration mit Rollback](RELEASES.md) prüfen und
 freigeben. Der neue `scripts/update.sh`-Pfad verwendet nur vollständige Stable-Releases.
+Bei einer bereits auf Stable-Releases umgestellten Installation ist das Update ohne Webanmeldung im Serverterminal oder per SSH möglich:
+
+```bash
+cd /opt/foxair-web/app
+sudo bash scripts/update.sh
+```
+
 Die öffentlich verfügbaren Pakete und Versionsnummern stehen auf der [Release-Seite](https://github.com/dosordie/FoxAir_Control_Web/releases).
 
 **Frische Stable-Installation:** Den freigegebenen Tag separat
