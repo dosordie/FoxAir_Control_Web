@@ -1,5 +1,11 @@
 # Änderungen
 
+## v0.1.8
+
+- Unter **Webzugriff** können Administratoren die IP-Adressen vertrauenswürdiger HTTPS-Reverse-Proxys direkt speichern.
+- Die Anmeldung erklärt Adressabweichungen und HTTPS-Probleme. Die Einstellungsseite zeigt den Anmeldestatus und bietet Gästen einen Anmeldebutton.
+- Webzugriff und Experteneinstellungen stehen am Ende der Einstellungsseite.
+
 ## v0.1.7
 
 - Administratoren können zusätzliche Hostnamen für Docker unter **Einstellungen → Webzugriff** freigeben. Die Freigabe gilt sofort, auch für Namen eines Reverse Proxys.
