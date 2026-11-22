@@ -1,5 +1,11 @@
 # Änderungen
 
+## v0.1.9
+
+- Neue Linux-Installationen sind direkt im privaten Heimnetz auf Port 8081 erreichbar. Das Admin-Passwort wird beim ersten Aufruf im Browser vergeben.
+- Bei bestehenden Linux-Diensten kann der LAN-Modus per `--lan-http` aktiviert werden. Updates behalten vorhandene Netzwerkeinstellungen und Konten bei.
+- Die Linux-Anleitung beschreibt das Update per Serverterminal oder SSH.
+
 ## v0.1.8
 
 - Unter **Webzugriff** können Administratoren die IP-Adressen vertrauenswürdiger HTTPS-Reverse-Proxys direkt speichern.
