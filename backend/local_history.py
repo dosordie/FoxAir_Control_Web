@@ -29,6 +29,7 @@ FIELDS = {
 }
 PENDING = {}
 SEEN = set()
+ARCHIVE_SCOPE = "local"
 DEFROST_REGISTER = 2012
 DEFROST_MAX_GAP = 120
 DEFROST_STATE = {}
@@ -112,7 +113,8 @@ def record_defrost(row, scope, now):
     DEFROST_STATE[key] = (stamp, active, started)
 
 
-def record(rows, scope):
+def record(rows):
+    scope = ARCHIVE_SCOPE
     selected = [(int(key), row) for key, row in rows.items() if int(key) in FIELDS]
     operating = rows.get(str(DEFROST_REGISTER))
     if not selected and not operating:
@@ -223,18 +225,26 @@ def flush(*, final=False):
         SEEN.difference_update(old)
 
 
+def archive_scopes(db):
+    legacy = db.execute(
+        """SELECT scope FROM history WHERE scope != ?
+        UNION SELECT scope FROM defrost WHERE scope != ? LIMIT 2""",
+        (ARCHIVE_SCOPE, ARCHIVE_SCOPE),
+    ).fetchall()
+    # A single legacy archive belongs to this installation. Keep ambiguous
+    # archives separate until an administrator explicitly repairs them.
+    return ARCHIVE_SCOPE, legacy[0][0] if len(legacy) == 1 else ARCHIVE_SCOPE
+
+
 @router.get("/api/history/local/defrost")
 def defrost_events(days: int = Query(1, ge=1, le=365)):
-    from backend.last_values import installation_key
-
-    scope = installation_key()
     cutoff = time.time() - min(days, config().retention_days) * 86400
     if not (cloud_config.STATE_DIR / "local-history.sqlite").exists():
         return {"events": []}
     with closing(connect()) as db:
         rows = db.execute(
-            "SELECT start, finish FROM defrost WHERE scope=? AND finish>=? ORDER BY start DESC",
-            (scope, cutoff),
+            "SELECT start, finish FROM defrost WHERE scope IN (?, ?) AND finish>=? ORDER BY start DESC",
+            (*archive_scopes(db), cutoff),
         ).fetchall()
     return {
         "events": [
@@ -249,13 +259,11 @@ def defrost_events(days: int = Query(1, ge=1, le=365)):
 
 @router.get("/api/history/local")
 def series(register: int, days: int = Query(1, ge=1, le=365)):
-    from backend.last_values import installation_key
     from fastapi import HTTPException
 
     if register not in FIELDS:
         raise HTTPException(404, "Messwert nicht verfügbar")
     _, label, unit = FIELDS[register]
-    scope = installation_key()
     now = time.time()
     # Downsample long views to keep the browser responsive.
     step = BUCKET if days <= 2 else 1800 if days <= 30 else 7200
@@ -267,9 +275,9 @@ def series(register: int, days: int = Query(1, ge=1, le=365)):
             rows = db.execute(
                 """SELECT (bucket / ?) * ?, sum(total)/sum(count),
                 min(low), max(high), group_concat(DISTINCT transport)
-                FROM history WHERE scope=? AND register=? AND bucket>=?
+                FROM history WHERE scope IN (?, ?) AND register=? AND bucket>=?
                 GROUP BY bucket / ? ORDER BY bucket / ?""",
-                (step, step, scope, register, cutoff, step, step),
+                (step, step, *archive_scopes(db), register, cutoff, step, step),
             ).fetchall()
         points = [
             {

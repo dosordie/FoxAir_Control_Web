@@ -1,6 +1,7 @@
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+import sqlite3
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
@@ -8,9 +9,35 @@ from unittest.mock import patch
 from backend import cloud_config, local_history
 from backend.register_definitions import STANDARD_DASHBOARD_BLOCKS
 from backend.routes import overview
+from scripts.repair_local_history import repair
 
 
 class LocalOverviewTests(TestCase):
+    def test_repair_backs_up_before_restoring_orphaned_archive(self):
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+        ):
+            path = Path(folder) / "local-history.sqlite"
+            with closing(local_history.connect()) as db, db:
+                db.execute(
+                    "INSERT INTO history VALUES (?,?,?,?,?,?,?,?)",
+                    ("old", 2046, 300, "warmlink_raw", 1, 34, 34, 34),
+                )
+                self.assertEqual(local_history.archive_scopes(db), ("local", "old"))
+
+            repair(path, "current")
+            with closing(sqlite3.connect(path)) as db:
+                self.assertEqual(
+                    db.execute("SELECT scope FROM history").fetchone(), ("current",)
+                )
+            backups = list(Path(folder).glob("local-history.backup-*.sqlite"))
+            self.assertEqual(len(backups), 1)
+            with closing(sqlite3.connect(backups[0])) as db:
+                self.assertEqual(
+                    db.execute("SELECT scope FROM history").fetchone(), ("old",)
+                )
+
     def test_defrost_records_only_complete_observed_cycles(self):
         with (
             TemporaryDirectory() as folder,
@@ -19,7 +46,6 @@ class LocalOverviewTests(TestCase):
             patch.object(local_history, "DEFROST_EVENTS", {}),
             patch.object(local_history, "PENDING", {}),
             patch.object(local_history, "SEEN", set()),
-            patch("backend.last_values.installation_key", return_value="unit-test"),
             patch("backend.local_history.time.time") as clock,
         ):
             cloud_config._atomic_json(local_history.config_path(), {"enabled": True})
@@ -37,7 +63,6 @@ class LocalOverviewTests(TestCase):
                             "transport": "display_modbus",
                         }
                     },
-                    "unit-test",
                 )
 
             state(400, 2)  # Already in progress when the first status arrives.
@@ -105,7 +130,6 @@ class LocalOverviewTests(TestCase):
                             "transport": "standard_modbus",
                         }
                     },
-                    "unit-test",
                 )
 
             record(560, 30)
