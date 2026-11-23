@@ -32,15 +32,26 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 echo "==> work und passenden Build vor Installation prüfen"
-git fetch origin work
+git fetch --no-tags origin work
+previous_head="$(git rev-parse HEAD)"
 source_sha="$(git rev-parse origin/work)"
-if ! git merge-base --is-ancestor HEAD "$source_sha"; then
+if ! git merge-base --is-ancestor "$previous_head" "$source_sha" && [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+  git fetch --unshallow --no-tags origin work
+  source_sha="$(git rev-parse origin/work)"
+fi
+if ! git merge-base --is-ancestor "$previous_head" "$source_sha"; then
   echo "Das Update ist kein Fast-Forward. Der Dienst bleibt in seinem aktuellen Zustand." >&2
   exit 1
 fi
 
 echo "==> Fertiges Frontend aus separatem Git-Build-Branch laden"
-git fetch --depth=1 origin +refs/heads/web-dist-work:refs/remotes/origin/web-dist-work
+# The artifact branch uses unrelated commits. Never follow tags into the source
+# history during this shallow fetch.
+git fetch --no-tags --depth=1 origin +refs/heads/web-dist-work:refs/remotes/origin/web-dist-work
+if ! git merge-base --is-ancestor "$previous_head" "$source_sha"; then
+  echo "Die Quellhistorie stimmt nach dem Frontend-Abruf nicht mehr. FoxAir laeuft weiter." >&2
+  exit 1
+fi
 build_sha="$(git show refs/remotes/origin/web-dist-work:.build-source-sha | tr -d '\r\n')"
 
 if [[ "$build_sha" != "$source_sha" ]]; then
@@ -53,8 +64,17 @@ dist_parent="$ROOT/frontend"
 dist="$dist_parent/dist"
 stage="$(mktemp -d "$dist_parent/.dist-stage.XXXXXX")"
 backup="$dist_parent/.dist-previous"
+was_active=0
 cleanup() {
+  local status=$?
   if [[ -n "${stage:-}" && -d "$stage" ]]; then rm -rf -- "$stage"; fi
+  if (( status != 0 && was_active == 1 )) &&
+     [[ "$(git rev-parse HEAD)" == "$previous_head" ]] &&
+     ! systemctl is-active --quiet foxair-web.service; then
+    echo "Update abgebrochen. Bisherigen FoxAir-Dienst wieder starten." >&2
+    systemctl start foxair-web.service || true
+  fi
+  return "$status"
 }
 trap cleanup EXIT
 
@@ -66,12 +86,11 @@ test -s "$stage/index.html" && test -d "$stage/assets" || {
 }
 chmod -R a+rX,go-w "$stage"
 
-was_active=0
 if (( NO_RESTART == 0 )) && systemctl is-active --quiet foxair-web.service; then
   was_active=1
   systemctl stop foxair-web.service
 fi
-git merge --ff-only origin/work
+git merge --ff-only "$source_sha"
 venv="$ROOT/../venv"
 if [[ ! -x "$venv/bin/python" ]]; then
   echo "Python-venv fehlt: $venv" >&2
