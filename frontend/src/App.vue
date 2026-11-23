@@ -840,7 +840,7 @@ onBeforeUnmount(() => {
             <div v-if="!cloudView" class="register-items">
               <button v-for="entry in registers" :key="entry.register" class="register-item" :class="{ active: selectedRegister?.register === entry.register }" @click="selectRegister(entry)">
                 <span class="register-code">{{ entry.code || entry.register }}</span>
-                <span class="register-title">{{ entry.name }}<small>{{ entry.register }} <template v-if="entry.cloud?.code">· Cloud {{ entry.cloud.code }}</template></small></span>
+                <span class="register-title">{{ entry.name }}<small>{{ entry.register }}</small></span>
                 <span class="register-measure" :class="{ unknown: currentRegisterValue(entry.register)?.value == null,
                     'is-stale': currentRegisterValue(entry.register)?.quality === 'stale' }"
                   :title="relativeTimestamp(currentRegisterValue(entry.register)?.timestamp)">
