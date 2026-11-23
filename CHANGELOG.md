@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.1.11
+
+- Die Kommunikationspause stoppt Cloud, Modbus, Gira und automatische Updateprüfungen. Gespeicherte Daten bleiben abrufbar.
+- **Auf einen Blick** lässt sich getrennt für Smartphone und Tablet/PC konfigurieren. Die Symbole für Heizen und Abtauen sind am Desktop größer.
+- Störmeldungen mit Klartext, SG-Ready, AT-Kurve und Wärmepumpe verwenden ihre bekannten lokalen Modbus-Register.
+- Der lokale Verlauf lässt sich mit frei wählbarem Zeitraum als CSV exportieren. Neue Archiveinträge bleiben auch bei geänderten Verbindungseinstellungen sichtbar.
+- Beim GUI-Update auf work prüft der Updater die Git-Historie nach dem getrennten Frontend-Abruf erneut, bevor er FoxAir stoppt.
+
 ## v0.1.10
 
 - Zwei gemeinsame Dashboard-Profile für Smartphone und Tablet/PC mit auswählbaren Messwerten, Diagnose- und Gira-Werten sowie einstellbarer Spaltenzahl.
