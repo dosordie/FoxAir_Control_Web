@@ -492,6 +492,10 @@ a{color:inherit}
 /* Align the compact badge with the lower edge of the illustration. */
 .unit-container>.compressor-badge{margin-top:-18px;position:relative;left:auto;right:auto;top:auto;bottom:auto;z-index:1}
 .heatpump-status-icons{top:10%}.heatpump-state{background:transparent;color:white;box-shadow:none}.heatpump-state .status-drop{color:white;background:transparent}
+@media(min-width:1024px){
+  .defrost-state .lucide-snowflake,.mode-state .lucide-sun{width:30px;height:30px}
+  .defrost-state .status-drop{width:17px;height:17px}
+}
 .register-area-filters{display:flex;gap:8px;margin-top:12px}.register-area-filters button{padding:8px 12px;border:1px solid #d9dfe5;border-radius:9px;background:#fff;color:#6a7380;font-size:12px}.register-area-filters button[aria-pressed=true]{background:#e0f6e0;border-color:#a8d3ad;color:#285d33}.register-area-filters button+button[aria-pressed=true]{background:#ffefd2;border-color:#edc58a;color:#82521a}
 
 .expert-settings{margin:0 32px 22px;max-width:760px}.expert-settings>summary{cursor:pointer;font-weight:700}.expert-settings h2{font-size:18px;margin-top:20px}.expert-settings fieldset{display:grid;gap:13px;min-width:0;padding:0;border:0}.expert-settings label{display:grid;gap:7px;font-size:13px}.expert-settings label:has(input[type=checkbox]){display:flex;align-items:center}.expert-settings .settings-input{width:100%;min-width:0}.expert-object{display:grid;grid-template-columns:1fr 1fr;gap:12px;border:1px solid #e5e8ed;border-radius:12px;padding:14px}.expert-metrics .power-summary{margin-top:0}.expert-metrics>.section-hint{display:block;margin-bottom:16px}@media(max-width:600px){.expert-settings{margin-inline:18px}.expert-object{grid-template-columns:1fr}}
