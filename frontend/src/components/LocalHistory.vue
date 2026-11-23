@@ -85,9 +85,10 @@ async function load() {
       />
       <p class="section-hint">
         FoxAir fasst empfangene Messwerte in 5-Minuten-Intervallen zusammen und speichert sie alle
-        15 Minuten gesammelt. Für einen lückenlosen Verlauf braucht FoxAir eine dauerhaft
-        eingestellte Verbindung. Ohne laufenden Empfang entstehen Lücken. Die Aufzeichnung ändert
-        die Verbindungseinstellung nicht.
+        15 Minuten gesammelt. Für die Aufzeichnung bei geschlossenem Browser benötigen Modbus-LTE
+        und Modbus-Display die Einstellung „Dauerhaft auf dem Server“. Cloud und Modbus-Standard
+        liefern bei geöffneter Übersicht Messwerte. Ohne Empfang entstehen Lücken. Die Aufzeichnung
+        ändert die Verbindungseinstellung nicht.
       </p>
       <button type="submit" class="outlined-action" :disabled="busy">
         Verlaufseinstellungen speichern
