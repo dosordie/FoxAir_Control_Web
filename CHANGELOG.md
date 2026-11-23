@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.1.10
+
+- Zwei gemeinsame Dashboard-Profile für Smartphone und Tablet/PC mit auswählbaren Messwerten, Diagnose- und Gira-Werten sowie einstellbarer Spaltenzahl.
+- Der aktuelle Heiz-Sollwert öffnet für Benutzer mit Schreibrecht den Editor für den Basissollwert mit Rücklesebestätigung.
+- Optionaler lokaler Verlauf mit einstellbarer Aufbewahrung und Abtauvorgängen. Cloud- und lokale Diagramme haben beschriftete Achsen und zeigen Einzelwerte.
+- Gira-Objekte können ohne Bezeichnung gespeichert werden. In den Registeranzeigen entfallen das Präfix MAIN und der doppelte Cloud-Code.
+- Die Linux-Testinstallation auf work unterstützt GUI-Updates nach einmaliger Einrichtung des systemd-Helfers.
+
 ## v0.1.9
 
 - Neue Linux-Installationen sind direkt im privaten Heimnetz auf Port 8081 erreichbar. Das Admin-Passwort wird beim ersten Aufruf im Browser vergeben.
