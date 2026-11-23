@@ -207,6 +207,7 @@ export const api = {
   giraOverviewOptions: () => post<{items: GiraOption[]}>('/api/expert/gira/overview-options', {}),
   historySettings: () => get<HistorySettings>('/api/history/local/settings'),
   saveHistorySettings: (enabled: boolean, retention_days: number) => post<HistorySettings>('/api/history/local/settings', { enabled, retention_days }),
+  defrostHistory: (days: number) => get<{events: {start: string; duration_seconds: number}[]}>('/api/history/local/defrost?' + new URLSearchParams({days: String(days)})),
   localHistory: (register: number, days: number) => get<HistorySeries>('/api/history/local?' + new URLSearchParams({ register: String(register), days: String(days) })),
   lanAccess: () => post<LanAccess>('/api/admin/lan-access', {}),
   saveLanAccess: (hosts: string[], proxy_ips: string[]) => post<LanAccess>('/api/admin/lan-access/save', {hosts, proxy_ips}),

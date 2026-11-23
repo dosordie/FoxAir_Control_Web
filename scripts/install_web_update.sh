@@ -31,10 +31,11 @@ for candidate in paths:
         continue
     mode = candidate.stat()
     if mode.st_uid != 0 or mode.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise SystemExit("Unsafe updater code permissions; keep installation root-owned")
+        raise SystemExit(f"Unzulässige Rechte für GUI-Updates: {candidate} (Eigentümer root, Gruppe und andere ohne Schreibrecht erforderlich)")
 PY
 
 updater=update.sh
+updater_args=
 if [[ -d "$app/.git" ]]; then
   origin="$(git -C "$app" remote get-url origin)"
   case "$origin" in
@@ -43,6 +44,8 @@ if [[ -d "$app/.git" ]]; then
   esac
   if [[ "$(git -C "$app" branch --show-current)" == work ]]; then
     updater=update-work.sh
+    updater_args=--skip-unit-setup
+    bash "$app/scripts/install_stream_shutdown.sh"
   fi
 else
   # Release packages deliberately contain no mutable Git checkout.
@@ -64,7 +67,7 @@ User=root
 Group=root
 WorkingDirectory=/opt/foxair-web/app
 ExecStartPre=/usr/bin/rm -f /var/lib/foxair-web/update-request
-ExecStart=/usr/bin/bash /opt/foxair-web/app/scripts/$updater
+ExecStart=/usr/bin/bash /opt/foxair-web/app/scripts/$updater $updater_args
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

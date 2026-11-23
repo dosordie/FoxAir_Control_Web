@@ -39,7 +39,7 @@ class Layout(BaseModel):
     mobile: list[str] = Field(max_length=12)
     desktop: list[str] = Field(max_length=12)
     mobile_columns: int = Field(default=3, ge=1, le=4)
-    desktop_columns: int = Field(default=8, ge=1, le=8)
+    desktop_columns: int = Field(default=8, ge=1, le=9)
 
 
 @router.post("/api/overview")

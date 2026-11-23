@@ -6,6 +6,8 @@ import HistoryChart from './HistoryChart.vue'
 defineProps<{ settings?: boolean }>()
 const config = ref<HistorySettings | null>(null)
 const series = ref<HistorySeries | null>(null)
+const defrost = ref<{ start: string; duration_seconds: number }[] | null>(null)
+const duration = (seconds: number) => Math.floor(seconds / 60) + ' min ' + (seconds % 60) + ' s'
 const selected = ref(2046)
 const days = ref(1)
 const enabled = ref(false)
@@ -52,8 +54,10 @@ async function load() {
   busy.value = true
   error.value = ''
   series.value = null
+  defrost.value = null
   try {
-    series.value = await api.localHistory(selected.value, days.value)
+    if (selected.value === 2012) defrost.value = (await api.defrostHistory(days.value)).events
+    else series.value = await api.localHistory(selected.value, days.value)
   } catch (cause) {
     error.value = (cause as Error).message
   } finally {
@@ -81,7 +85,9 @@ async function load() {
       />
       <p class="section-hint">
         FoxAir fasst empfangene Messwerte in 5-Minuten-Intervallen zusammen und speichert sie alle
-        15 Minuten gesammelt.
+        15 Minuten gesammelt. Für einen lückenlosen Verlauf braucht FoxAir eine dauerhaft
+        eingestellte Verbindung. Ohne laufenden Empfang entstehen Lücken. Die Aufzeichnung ändert
+        die Verbindungseinstellung nicht.
       </p>
       <button type="submit" class="outlined-action" :disabled="busy">
         Verlaufseinstellungen speichern
@@ -93,6 +99,7 @@ async function load() {
           <option v-for="field in config.fields" :key="field.register" :value="field.register">
             {{ field.label }}
           </option>
+          <option :value="2012">Abtauvorgänge</option>
         </select></label
       >
       <label
@@ -108,6 +115,16 @@ async function load() {
       Die lokale Aufzeichnung ist ausgeschaltet. Gespeicherte Daten bleiben bis zum Ende ihrer
       Aufbewahrungszeit abrufbar.
     </p>
+    <template v-if="defrost">
+      <h3>Abtauvorgänge</h3>
+      <div v-if="defrost.length" class="history-points">
+        <div v-for="(event, index) in defrost" :key="event.start + ':' + index">
+          <time :datetime="event.start">{{ new Date(event.start).toLocaleString('de-DE') }}</time>
+          <strong>{{ duration(event.duration_seconds) }}</strong>
+        </div>
+      </div>
+      <p v-else>Für diesen Zeitraum sind keine vollständigen Abtauvorgänge aufgezeichnet.</p>
+    </template>
     <template v-if="series">
       <HistoryChart
         v-if="series.points.length"

@@ -516,11 +516,10 @@ a{color:inherit}
 .overview-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:4px 12px;border:0;padding:12px 0}
 .measurement-chart{margin:12px 0}
 .measurement-chart svg text{fill:#47515f;font-size:19px}
+@media(min-width:801px){.measurement-chart svg text{font-size:13px}}
 .target-edit{font:inherit;color:inherit;background:none;border:0;padding:0;width:100%;justify-content:center;cursor:pointer}
 .target-edit:focus-visible{outline:2px solid currentColor;outline-offset:4px;border-radius:8px}
 .hero-metric .gira-text{font-size:clamp(12px,1.25vw,16px)}
-.hero-metric .gira-text .gira-number{font-size:clamp(18px,2.3vw,29px)}
-@media(max-width:800px){.hero-metric .gira-text .gira-number{font-size:19px}}
 .hero-metric strong{overflow-wrap:anywhere}
 .hero-metrics[style]{grid-template-columns:repeat(var(--overview-desktop),minmax(0,1fr));row-gap:16px}
 @media(max-width:1000px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-tablet),minmax(0,1fr))}}

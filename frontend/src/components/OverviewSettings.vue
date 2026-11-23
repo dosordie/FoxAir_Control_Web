@@ -90,7 +90,7 @@ async function save() {
     </select>
     <label class="field-label" for="overview-columns">Werte pro Zeile</label>
     <select id="overview-columns" v-model.number="draft[columnsKey]" class="settings-input">
-      <option v-for="count in profile === 'mobile' ? 4 : 8" :key="count" :value="count">
+      <option v-for="count in profile === 'mobile' ? 4 : 9" :key="count" :value="count">
         {{ count }}
       </option>
     </select>

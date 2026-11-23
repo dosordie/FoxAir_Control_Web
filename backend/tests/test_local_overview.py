@@ -11,6 +11,53 @@ from backend.routes import overview
 
 
 class LocalOverviewTests(TestCase):
+    def test_defrost_records_only_complete_observed_cycles(self):
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+            patch.object(local_history, "DEFROST_STATE", {}),
+            patch.object(local_history, "DEFROST_EVENTS", {}),
+            patch.object(local_history, "PENDING", {}),
+            patch.object(local_history, "SEEN", set()),
+            patch("backend.last_values.installation_key", return_value="unit-test"),
+            patch("backend.local_history.time.time") as clock,
+        ):
+            cloud_config._atomic_json(local_history.config_path(), {"enabled": True})
+
+            def state(stamp, raw):
+                clock.return_value = stamp
+                local_history.record(
+                    {
+                        "2012": {
+                            "timestamp": datetime.fromtimestamp(
+                                stamp, timezone.utc
+                            ).isoformat(),
+                            "raw": raw,
+                            "value": raw,
+                            "transport": "display_modbus",
+                        }
+                    },
+                    "unit-test",
+                )
+
+            state(400, 2)  # Already in progress when the first status arrives.
+            state(440, 1)
+            state(480, 2)
+            state(530, 2)
+            state(550, 1)
+            state(580, 2)
+            state(900, 1)  # A gap leaves this duration unknown.
+            local_history.flush()
+            self.assertEqual(
+                local_history.defrost_events(1)["events"],
+                [
+                    {
+                        "start": datetime.fromtimestamp(480, timezone.utc).isoformat(),
+                        "duration_seconds": 70,
+                    }
+                ],
+            )
+
     def test_profiles_share_storage_and_plan_only_missing_adjacent_registers(self):
         with (
             TemporaryDirectory() as folder,

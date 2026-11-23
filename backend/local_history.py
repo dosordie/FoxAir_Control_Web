@@ -29,6 +29,10 @@ FIELDS = {
 }
 PENDING = {}
 SEEN = set()
+DEFROST_REGISTER = 2012
+DEFROST_MAX_GAP = 120
+DEFROST_STATE = {}
+DEFROST_EVENTS = {}
 
 
 class Settings(BaseModel):
@@ -63,17 +67,62 @@ def save(payload: Settings, request: Request):
         if not payload.enabled:
             PENDING.clear()
             SEEN.clear()
+            DEFROST_STATE.clear()
+            DEFROST_EVENTS.clear()
     return settings()
+
+
+def record_defrost(row, scope, now):
+    try:
+        stamp = datetime.fromisoformat(row["timestamp"]).timestamp()
+    except (TypeError, ValueError, KeyError):
+        return
+    if not now - DEFROST_MAX_GAP <= stamp <= now + 10:
+        return
+    value = row.get("raw")
+    if value is None:
+        value = row.get("value")
+    aliases = {
+        "kühlen": 0,
+        "heizen": 1,
+        "abtauen": 2,
+        "sterilisieren": 3,
+        "warmwasser": 4,
+        "cooling": 0,
+        "heating": 1,
+        "defrost": 2,
+        "hot water": 4,
+    }
+    value = str(value).strip().casefold()
+    mode = int(value) if value in {"0", "1", "2", "3", "4"} else aliases.get(value)
+    if mode is None:
+        return
+    key = (scope, row["transport"])
+    active = mode == 2
+    last, was_active, started = DEFROST_STATE.get(key, (0, active, None))
+    if stamp <= last:
+        return
+    if not last or stamp - last > DEFROST_MAX_GAP:
+        started = None
+    elif active and not was_active:
+        started = stamp
+    elif not active and was_active and started is not None:
+        DEFROST_EVENTS[(*key, started)] = stamp
+        started = None
+    DEFROST_STATE[key] = (stamp, active, started)
 
 
 def record(rows, scope):
     selected = [(int(key), row) for key, row in rows.items() if int(key) in FIELDS]
-    if not selected:
+    operating = rows.get(str(DEFROST_REGISTER))
+    if not selected and not operating:
         return
     now = time.time()
     with LOCK:
         if not config().enabled:
             return
+        if operating:
+            record_defrost(operating, scope, now)
         for register, row in selected:
             value = row.get("value")
             if isinstance(value, str):
@@ -111,6 +160,10 @@ def connect():
         count INTEGER, total REAL, low REAL, high REAL,
         PRIMARY KEY (scope, register, bucket, transport))""")
         db.execute("CREATE INDEX IF NOT EXISTS history_expiry ON history(bucket)")
+        db.execute("""CREATE TABLE IF NOT EXISTS defrost (
+            scope TEXT, transport TEXT, start REAL, finish REAL,
+            PRIMARY KEY (scope, transport, start))""")
+        db.execute("CREATE INDEX IF NOT EXISTS defrost_expiry ON defrost(finish)")
     except BaseException:
         db.close()
         raise
@@ -133,6 +186,10 @@ def flush(*, final=False):
             for key, value in PENDING.items()
             if final or key[2] < current
         ]
+        events = [(*key, end) for key, end in DEFROST_EVENTS.items()]
+        for key, state in list(DEFROST_STATE.items()):
+            if state[0] < now - DEFROST_MAX_GAP:
+                del DEFROST_STATE[key]
         try:
             with closing(connect()) as db, db:
                 db.executemany(
@@ -143,6 +200,8 @@ def flush(*, final=False):
                     rows,
                 )
                 db.execute("DELETE FROM history WHERE bucket < ?", (cutoff,))
+                db.executemany("INSERT OR IGNORE INTO defrost VALUES (?,?,?,?)", events)
+                db.execute("DELETE FROM defrost WHERE finish < ?", (cutoff,))
         except (OSError, sqlite3.Error):
             logging.getLogger(__name__).warning(
                 "Lokaler Verlauf konnte nicht gespeichert werden"
@@ -153,11 +212,39 @@ def flush(*, final=False):
             SEEN.difference_update(
                 {sample for sample in SEEN if sample[2] < current - BUCKET}
             )
+            for key, finish in list(DEFROST_EVENTS.items()):
+                if finish < now - 3600:
+                    del DEFROST_EVENTS[key]
             return
+        DEFROST_EVENTS.clear()
         for row in rows:
             del PENDING[row[:4]]
         old = {sample for sample in SEEN if sample[2] < current - BUCKET}
         SEEN.difference_update(old)
+
+
+@router.get("/api/history/local/defrost")
+def defrost_events(days: int = Query(1, ge=1, le=365)):
+    from backend.last_values import installation_key
+
+    scope = installation_key()
+    cutoff = time.time() - min(days, config().retention_days) * 86400
+    if not (cloud_config.STATE_DIR / "local-history.sqlite").exists():
+        return {"events": []}
+    with closing(connect()) as db:
+        rows = db.execute(
+            "SELECT start, finish FROM defrost WHERE scope=? AND finish>=? ORDER BY start DESC",
+            (scope, cutoff),
+        ).fetchall()
+    return {
+        "events": [
+            {
+                "start": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+                "duration_seconds": round(finish - start),
+            }
+            for start, finish in rows
+        ]
+    }
 
 
 @router.get("/api/history/local")

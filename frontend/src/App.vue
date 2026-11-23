@@ -404,7 +404,7 @@ const readings = computed(() => {
       const item = giraItems.value.find(row => row.layout_key === key)
       return [{ key, label: item?.name || '', unit: item?.unit || '', icon: knxIcon,
         text: displayMetric(item ? { ...item, raw: null, timestamp: item.timestamp || '' } as Metric : null),
-        textParts: item && typeof item.value === 'string' && !/^[-+]?[0-9]+(?:[.,][0-9]+)?$/.test(item.value.trim()) ? item.value.split(/([-+]?[0-9]+(?:[.,:][0-9]+)*)/).filter(Boolean) : null,
+        compactText: typeof item?.value === 'string' && !/^[-+]?[0-9]+(?:[.,][0-9]+)?$/.test(item.value.trim()),
         stale: item?.quality === 'stale' }]
     }
     if (!Object.hasOwn(overviewFields, key)) return []
@@ -413,7 +413,7 @@ const readings = computed(() => {
     const stale = field === 'spread'
       ? snapshot.value?.metrics.return?.quality === 'stale' || snapshot.value?.metrics.supply?.quality === 'stale'
       : row?.quality === 'stale'
-    return [{ key, ...overviewFields[field], stale, textParts: null,
+    return [{ key, ...overviewFields[field], stale, compactText: false,
       text: field === 'spread' ? deltaText(waterSpread.value) : displayMetric(row ?? null) }]
   })
 })
@@ -734,7 +734,7 @@ onBeforeUnmount(() => {
                 :class="['reading-'+item.key, { 'is-stale': item.stale }]"
                 :title="readingHint(item.key)">
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
-                <strong :class="{'gira-text':item.textParts}"><template v-if="item.textParts"><span v-for="(part, index) in item.textParts" :key="index" :class="{'gira-number': /^[+-]?[0-9]/.test(part)}">{{ part }}</span></template><template v-else>{{ item.text }}</template> <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
+                <strong :class="{'gira-text':item.compactText}">{{ item.text }} <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
                 <span v-if="item.label" class="metric-label">{{ item.label }}</span>
                 <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">UP {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
               </div>

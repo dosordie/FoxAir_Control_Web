@@ -3,9 +3,11 @@
 set -euo pipefail
 
 NO_RESTART=0
+SKIP_UNIT_SETUP=0
 case "${1:-}" in
   "") ;;
   --no-restart) NO_RESTART=1 ;;
+  --skip-unit-setup) SKIP_UNIT_SETUP=1 ;;
   -h|--help)
     echo "Usage: sudo bash scripts/update-work.sh [--no-restart]"
     exit 0 ;;
@@ -62,7 +64,7 @@ test -s "$stage/index.html" && test -d "$stage/assets" || {
   echo "Build ohne index.html oder Assets; keine Installation." >&2
   exit 1
 }
-chmod -R a+rX "$stage"
+chmod -R a+rX,go-w "$stage"
 
 was_active=0
 if (( NO_RESTART == 0 )) && systemctl is-active --quiet foxair-web.service; then
@@ -85,10 +87,13 @@ if [[ "$actual" != "$expected" ]]; then
   printf '%s\n' "$expected" > "$requirements_stamp"
 fi
 
-cp "$stage/build-manifest.json" "$ROOT/build-manifest.json"
+install -m 0644 "$stage/build-manifest.json" "$ROOT/build-manifest.json"
 echo "==> Frontend austauschen"
 if [[ -e "$backup" ]]; then rm -rf -- "$backup"; fi
-if [[ -d "$dist" ]]; then mv -- "$dist" "$backup"; fi
+if [[ -d "$dist" ]]; then
+  chmod -R go-w "$dist"
+  mv -- "$dist" "$backup"
+fi
 if ! mv -- "$stage" "$dist"; then
   if [[ -d "$backup" && ! -e "$dist" ]]; then mv -- "$backup" "$dist"; fi
   exit 1
@@ -97,7 +102,9 @@ stage=""
 
 if (( NO_RESTART == 0 )); then
   if systemctl list-unit-files foxair-web.service --no-legend 2>/dev/null | grep -q '^foxair-web.service'; then
-    bash "$ROOT/scripts/install_stream_shutdown.sh"
+    if (( SKIP_UNIT_SETUP == 0 )); then
+      bash "$ROOT/scripts/install_stream_shutdown.sh"
+    fi
     if (( was_active == 1 )); then
       echo "==> Nur foxair-web.service neu starten"
       systemctl start foxair-web.service
