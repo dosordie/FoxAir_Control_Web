@@ -19,7 +19,7 @@ const state = computed(() => heatpumpState(props.mode, props.run, props.power))
       aria-label="Abtauen"
       title="Abtauen"
     >
-      <Snowflake :size="23" /><Droplets :size="15" class="status-drop" />
+      <Snowflake :size="23" class="status-primary" /><Droplets :size="15" class="status-drop" />
     </span>
     <span
       v-if="state.label"
@@ -28,7 +28,7 @@ const state = computed(() => heatpumpState(props.mode, props.run, props.power))
       :aria-label="state.label"
       :title="state.label"
     >
-      <Sun v-if="state.heating" :size="23" />
+      <Sun v-if="state.heating" :size="23" class="status-primary" />
       <Snowflake v-if="state.cooling" :size="23" />
       <Droplets
         v-if="state.water"
