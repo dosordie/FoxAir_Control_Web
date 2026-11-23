@@ -238,6 +238,7 @@ class GiraClient:
 
     async def run(self):
         from websockets.asyncio.client import connect
+        from backend.transport_selection import paused
 
         logger = logging.getLogger("foxair.gira.websocket")
         logger.addHandler(logging.NullHandler())
@@ -250,7 +251,7 @@ class GiraClient:
                 self.revision = cfg.get("revision")
                 self.values = {}
                 self.error = None
-            if not cfg["enabled"] or not cfg["objects"]:
+            if paused() or not cfg["enabled"] or not cfg["objects"]:
                 self.connected = False
                 await asyncio.sleep(1)
                 continue
@@ -277,6 +278,8 @@ class GiraClient:
                     max_size=65536,
                     logger=logger,
                 ) as ws:
+                    if paused():
+                        continue
                     self.connected = True
                     from backend.diagnostics import log_event
 
@@ -290,7 +293,7 @@ class GiraClient:
                     await ws.send(
                         json.dumps({"type": "subscribe", "param": {"keys": keys}})
                     )
-                    while config().get("revision") == self.revision:
+                    while not paused() and config().get("revision") == self.revision:
                         try:
                             message = await asyncio.wait_for(ws.recv(), timeout=1)
                         except asyncio.TimeoutError:

@@ -29,8 +29,18 @@ export const overviewFields = {
 
 export type OverviewField = keyof typeof overviewFields
 export type OverviewProfile = 'mobile' | 'desktop'
-export type OverviewLayout = Record<OverviewProfile, string[]> & { mobile_columns: number; desktop_columns: number }
+export type OverviewLayout = Record<OverviewProfile, string[]> & { mobile_columns: number; desktop_columns: number; mobile_glance: string[]; desktop_glance: string[] }
+export const glanceActions = {
+  gira: 'Alle Gira-Werte',
+  power: 'Ein / Aus',
+  mode: 'Modus',
+  silent: 'Ruhemodus',
+  parameters: 'Parameter & Einstellungen',
+} as const
+const defaultGlance = ['electrical_power', 'thermal_power', 'cop', ...Object.keys(glanceActions)]
 export const defaultOverview: OverviewLayout = {
+  mobile_glance: [...defaultGlance],
+  desktop_glance: [...defaultGlance],
   mobile_columns: 3,
   desktop_columns: 8,
   mobile: ['return', 'supply', 'spread', 'flow', 'tank', 'outdoor'],

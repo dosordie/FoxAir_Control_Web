@@ -25,7 +25,10 @@ watch(
     const request = ++generation
     definitions.value = []
     try {
-      const ids = props.dialog.registers || []
+      const ids =
+        (props.transport === 'cloud'
+          ? props.dialog.registers
+          : (props.dialog.local_registers ?? props.dialog.registers)) || []
       if (!ids.length) return
       const result = await api.registers('', '', ids)
       if (request !== generation) return
@@ -75,6 +78,13 @@ const curve = computed(() => {
 const path = computed(() =>
   curve.value.map((point, index) => (index ? 'L' : 'M') + point.x + ',' + point.y).join(' '),
 )
+function faults(entry: Register) {
+  const raw = props.valueFor(entry.register)?.raw
+  if (raw == null) return []
+  return Array.from({ length: 16 }, (_, bit) => bit)
+    .filter((bit) => (raw & (1 << bit)) !== 0)
+    .map((bit) => entry.bit_map?.[String(bit)] || 'Unbekannte Meldung (Bit ' + bit + ')')
+}
 function display(register: number) {
   const row = props.valueFor(register)
   return row?.display_value ?? row?.value ?? '—'
@@ -119,12 +129,20 @@ function display(register: number) {
         >
           {{ display(entry.register) }} <small>{{ valueFor(entry.register)?.unit || '' }}</small>
         </p>
+        <template v-if="dialog.id === 'fault' && valueFor(entry.register)?.raw != null">
+          <ul v-if="faults(entry).length">
+            <li v-for="(text, index) in faults(entry)" :key="index">{{ text }}</li>
+          </ul>
+          <small v-else-if="valueFor(entry.register)?.quality !== 'stale'"
+            >Keine aktiven Bits in diesem Register</small
+          >
+        </template>
         <details v-if="entry.description">
           <summary>Beschreibung & Hinweise</summary>
           <p class="parameter-description">{{ entry.description }}</p>
         </details>
         <ParameterEditor
-          v-if="entry.write_available"
+          v-if="entry.write_available && !dialog.read_only && transport !== 'display_modbus'"
           :register="entry"
           :transport="transport"
           :admin="admin"

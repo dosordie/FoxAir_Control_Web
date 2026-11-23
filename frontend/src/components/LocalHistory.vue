@@ -15,6 +15,37 @@ const retention = ref(90)
 const busy = ref(false)
 const error = ref('')
 const notice = ref('')
+const exportStart = ref(localDate(new Date(Date.now() - 6 * 86400000)))
+const exportEnd = ref(localDate(new Date()))
+
+function localDate(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
+async function exportCsv() {
+  busy.value = true
+  error.value = ''
+  try {
+    const start = new Date(exportStart.value + 'T00:00:00')
+    const end = new Date(exportEnd.value + 'T00:00:00')
+    end.setDate(end.getDate() + 1)
+    if (!Number.isFinite(+start) || !Number.isFinite(+end) || start >= end)
+      throw new Error('Bitte einen gültigen Zeitraum wählen.')
+    const blob = await api.exportHistory(start.toISOString(), end.toISOString())
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'foxair-verlauf-' + exportStart.value + '-bis-' + exportEnd.value + '.csv'
+    document.body.append(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (cause) {
+    error.value = (cause as Error).message
+  } finally {
+    busy.value = false
+  }
+}
 const periods = computed(() =>
   [...new Set([1, 7, 30, 90, config.value?.retention_days ?? 90])]
     .filter((period) => period <= (config.value?.retention_days ?? 90))
@@ -111,6 +142,17 @@ async function load() {
         </select></label
       >
       <button type="submit" class="outlined-action" :disabled="busy">Verlauf laden</button>
+    </form>
+    <form v-if="config && settings" class="cloud-extra-controls" @submit.prevent="exportCsv">
+      <label
+        >Export von <input v-model="exportStart" class="settings-input" type="date" required
+      /></label>
+      <label
+        >Export bis <input v-model="exportEnd" class="settings-input" type="date" required
+      /></label>
+      <button type="submit" class="outlined-action" :disabled="busy">
+        Verlauf als CSV exportieren
+      </button>
     </form>
     <p v-if="config && !settings && !config.enabled" class="section-hint">
       Die lokale Aufzeichnung ist ausgeschaltet. Gespeicherte Daten bleiben bis zum Ende ihrer

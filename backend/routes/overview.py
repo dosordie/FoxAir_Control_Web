@@ -16,6 +16,17 @@ OPTIONS = (
     | DIAGNOSTIC_FIELDS.keys()
     | {"electrical_power", "thermal_power", "cop", "compressor_frequency"}
 )
+GLANCE_DEFAULT = [
+    "electrical_power",
+    "thermal_power",
+    "cop",
+    "gira",
+    "power",
+    "mode",
+    "silent",
+    "parameters",
+]
+GLANCE_ACTIONS = set(GLANCE_DEFAULT)
 LOCK = Lock()
 
 
@@ -28,6 +39,8 @@ def settings():
     saved = cloud_config._read_json(config_path())
     mobile = ["return", "supply", "spread", "flow", "tank", "outdoor"]
     return {
+        "mobile_glance": saved.get("mobile_glance", GLANCE_DEFAULT),
+        "desktop_glance": saved.get("desktop_glance", GLANCE_DEFAULT),
         "mobile_columns": saved.get("mobile_columns", 3),
         "desktop_columns": saved.get("desktop_columns", 8),
         "mobile": saved.get("mobile", mobile),
@@ -38,6 +51,8 @@ def settings():
 class Layout(BaseModel):
     mobile: list[str] = Field(max_length=12)
     desktop: list[str] = Field(max_length=12)
+    mobile_glance: list[str] | None = Field(default=None, max_length=12)
+    desktop_glance: list[str] | None = Field(default=None, max_length=12)
     mobile_columns: int = Field(default=3, ge=1, le=4)
     desktop_columns: int = Field(default=8, ge=1, le=9)
 
@@ -45,16 +60,22 @@ class Layout(BaseModel):
 @router.post("/api/overview")
 def save(payload: Layout, request: Request):
     cloud_config.require_admin(request)
-    profiles = payload.model_dump()
-    for keys in (payload.mobile, payload.desktop):
+    with LOCK:
+        profiles = {**settings(), **payload.model_dump(exclude_none=True)}
+        validate_profiles(profiles)
+        cloud_config._atomic_json(config_path(), profiles)
+    return profiles
+
+
+def validate_profiles(profiles):
+    for name in ("mobile", "desktop", "mobile_glance", "desktop_glance"):
+        keys = profiles[name]
+        options = OPTIONS | GLANCE_ACTIONS if name.endswith("_glance") else OPTIONS
         if len(set(keys)) != len(keys) or any(
-            key not in OPTIONS and not re.fullmatch(r"gira:[0-9a-f]{24}", key)
+            key not in options and not re.fullmatch(r"gira:[0-9a-f]{24}", key)
             for key in keys
         ):
             raise HTTPException(422, "Ungültige oder doppelte Auswahl")
-    with LOCK:
-        cloud_config._atomic_json(config_path(), profiles)
-    return profiles
 
 
 def standard_ranges(blocks):
@@ -62,7 +83,12 @@ def standard_ranges(blocks):
     extra = sorted(
         {
             DASHBOARD_FIELDS[key]
-            for keys in (selected["mobile"], selected["desktop"])
+            for keys in (
+                selected["mobile"],
+                selected["desktop"],
+                selected["mobile_glance"],
+                selected["desktop_glance"],
+            )
             for key in keys
             if key in DIAGNOSTIC_FIELDS
             and not any(

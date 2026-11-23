@@ -526,6 +526,14 @@ def dashboard(transport: str = "cloud", live: bool = False, passive: bool = Fals
         "metrics": {name: None for name in DASHBOARD_FIELDS},
         "live_supported": transport == "cloud",
     }
+    from backend.transport_selection import paused
+    if paused():
+        snapshot["error"] = "Kommunikation pausiert"
+        result = fill_dashboard(snapshot)
+        for metric in result["metrics"].values():
+            if metric:
+                metric["quality"] = "stale"
+        return result
     if transport == "display_modbus":
         from backend.routes.local_buses import local_snapshot
         result = local_snapshot("display_modbus")

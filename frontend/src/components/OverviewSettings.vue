@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { api, type GiraOption } from '../api'
 import {
   defaultOverview,
+  glanceActions,
   overviewFields,
   type OverviewLayout,
   type OverviewProfile,
@@ -11,6 +12,15 @@ import {
 const props = defineProps<{ layout: OverviewLayout; giraRevision: number }>()
 const emit = defineEmits<{ saved: [OverviewLayout] }>()
 const profile = ref<OverviewProfile>('desktop')
+const area = ref<'hero' | 'glance'>('hero')
+const layoutKey = computed(() =>
+  area.value === 'hero'
+    ? profile.value
+    : profile.value === 'mobile'
+      ? 'mobile_glance'
+      : 'desktop_glance',
+)
+
 const columnsKey = computed(() =>
   profile.value === 'mobile' ? 'mobile_columns' : 'desktop_columns',
 )
@@ -47,21 +57,23 @@ watch(
       ...value,
       mobile: [...value.mobile],
       desktop: [...value.desktop],
+      mobile_glance: [...(value.mobile_glance ?? defaultOverview.mobile_glance)],
+      desktop_glance: [...(value.desktop_glance ?? defaultOverview.desktop_glance)],
     }
   },
   { immediate: true },
 )
 
 function restoreDefault() {
-  draft.value[profile.value] = [...defaultOverview[profile.value]]
-  draft.value[columnsKey.value] = defaultOverview[columnsKey.value]
+  draft.value[layoutKey.value] = [...defaultOverview[layoutKey.value]]
+  if (area.value === 'hero') draft.value[columnsKey.value] = defaultOverview[columnsKey.value]
 }
 
 function toggle(key: string, checked: boolean) {
-  const keys = draft.value[profile.value]
+  const keys = draft.value[layoutKey.value]
   if (checked && keys.length < 12) keys.push(key)
   if (!checked) {
-    draft.value[profile.value] = keys.filter((item) => item !== key)
+    draft.value[layoutKey.value] = keys.filter((item) => item !== key)
   }
 }
 
@@ -88,38 +100,61 @@ async function save() {
       <option value="desktop">Tablet und PC</option>
       <option value="mobile">Smartphone</option>
     </select>
-    <label class="field-label" for="overview-columns">Werte pro Zeile</label>
-    <select id="overview-columns" v-model.number="draft[columnsKey]" class="settings-input">
+    <label class="field-label" for="overview-area">Bereich</label>
+    <select id="overview-area" v-model="area" class="settings-input">
+      <option value="hero">Oberer Bereich</option>
+      <option value="glance">Auf einen Blick</option>
+    </select>
+    <label v-if="area === 'hero'" class="field-label" for="overview-columns">Werte pro Zeile</label>
+    <select
+      v-if="area === 'hero'"
+      id="overview-columns"
+      v-model.number="draft[columnsKey]"
+      class="settings-input"
+    >
       <option v-for="count in profile === 'mobile' ? 4 : 9" :key="count" :value="count">
         {{ count }}
       </option>
     </select>
     <p class="section-hint">
-      {{ draft[profile].length }} von 12 Werten ausgewählt (einschließlich Gira).
+      {{ draft[layoutKey].length }} von 12 Werten ausgewählt (einschließlich Gira).
     </p>
     <p v-if="giraError" class="read-error" role="alert">Gira-Liste: {{ giraError }}</p>
     <fieldset :disabled="busy" class="overview-options">
-      <legend>Werte im oberen Bereich</legend>
+      <legend>
+        {{ area === 'hero' ? 'Werte im oberen Bereich' : 'Anzeigen und Bedienknöpfe' }}
+      </legend>
       <label v-for="(field, key) in overviewFields" :key="key" class="settings-check">
         <input
           type="checkbox"
-          :checked="draft[profile].includes(key)"
-          :disabled="draft[profile].length >= 12 && !draft[profile].includes(key)"
+          :checked="draft[layoutKey].includes(key)"
+          :disabled="draft[layoutKey].length >= 12 && !draft[layoutKey].includes(key)"
           @change="toggle(key, ($event.target as HTMLInputElement).checked)"
         />
         {{ field.label }}
       </label>
+      <template v-if="area === 'glance'">
+        <label v-for="(label, key) in glanceActions" :key="key" class="settings-check">
+          <input
+            type="checkbox"
+            :checked="draft[layoutKey].includes(key)"
+            :disabled="draft[layoutKey].length >= 12 && !draft[layoutKey].includes(key)"
+            @change="toggle(key, ($event.target as HTMLInputElement).checked)"
+          />
+          {{ label }}
+        </label>
+      </template>
       <label v-for="item in gira" :key="item.layout_key" class="settings-check">
         <input
           type="checkbox"
-          :checked="draft[profile].includes(item.layout_key)"
-          :disabled="draft[profile].length >= 12 && !draft[profile].includes(item.layout_key)"
+          :checked="draft[layoutKey].includes(item.layout_key)"
+          :disabled="draft[layoutKey].length >= 12 && !draft[layoutKey].includes(item.layout_key)"
           @change="toggle(item.layout_key, ($event.target as HTMLInputElement).checked)"
         />
         {{ item.name || item.object_key }}
       </label>
       <label
-        v-for="key in draft[profile].filter(
+        v-for="key in draft[layoutKey].filter(
           (key) => key.startsWith('gira:') && !gira.some((item) => item.layout_key === key),
         )"
         :key="key"

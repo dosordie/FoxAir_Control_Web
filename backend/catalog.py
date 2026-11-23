@@ -89,6 +89,7 @@ def public_register(number: str, entry: dict) -> dict:
         "type": entry.get("type") or "RAW",
         "mode": entry.get("mode") or "read",
         "value_map": entry.get("value_map") if isinstance(entry.get("value_map"), dict) else {},
+        "bit_map": entry.get("bit_map") if isinstance(entry.get("bit_map"), dict) else {},
         "write_available": entry.get("mode") == "r/w" and 0 <= int(number) <= 65535,
     }
 

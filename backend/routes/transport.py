@@ -7,6 +7,16 @@ from backend import transport_selection as selection
 router = APIRouter()
 
 
+class Pause(BaseModel):
+    paused: bool
+
+
+@router.post("/api/transport/pause")
+def pause(payload: Pause, request: Request):
+    require_admin(request)
+    return selection.set_paused(payload.paused)
+
+
 class Choice(BaseModel):
     transport: Literal["cloud", "warmlink_raw", "display_modbus", "standard_modbus"]
 

@@ -124,6 +124,9 @@ async function submitGitUpdate() {
     <p v-else-if="updateInfo?.check_status === 'building'" class="notice">
       Der passende Web-Build für work wird noch erstellt.
     </p>
+    <p v-else-if="updateInfo?.check_status === 'paused'" class="section-hint">
+      Updateprüfung pausiert.
+    </p>
     <p v-else-if="updateInfo?.check_status === 'unavailable'" class="section-hint">
       Updatequelle derzeit nicht verfügbar.
     </p>

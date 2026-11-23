@@ -1,6 +1,8 @@
 """Optional local measurement history in RAM and batched SQLite storage."""
 
 from contextlib import closing
+import csv
+from io import StringIO
 from datetime import datetime, timezone
 import logging
 import math
@@ -10,6 +12,8 @@ import time
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
+from fastapi import HTTPException
+from fastapi.responses import StreamingResponse
 
 from backend import cloud_config
 
@@ -234,6 +238,109 @@ def archive_scopes(db):
     # A single legacy archive belongs to this installation. Keep ambiguous
     # archives separate until an administrator explicitly repairs them.
     return ARCHIVE_SCOPE, legacy[0][0] if len(legacy) == 1 else ARCHIVE_SCOPE
+
+
+@router.get("/api/history/local/export")
+def export_history(request: Request, start: datetime, end: datetime):
+    cloud_config.require_admin(request)
+    if start.utcoffset() is None or end.utcoffset() is None:
+        raise HTTPException(422, "Start und Ende müssen eine Zeitzone enthalten.")
+    left, right = start.timestamp(), end.timestamp()
+    if not 0 < right - left <= 366 * 86400:
+        raise HTTPException(
+            422, "Zeitraum muss zwischen einem Zeitpunkt und 366 Tagen liegen."
+        )
+
+    def format_stamp(stamp):
+        return datetime.fromtimestamp(stamp, timezone.utc).isoformat()
+
+    def generate():
+        output = StringIO()
+        writer = csv.writer(output, delimiter=";")
+        writer.writerow(
+            (
+                "Typ",
+                "Zeitpunkt (UTC)",
+                "Quelle",
+                "Register",
+                "Messwert",
+                "Einheit",
+                "Mittelwert",
+                "Minimum",
+                "Maximum",
+                "Anzahl Messungen",
+                "Dauer (Sekunden)",
+            )
+        )
+        yield "\ufeff" + output.getvalue()
+        output.seek(0)
+        output.truncate()
+        if not (cloud_config.STATE_DIR / "local-history.sqlite").exists():
+            return
+        with closing(connect()) as db:
+            scopes = archive_scopes(db)
+            cursor = db.execute(
+                """SELECT register,bucket,transport,total,count,low,high
+                FROM history WHERE scope IN (?, ?) AND bucket>=? AND bucket<?
+                ORDER BY bucket,register,transport""",
+                (*scopes, left, right),
+            )
+            for register, stamp, transport, total, count, low, high in cursor:
+                _, name, unit = FIELDS.get(register, ("", str(register), ""))
+                writer.writerow(
+                    (
+                        "Messwert",
+                        format_stamp(stamp),
+                        transport,
+                        register,
+                        name,
+                        unit,
+                        total / count,
+                        low,
+                        high,
+                        count,
+                        "",
+                    )
+                )
+                if output.tell() >= 16384:
+                    yield output.getvalue()
+                    output.seek(0)
+                    output.truncate()
+            events = db.execute(
+                """SELECT start,finish,transport FROM defrost
+                WHERE scope IN (?, ?) AND start>=? AND start<? ORDER BY start""",
+                (*scopes, left, right),
+            )
+            for started, finish, transport in events:
+                writer.writerow(
+                    (
+                        "Abtauvorgang",
+                        format_stamp(started),
+                        transport,
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        round(finish - started),
+                    )
+                )
+                if output.tell() >= 16384:
+                    yield output.getvalue()
+                    output.seek(0)
+                    output.truncate()
+            yield output.getvalue()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="foxair-verlauf.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/api/history/local/defrost")

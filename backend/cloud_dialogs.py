@@ -40,6 +40,13 @@ _BASE_DIALOGS = (
 _dialog_lock = threading.Lock()
 _last_read: dict[str, float] = {}
 READ_INTERVAL = 20.0
+# Local register addresses are sourced from the pinned FoxAir Control catalog.
+_LOCAL_REGISTERS = {
+    "wp": (1011, 1012, 2012, 1157, 1158, 1159, 2014, 2045, 2046, 2048, 2047, 2077, 1236),
+    "at": (1236, 1234, 1235, 1250, 1251, 1252, 1253, 1254, 1255, 1164, 1165, 2048, 2014),
+    "sg": (*range(1334, 1342), 2034, 2133),
+    "fault": tuple(range(2081, 2091)),
+}
 
 
 def definitions() -> list[dict[str, Any]]:
@@ -53,6 +60,7 @@ def definitions() -> list[dict[str, Any]]:
             "id": slug, "title": name, "description": description,
             "codes": [row["code"] for row in rows],
             "read_only": slug == "fault", "count": len(rows),
+            "local_registers": list(_LOCAL_REGISTERS.get(slug, ())),
             "registers": list(dict.fromkeys(row["register"] for row in rows if isinstance(row.get("register"),int) and row["register"] <= 65535 and (row.get("confidence") == "confirmed" or row.get("write_allowed")))),
         })
     return result

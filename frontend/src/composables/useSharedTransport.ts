@@ -4,16 +4,18 @@ import { api, type TransportId } from '../api'
 /** Only an explicit user choice sends a mutation; polling never writes it back. */
 export function useSharedTransport() {
   const confirmed = ref<TransportId>('cloud')
+  const paused = ref(false)
   const busy = ref(true)
   const error = ref('')
   let revision = 0
   let disposed = false
   let timer: ReturnType<typeof setTimeout> | undefined
   let initial: Promise<void> | undefined
-  function apply(row: { transport: TransportId; revision: number }) {
+  function apply(row: { transport: TransportId; revision: number; paused?: boolean }) {
     if (!disposed && row.revision >= revision) {
       revision = row.revision
       confirmed.value = row.transport
+      paused.value = row.paused === true
     }
   }
   async function refresh() {
@@ -37,6 +39,22 @@ export function useSharedTransport() {
     } catch (failure) {
       if (!disposed)
         error.value = failure instanceof Error ? failure.message : 'Verbindung nicht geändert'
+    } finally {
+      if (!disposed) busy.value = false
+    }
+  }
+  async function setPaused(value: boolean) {
+    if (busy.value) return
+    busy.value = true
+    error.value = ''
+    try {
+      apply(await api.pauseTransport(value))
+    } catch (failure) {
+      if (!disposed)
+        error.value =
+          failure instanceof Error
+            ? failure.message
+            : 'Kommunikation konnte nicht umgeschaltet werden'
     } finally {
       if (!disposed) busy.value = false
     }
@@ -66,6 +84,8 @@ export function useSharedTransport() {
         void choose(value)
       },
     }),
+    transportPaused: paused,
+    setTransportPaused: setPaused,
     transportBusy: busy,
     transportError: error,
     initializeTransport: initialize,

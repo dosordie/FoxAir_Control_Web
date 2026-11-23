@@ -1,46 +1,61 @@
 <script setup lang="ts">
-import type { Dashboard, Metric } from '../api'
-defineProps<{ metrics?: Dashboard['metrics'] }>()
-const fields = [
-  {
-    key: 'electrical_power',
-    label: 'Elektrische Leistung',
-    unit: 'kW',
-    hint: 'Aktuell aufgenommene elektrische Leistung der Wärmepumpe.',
-  },
-  {
-    key: 'thermal_power',
-    label: 'Thermische Leistung',
-    unit: 'kW',
-    hint: 'Aktuell abgegebene Heizleistung laut Gerätemesswert.',
-  },
-  {
-    key: 'cop',
-    label: 'COP',
-    unit: '',
-    hint: 'Momentanes Verhältnis von thermischer zu elektrischer Leistung; keine Jahresarbeitszahl.',
-  },
-] as const
-const display = (metric: Metric) =>
-  metric?.value == null
-    ? '—'
-    : typeof metric.value === 'number'
-      ? metric.value.toLocaleString('de-DE', { maximumFractionDigits: 2 })
-      : metric.value
+import { computed } from 'vue'
+import type { Dashboard, GiraItem } from '../api'
+import { knxIcon, overviewFields, type OverviewField } from '../overview'
+
+const props = defineProps<{
+  metrics?: Dashboard['metrics']
+  selection: string[]
+  gira: GiraItem[]
+  spread: number | null
+}>()
+const format = (value: string | number | null | undefined) =>
+  typeof value === 'number'
+    ? value.toLocaleString('de-DE', { maximumFractionDigits: 2 })
+    : (value ?? '—')
+
+const fields = computed(() =>
+  props.selection.flatMap((key) => {
+    if (key.startsWith('gira:') && !props.selection.includes('gira')) {
+      const item = props.gira.find((entry) => entry.layout_key === key)
+      return [
+        {
+          key,
+          label: item?.name || '',
+          icon: knxIcon,
+          unit: item?.unit || '',
+          text: format(item?.value),
+          stale: item?.quality === 'stale',
+        },
+      ]
+    }
+    if (!Object.hasOwn(overviewFields, key)) return []
+    const field = overviewFields[key as OverviewField]
+    const item = key === 'spread' ? null : props.metrics?.[key as keyof Dashboard['metrics']]
+    return [
+      {
+        key,
+        ...field,
+        text: format(key === 'spread' ? props.spread : item?.value),
+        stale:
+          item?.quality === 'stale' ||
+          (key === 'spread' &&
+            (props.metrics?.supply?.quality === 'stale' ||
+              props.metrics?.return?.quality === 'stale')),
+      },
+    ]
+  }),
+)
 </script>
+
 <template>
-  <div class="power-summary">
-    <div
-      v-for="field in fields"
-      :key="field.key"
-      :title="field.hint"
-      :class="{ 'is-stale': metrics?.[field.key]?.quality === 'stale' }"
-    >
+  <div v-if="fields.length" class="power-summary">
+    <div v-for="field in fields" :key="field.key" :class="{ 'is-stale': field.stale }">
+      <component :is="field.icon" :size="17" aria-hidden="true" />
       <strong
-        >{{ display(metrics?.[field.key] || null) }}
-        <small v-if="field.unit">{{ field.unit }}</small></strong
+        >{{ field.text }} <small v-if="field.unit">{{ field.unit }}</small></strong
       >
-      <small>{{ field.label }}</small>
+      <small v-if="field.label">{{ field.label }}</small>
     </div>
   </div>
 </template>

@@ -28,6 +28,7 @@ export type Register = {
   mode: string
   write_available: boolean
   value_map: Record<string,string>
+  bit_map?: Record<string,string>
   last?: RegisterValue | null
   cloud?: {code:string;value:string|number;unit:string;timestamp:string;quality:string;display_value?:string|null}|null
 }
@@ -47,7 +48,7 @@ export type CloudConfigStatus = {
 }
 export type UpdateStatus = {
   version?:string;available_version?:string|null;channel?:string;update_mode?:string;notes_url?:string|null;build_consistent?:boolean
-  check_status?: 'checked' | 'unavailable' | 'building'
+  check_status?: 'checked' | 'unavailable' | 'building' | 'paused'
   installed: boolean
   current: string | null
   deployed: string | null
@@ -61,6 +62,7 @@ export type UpdateStatus = {
 }
 export type SpecialDialog = {
   registers?: number[]
+  local_registers?: number[]
   curve_points?: {outdoor:number;register:number}[]
   id: string
   title: string
@@ -190,7 +192,8 @@ export const api = {
   warmlinkConfig: () => post<WarmlinkConfig>('/api/warmlink/config', {}),
   saveWarmlinkConfig: (config: WarmlinkConfig) => post<WarmlinkConfig>('/api/warmlink/config/save', config),
   warmlinkWrite: (code:'Power'|'Mode'|'H22'|'R02',value:string,expected:string) => post<CloudWriteResult>('/api/warmlink/write',{code,value,expected}),
-  activeTransport: () => get<{transport:TransportId;revision:number}>('/api/transport'),
+  pauseTransport: (paused: boolean) => post<{transport:TransportId;revision:number;paused:boolean}>('/api/transport/pause', {paused}),
+  activeTransport: () => get<{transport:TransportId;revision:number;paused?:boolean}>('/api/transport'),
   selectTransport: (transport:TransportId) => post<{transport:TransportId;revision:number}>('/api/transport',{transport}),
   health: () => get<{ ok: boolean; version: string }>('/api/health'),
   transports: () => get<{ items: Transport[]; live_supported: boolean }>('/api/transports'),
@@ -207,6 +210,12 @@ export const api = {
   giraOverviewOptions: () => post<{items: GiraOption[]}>('/api/expert/gira/overview-options', {}),
   historySettings: () => get<HistorySettings>('/api/history/local/settings'),
   saveHistorySettings: (enabled: boolean, retention_days: number) => post<HistorySettings>('/api/history/local/settings', { enabled, retention_days }),
+  exportHistory: async (start: string, end: string) => {
+    const query = new URLSearchParams({start,end})
+    const response = await fetch('/api/history/local/export?' + query, {headers: {'X-FoxAir-Admin':'1'}, cache:'no-store'})
+    if (!response.ok) throw new Error(errorMessage(await response.json().catch(() => ({})), response.status))
+    return response.blob()
+  },
   defrostHistory: (days: number) => get<{events: {start: string; duration_seconds: number}[]}>('/api/history/local/defrost?' + new URLSearchParams({days: String(days)})),
   localHistory: (register: number, days: number) => get<HistorySeries>('/api/history/local?' + new URLSearchParams({ register: String(register), days: String(days) })),
   lanAccess: () => post<LanAccess>('/api/admin/lan-access', {}),

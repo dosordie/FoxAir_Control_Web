@@ -62,12 +62,12 @@ class AccessMiddleware:
             return await JSONResponse(
                 {"detail": "Anmeldung erforderlich"}, status_code=401
             )(scope, receive, send)
-        from backend.transport_selection import allows
+        from backend.transport_selection import matches
 
         transport = request.query_params.get("transport")
         if path in ("/api/cloud/values", "/api/cloud/scan", "/api/cloud/write"):
             transport = "cloud"
-        if transport and not allows(transport):
+        if transport and not matches(transport):
             return await JSONResponse(
                 {
                     "detail": "Andere Verbindung ist global ausgewählt; Auswahl wird synchronisiert"

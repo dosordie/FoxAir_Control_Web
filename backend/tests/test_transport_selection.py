@@ -46,6 +46,31 @@ class SharedTransportTests(TestCase):
         self.assertEqual(selection.initialize(), row)
         self.assertFalse(selection.allows("display_modbus"))
 
+    def test_admin_pause_preserves_selection_and_prevents_physical_access(self):
+        cloud_config.set_admin_password("test-only-administrator")
+        client = TestClient(
+            app, base_url="https://testserver", headers={"X-FoxAir-Admin": "1"}
+        )
+        self.assertEqual(
+            client.post("/api/transport/pause", json={"paused": True}).status_code, 403
+        )
+        client.post(
+            "/api/admin/login", json={"admin_password": "test-only-administrator"}
+        )
+        status = client.post("/api/transport/pause", json={"paused": True}).json()
+        self.assertTrue(status["paused"])
+        self.assertEqual(status["transport"], "display_modbus")
+        with self.assertRaisesRegex(ValueError, "pausiert"):
+            with selection.operation("display_modbus"):
+                self.fail("Transport used during pause")
+        with patch("backend.routes.local_buses.local_snapshot") as local:
+            dashboard = client.get("/api/dashboard?transport=display_modbus").json()
+            self.assertEqual(dashboard["error"], "Kommunikation pausiert")
+            local.assert_not_called()
+        status = client.post("/api/transport/pause", json={"paused": False}).json()
+        self.assertFalse(status["paused"])
+        self.assertTrue(selection.allows("display_modbus"))
+
     def test_handover_waits_for_inflight_operation_before_closing_and_publishing(self):
         selection.initialize()
         entered, release, switched = (

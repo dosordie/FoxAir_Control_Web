@@ -123,12 +123,16 @@ class CloudReader:
             method=method,
         )
         try:
-            with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
-                if response.status != 200:
-                    raise CloudError("Cloud-HTTP-Fehler")
-                if int(response.headers.get("Content-Length", "0") or 0) > 262144:
-                    raise CloudError("Cloud-Antwort zu groß")
-                data = json.loads(response.read(262145))
+            from backend.transport_selection import LOCK, paused
+            with LOCK:
+                if paused():
+                    raise CloudError('Kommunikation pausiert')
+                with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+                    if response.status != 200:
+                        raise CloudError("Cloud-HTTP-Fehler")
+                    if int(response.headers.get("Content-Length", "0") or 0) > 262144:
+                        raise CloudError("Cloud-Antwort zu groß")
+                    data = json.loads(response.read(262145))
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise CloudError("Cloud-Zugriff abgelehnt") from None
@@ -467,7 +471,7 @@ def optional_dashboard_codes():
     from backend.routes.overview import settings
 
     layout = settings()
-    keys = set(layout["mobile"]) | set(layout["desktop"])
+    keys = {key for profile in ("mobile", "desktop", "mobile_glance", "desktop_glance") for key in layout[profile]}
     wanted = {register: key for key, register in DIAGNOSTIC_FIELDS.items() if key in keys}
     if not wanted:
         return {}

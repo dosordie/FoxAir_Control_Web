@@ -9,10 +9,44 @@ from unittest.mock import patch
 from backend import cloud_config, local_history
 from backend.register_definitions import STANDARD_DASHBOARD_BLOCKS
 from backend.routes import overview
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from scripts.repair_local_history import repair
 
 
 class LocalOverviewTests(TestCase):
+    def test_csv_exports_measurements_and_defrost_in_the_requested_window(self):
+        app = FastAPI()
+        app.include_router(local_history.router)
+        url = "/api/history/local/export"
+        dates = {"start": "1970-01-01T00:05:00Z", "end": "1970-01-01T00:10:00Z"}
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+        ):
+            with closing(local_history.connect()) as db, db:
+                db.executemany(
+                    "INSERT INTO history VALUES (?,?,?,?,?,?,?,?)",
+                    [
+                        ("local", 2046, 300, "warmlink_raw", 2, 63, 30, 33),
+                        ("local", 2046, 600, "warmlink_raw", 1, 40, 40, 40),
+                    ],
+                )
+                db.execute(
+                    "INSERT INTO defrost VALUES (?,?,?,?)",
+                    ("local", "warmlink_raw", 400, 470),
+                )
+            client = TestClient(app, base_url="https://testserver")
+            self.assertEqual(client.get(url, params=dates).status_code, 403)
+            with patch.object(cloud_config, "require_admin"):
+                reply = client.get(url, params=dates)
+            self.assertEqual(reply.status_code, 200)
+            self.assertIn("foxair-verlauf.csv", reply.headers["Content-Disposition"])
+            self.assertIn(";31.5;30.0;33.0;2;", reply.text)
+            self.assertIn("Abtauvorgang;", reply.text)
+            self.assertIn(";70", reply.text)
+            self.assertNotIn("T00:10:00", reply.text)
+
     def test_repair_backs_up_before_restoring_orphaned_archive(self):
         with (
             TemporaryDirectory() as folder,
@@ -98,7 +132,13 @@ class LocalOverviewTests(TestCase):
             cloud_config._atomic_json(overview.config_path(), profiles)
             self.assertEqual(
                 overview.settings(),
-                {**profiles, "mobile_columns": 3, "desktop_columns": 8},
+                {
+                    **profiles,
+                    "mobile_columns": 3,
+                    "desktop_columns": 8,
+                    "mobile_glance": overview.GLANCE_DEFAULT,
+                    "desktop_glance": overview.GLANCE_DEFAULT,
+                },
             )
             blocks = overview.standard_ranges(STANDARD_DASHBOARD_BLOCKS)
             self.assertEqual(

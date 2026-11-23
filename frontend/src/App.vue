@@ -43,7 +43,7 @@ import { fanIsRunning } from './telemetry'
 import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
 const { browserOnline } = useBrowserConnection()
-const { selectedTransport, transportBusy, transportError, initializeTransport } = useSharedTransport()
+const { selectedTransport, transportPaused, setTransportPaused, transportBusy, transportError, initializeTransport } = useSharedTransport()
 const transports = ref<Transport[]>([])
 const page = ref<Page>('home')
 const snapshot = ref<Dashboard | null>(null)
@@ -65,9 +65,8 @@ const specialLoading = ref(false)
 const specialError = ref('')
 const specialMessage = ref('')
 const selectedSpecial = computed(() => specialDialogs.value.find(x => x.id === specialDialog.value) || null)
-const specialLocalRows = ref<CloudRow[]>([])
 const specialRows = computed(() => {
-  if (selectedTransport.value !== 'cloud') return specialLocalRows.value
+  if (selectedTransport.value !== 'cloud') return []
   const selected = selectedSpecial.value
   if (!selected) return []
   const byCode = new Map(cloudRows.value.map(row => [row.code, row]))
@@ -124,6 +123,7 @@ const connectionSettingsOpen = ref(false)
 const overviewLayout = ref<OverviewLayout>(defaultOverview)
 const giraItems = ref<GiraItem[]>([])
 const giraRevision = ref(0)
+const glance = computed(() => overviewLayout.value[mobileProfile ? 'mobile_glance' : 'desktop_glance'])
 const metricColumns = computed(() => mobileProfile ? overviewLayout.value.mobile_columns : overviewLayout.value.desktop_columns)
 const mobileProfile = /iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent)
 async function loadOverview() {
@@ -136,7 +136,7 @@ const targetEditor = ref<HTMLDialogElement | null>(null)
 const targetDefinition = ref<Register | null>(null)
 const targetError = ref('')
 const targetLoading = ref(false)
-const canEditTarget = computed(() => canOperate.value && browserOnline.value &&
+const canEditTarget = computed(() => !transportPaused.value && canOperate.value && browserOnline.value &&
   secureAdminContext.value && selectedTransport.value !== 'display_modbus')
 async function openTargetEditor() {
   if (!canEditTarget.value) return
@@ -203,7 +203,7 @@ function operationValueLabel(code:FirstWriteCode){
 }
 function canWrite(code: FirstWriteCode): boolean {
   const source = writeSource(code)
-  return browserOnline.value && secureAdminContext.value && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
+  return !transportPaused.value && browserOnline.value && secureAdminContext.value && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
     !writeBusy.value && !writeReading.value && !!source && source.value !== null && ['fresh', 'cached'].includes(source.quality)
 }
 async function submitCloudWrite(code: FirstWriteCode) {
@@ -533,34 +533,30 @@ async function openSpecialDialog(dialog: string) {
     catch { specialError.value = 'Spezialdialoge derzeit nicht verfügbar'; return }
   }
   if (!specialDialogs.value.some(x => x.id === dialog)) return
-  specialLocalRows.value = []
   specialDialog.value = dialog
   if(dialog==='timer'||dialog==='silent')return
-  await loadCloudValues()
+  if (selectedTransport.value === 'cloud') await loadCloudValues()
   void refreshSelectedSpecial()
 }
 async function refreshSelectedSpecial() {
   const id = specialDialog.value
-  if (!id || specialLoading.value) return
+  if (!id || specialLoading.value || transportPaused.value) return
   specialLoading.value = true
   specialError.value = ''
   specialMessage.value = ''
   try {
     if (selectedTransport.value !== 'cloud') {
       const transport = selectedTransport.value
-      const codes = new Set(selectedSpecial.value?.codes || [])
-      const rows = cloudRows.value.filter(row => codes.has(row.code) && row.register != null && row.register <= 65535 && row.confidence === 'confirmed')
-      if (!rows.length) { specialMessage.value = 'Keine bestätigten lokalen Register für diesen Dialog.'; return }
-      const result = await api.refreshParameters(transport, rows.map(row=>row.register!))
+      const registers = selectedSpecial.value?.local_registers || []
+      if (!registers.length) { specialMessage.value = 'Für diesen Dialog sind keine lokalen Register hinterlegt.'; return }
+      const result = await api.refreshParameters(transport, registers)
       if (selectedTransport.value !== transport || specialDialog.value !== id) return
       sharedValues.value = result.values
       if (transport === 'warmlink_raw') await refreshSnapshot()
-      const fresh = rows.map(row=>{
-        const value = result.values[String(row.register)]
-        return value ? {...row,value:value.value,unit:value.unit,timestamp:value.timestamp,quality:value.quality,display_value:value.display_value || null} : row
-      })
-      specialLocalRows.value = fresh
-      specialMessage.value = fresh.length + ' Werte über ' + transportLabel.value + ' aktualisiert'
+      const received = registers.filter(register => result.values[String(register)]?.transport === transport).length
+      specialMessage.value = result.status === 'passive'
+        ? received + ' lokale Werte empfangen · Display-Modbus liest passiv'
+        : result.updated + ' Werte gelesen · ' + received + ' von ' + registers.length + ' verfügbar'
       return
     }
     const result = await api.refreshSpecialDialog(id)
@@ -630,7 +626,6 @@ watch([canEditTarget, selectedTransport], () => targetEditor.value?.close())
 watch(selectedTransport, (value) => {
   currentValue.value = null
   lteWriteSources.value = {}
-  specialLocalRows.value = []
   operationSources.value = {}
   operationCode.value = null
   if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
@@ -743,6 +738,7 @@ onBeforeUnmount(() => {
         </section>
 
         <div class="below-hero">
+          <p v-if="transportPaused" class="notice" role="status">Kommunikation pausiert. Angezeigt werden zuletzt bekannte Werte.</p>
           <div v-if="error" class="notice" role="status">
             <Bell :size="18" /><div><strong>Keine vollständigen Livewerte</strong><span>{{ error }}</span></div>
           </div>
@@ -793,14 +789,14 @@ onBeforeUnmount(() => {
 
             <section class="panel operating-panel">
               <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div></div>
-              <PowerSummary :metrics="snapshot?.metrics" />
-              <ExpertGira @values="giraItems = $event" />
+              <PowerSummary :metrics="snapshot?.metrics" :selection="glance" :gira="giraItems" :spread="waterSpread" />
+              <ExpertGira v-show="glance.includes('gira')" @values="giraItems = $event" />
               <div class="operation-row">
-                <button type="button" class="operation operation-button" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
-                <button type="button" class="operation operation-button" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
-                <button type="button" class="operation operation-button" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
+                <button type="button" v-if="glance.includes('power')" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
+                <button type="button" v-if="glance.includes('mode')" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
+                <button type="button" v-if="glance.includes('silent')" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
               </div>
-              <button class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
+              <button v-if="glance.includes('parameters')" class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
               <p class="section-hint">Neue Messwerte erscheinen automatisch. Schreibfunktionen hängen von Verbindung und Benutzerrechten ab.</p>
             </section>
           </div>
@@ -928,7 +924,10 @@ onBeforeUnmount(() => {
             </label>
           </div>
           <div class="settings-note"><Activity :size="18" /><p>Cloud und Modbus-Standard werden bei sichtbarer Übersicht aktualisiert. Display und LTE empfangen neue Buswerte live. Neue lokale Anschlüsse bleiben bis zur Einrichtung deaktiviert.</p></div>
-          <button class="outlined-action" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
+          <button v-if="adminAuthenticated" type="button" class="outlined-action" :disabled="transportBusy" @click="setTransportPaused(!transportPaused)">{{ transportPaused ? 'Kommunikation fortsetzen' : 'Kommunikation pausieren' }}</button>
+          <p v-if="transportError" class="read-error" role="alert">{{ transportError }}</p>
+          <p v-if="transportPaused" class="section-hint">Abfragen und Schreibzugriffe sind pausiert. Die gewählte Verbindung bleibt gespeichert.</p>
+          <button class="outlined-action" :disabled="transportPaused" @click="loadDashboard(false)"><RefreshCw :size="17" /> Verbindung erneut prüfen</button>
         </section>
 
 
@@ -1014,16 +1013,16 @@ onBeforeUnmount(() => {
         <template v-else>
         <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Bekannte Einstellungen sind für Administratoren bearbeitbar. Jeder Wert wird vor dem Schreiben geprüft und danach zurückgelesen. Störungswerte bleiben lesend.</p>
         <div class="special-toolbar">
-          <button type="button" class="outlined-action" :disabled="specialLoading" @click="refreshSelectedSpecial">
+          <button type="button" class="outlined-action" :disabled="specialLoading || transportPaused" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
             {{ specialLoading ? 'Werte werden gelesen …' : 'Werte aktualisieren' }}
           </button>
-          <span>{{ specialRows.filter(row => row.value !== null).length }} / {{ specialRows.length }} mit Wert</span>
+          <span v-if="selectedTransport === 'cloud'">{{ specialRows.filter(row => row.value !== null).length }} / {{ specialRows.length }} mit Wert</span>
         </div>
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
-        <SpecialControls v-if="selectedSpecial && ['at','sg','wp'].includes(selectedSpecial.id)" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
-        <div v-if="!selectedSpecial || !['at','sg','wp'].includes(selectedSpecial.id)" class="special-rows">
+        <SpecialControls v-if="selectedSpecial && (['at','sg','wp'].includes(selectedSpecial.id) || selectedSpecial.id === 'fault' && selectedTransport !== 'cloud')" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
+        <div v-if="!selectedSpecial || selectedSpecial.id === 'fault' && selectedTransport === 'cloud'" class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
             :class="{ 'is-stale': entry.quality === 'stale' }">
             <span class="register-code">{{ entry.register ?? entry.code }}</span>

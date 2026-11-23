@@ -13,10 +13,19 @@ def stored():
     return row if row.get("transport") in IDS else None
 
 
-def allows(transport):
+def paused():
+    row = stored()
+    return bool(row and row.get("paused"))
+
+
+def matches(transport):
     row = stored()
     # Standalone clients/tests without the application lifespan retain legacy use.
     return row is None or row["transport"] == transport
+
+
+def allows(transport):
+    return not paused() and matches(transport)
 
 
 def initialize():
@@ -46,11 +55,33 @@ def initialize():
 @contextmanager
 def operation(transport):
     with LOCK:
+        if paused():
+            raise ValueError("Kommunikation pausiert")
         if not allows(transport):
             raise ValueError(
                 "Andere Verbindung ist global ausgewählt; Auswahl wird synchronisiert"
             )
         yield
+
+
+def set_paused(value):
+    from backend.bus_connection import manager as lte
+    from backend.display_bus import manager as display
+    from backend.register_scan import scan
+    from backend.rtu import standard_connection
+
+    with LOCK:
+        old = initialize()
+        if bool(old.get("paused")) == value:
+            return old
+        row = {**old, "paused": value, "revision": old["revision"] + 1}
+        cloud_config._atomic_json(cloud_config.STATE_DIR / "active_transport.json", row)
+        if value:
+            scan.stop(timeout=0)
+            lte.disconnect()
+            display.disconnect()
+            standard_connection.disconnect()
+        return row
 
 
 def select(transport):
@@ -79,6 +110,6 @@ def select(transport):
         lte.disconnect()
         display.disconnect()
         standard_connection.disconnect()
-        row = {"transport": transport, "revision": old["revision"] + 1}
+        row = {**old, "transport": transport, "revision": old["revision"] + 1}
         cloud_config._atomic_json(cloud_config.STATE_DIR / "active_transport.json", row)
         return row

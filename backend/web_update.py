@@ -120,6 +120,8 @@ def status() -> dict[str, Any]:
     from backend.build_info import info
     from backend.releases import latest, newer
 
+    from backend.transport_selection import paused
+
     build = info()
     container = os.getenv("FOXAIR_CONTAINER") == "1"
     mode = (
@@ -132,7 +134,9 @@ def status() -> dict[str, Any]:
     deployed = _deployed_sha()
     watcher = _status_unit(PATH_UNIT) if mode != "container" else {}
     service = _status_unit(SERVICE) if mode != "container" else {}
-    if mode == "container":
+    if paused():
+        release, available, check = None, False, "paused"
+    elif mode == "container":
         from backend.docker_updates import latest as docker_latest
 
         release = docker_latest()
@@ -215,6 +219,10 @@ def request_update() -> dict[str, Any]:
     from backend.build_info import info
     from backend.releases import latest, newer
 
+    from backend.transport_selection import paused
+
+    if paused():
+        raise RuntimeError("Kommunikation pausiert")
     if os.getenv("FOXAIR_CONTAINER") == "1":
         raise RuntimeError("Container über Compose oder Portainer aktualisieren")
     installed = info()
