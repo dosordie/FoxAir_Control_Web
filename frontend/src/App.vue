@@ -19,8 +19,10 @@ import ParameterEditor from './components/ParameterEditor.vue'
 import CompressorGauge from './components/CompressorGauge.vue'
 import OverviewSettings from './components/OverviewSettings.vue'
 import LocalHistory from './components/LocalHistory.vue'
-import { defaultOverview, knxIcon, overviewFields, type OverviewField, type OverviewLayout } from './overview'
+import { giraIcon } from './giraIcons'
+import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
 import type { GiraItem } from './api'
+import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
 import ExpertGira from './components/ExpertGira.vue'
@@ -124,6 +126,7 @@ const overviewLayout = ref<OverviewLayout>(defaultOverview)
 const giraItems = ref<GiraItem[]>([])
 const giraRevision = ref(0)
 const glance = computed(() => overviewLayout.value[mobileProfile ? 'mobile_glance' : 'desktop_glance'])
+const glanceOrder = computed(() => glance.value.filter(key => !key.startsWith('gira:') || !glance.value.includes('gira')))
 const metricColumns = computed(() => mobileProfile ? overviewLayout.value.mobile_columns : overviewLayout.value.desktop_columns)
 const mobileProfile = /iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent)
 async function loadOverview() {
@@ -290,6 +293,7 @@ const supplyDelta = computed(() => {
   return Number.isFinite(target) && data.supply != null && Number.isFinite(supply)
     ? Math.round((supply - target) * 10) / 10 : null
 })
+const deltaTone = computed(() => supplyDelta.value == null ? 'neutral' : supplyDelta.value <= -0.3 ? 'cold' : supplyDelta.value >= 0.3 ? 'warm' : 'neutral')
 const waterSpread = computed(() => {
   const data = snapshot.value?.metrics
   if (!data || snapshot.value?.status === 'unavailable' || !data.supply || !data.return ||
@@ -386,6 +390,7 @@ const actionButtons = [
   { label: 'AT-Kurve', hint: 'Heizkennlinie', icon: Sun, color: 'lilac', dialog: 'at' },
   { label: 'Wärmepumpe', hint: 'Sollwerte', icon: Thermometer, color: 'mint', dialog: 'wp' },
   { label: 'Ruhemodus', hint: 'Silent-Timer', icon: VolumeX, color: 'apricot', dialog: 'silent' },
+  { label: 'Register-Decoder', hint: 'Lastausgänge und Schalter', icon: SlidersHorizontal, color: 'mint', dialog: 'decoder' },
   { label: 'Störungen', hint: 'Fehlerstatus', icon: Bell, color: 'lilac', dialog: 'fault' },
 ]
 const pumpPwm = computed(() => {
@@ -402,7 +407,7 @@ const readings = computed(() => {
   return keys.flatMap(key => {
     if (key.startsWith('gira:')) {
       const item = giraItems.value.find(row => row.layout_key === key)
-      return [{ key, label: item?.name || '', unit: item?.unit || '', icon: knxIcon,
+      return [{ key, label: item?.name || '', unit: item?.unit || '', icon: giraIcon(item?.icon),
         text: displayMetric(item ? { ...item, raw: null, timestamp: item.timestamp || '' } as Metric : null),
         compactText: typeof item?.value === 'string' && !/^[-+]?[0-9]+(?:[.,][0-9]+)?$/.test(item.value.trim()),
         stale: item?.quality === 'stale' }]
@@ -540,7 +545,7 @@ async function openSpecialDialog(dialog: string) {
 }
 async function refreshSelectedSpecial() {
   const id = specialDialog.value
-  if (!id || specialLoading.value || transportPaused.value) return
+  if (!id || specialLoading.value || transportPaused.value || (id === 'decoder' && selectedTransport.value === 'cloud')) return
   specialLoading.value = true
   specialError.value = ''
   specialMessage.value = ''
@@ -718,7 +723,7 @@ onBeforeUnmount(() => {
                 <div v-else class="temp-adjust target-readonly">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                 </div>
-                <span class="target-delta" title="Austritt minus aktueller Sollwert. Positive Werte bedeuten: Austritt ist wärmer als der Sollwert.">Δ VL–Soll: {{ deltaText(supplyDelta) }} K</span>
+                <span class="target-delta" :class="'delta-' + deltaTone" title="Austritt minus aktueller Sollwert. Positive Werte bedeuten: Austritt ist wärmer als der Sollwert.">Δ VL–Soll: {{ deltaText(supplyDelta) }} K</span>
                 <button class="refresh-inline" type="button" :disabled="refreshing" @click="loadDashboard(false)">
                   <RefreshCw :size="15" :class="{ spinning: refreshing }" /> {{ refreshing ? 'Lese Werte …' : 'Jetzt aktualisieren' }}
                 </button>
@@ -789,14 +794,17 @@ onBeforeUnmount(() => {
 
             <section class="panel operating-panel">
               <div class="section-head"><div><span class="section-caption">BETRIEB</span><h2>Auf einen Blick</h2></div></div>
-              <PowerSummary :metrics="snapshot?.metrics" :selection="glance" :gira="giraItems" :spread="waterSpread" />
-              <ExpertGira v-show="glance.includes('gira')" @values="giraItems = $event" />
-              <div class="operation-row">
-                <button type="button" v-if="glance.includes('power')" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
-                <button type="button" v-if="glance.includes('mode')" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
-                <button type="button" v-if="glance.includes('silent')" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
+              <ExpertGira v-if="!glance.includes('gira')" v-show="false" @values="giraItems = $event" />
+              <div class="glance-order">
+                <template v-for="key in glanceOrder" :key="key">
+                  <ExpertGira v-if="key === 'gira'" class="glance-wide" @values="giraItems = $event" />
+                  <button v-else-if="key === 'power'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
+                  <button v-else-if="key === 'mode'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
+                  <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
+                  <button v-else-if="key === 'parameters'" type="button" class="main-action glance-wide" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
+                  <PowerSummary v-else :metrics="snapshot?.metrics" :selection="[key]" :gira="giraItems" :spread="waterSpread" />
+                </template>
               </div>
-              <button v-if="glance.includes('parameters')" class="main-action" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
               <p class="section-hint">Neue Messwerte erscheinen automatisch. Schreibfunktionen hängen von Verbindung und Benutzerrechten ab.</p>
             </section>
           </div>
@@ -1013,7 +1021,7 @@ onBeforeUnmount(() => {
         <template v-else>
         <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Bekannte Einstellungen sind für Administratoren bearbeitbar. Jeder Wert wird vor dem Schreiben geprüft und danach zurückgelesen. Störungswerte bleiben lesend.</p>
         <div class="special-toolbar">
-          <button type="button" class="outlined-action" :disabled="specialLoading || transportPaused" @click="refreshSelectedSpecial">
+          <button v-if="specialDialog !== 'decoder' || selectedTransport !== 'cloud'" type="button" class="outlined-action" :disabled="specialLoading || transportPaused" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
             {{ specialLoading ? 'Werte werden gelesen …' : 'Werte aktualisieren' }}
           </button>
@@ -1021,6 +1029,7 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
+        <RegisterDecoder v-if="specialDialog === 'decoder'" :transport="selectedTransport" :value-for="currentRegisterValue" />
         <SpecialControls v-if="selectedSpecial && (['at','sg','wp'].includes(selectedSpecial.id) || selectedSpecial.id === 'fault' && selectedTransport !== 'cloud')" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
         <div v-if="!selectedSpecial || selectedSpecial.id === 'fault' && selectedTransport === 'cloud'" class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"

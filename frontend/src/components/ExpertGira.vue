@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { giraIcon, giraIcons } from '../giraIcons'
 import type { GiraItem } from '../api'
 const emit = defineEmits<{ values: [GiraItem[]]; saved: [] }>()
 const props = defineProps<{ settings?: boolean; admin?: boolean; secure?: boolean }>()
@@ -14,7 +15,7 @@ type Config = {
   password_configured?: boolean
   clear_password: boolean
   auth_header: boolean
-  objects: { key: string; name: string; unit: string; text_encoding?: string }[]
+  objects: { key: string; name: string; unit: string; text_encoding?: string; icon?: string }[]
 }
 type State = {
   enabled: boolean
@@ -24,6 +25,7 @@ type State = {
     layout_key: string
     id: number
     name: string
+    icon?: string
     unit: string
     value: number | string | null
     timestamp: string | null
@@ -85,6 +87,7 @@ async function load() {
         objects: data.objects.map((item: Config['objects'][number]) => ({
           ...item,
           text_encoding: item.text_encoding || 'auto',
+          icon: item.icon || 'knx',
         })),
       }
   } catch (error) {
@@ -253,6 +256,14 @@ onBeforeUnmount(() => {
                   maxlength="16"
               /></label>
               <label
+                >Symbol <component :is="giraIcon(object.icon)" :size="20" aria-hidden="true" />
+                <select v-model="object.icon" class="settings-input">
+                  <option v-for="(entry, key) in giraIcons" :key="key" :value="key">
+                    {{ entry[1] }}
+                  </option>
+                </select>
+              </label>
+              <label
                 >Textdarstellung<select class="settings-input" v-model="object.text_encoding">
                   <option value="auto">Automatisch (UTF-8/Base64)</option>
                   <option value="plain">Klartext unverändert</option>
@@ -268,7 +279,15 @@ onBeforeUnmount(() => {
               type="button"
               class="outlined-action"
               :disabled="cfg.objects.length >= 24"
-              @click="cfg.objects.push({ key: '', name: '', unit: '', text_encoding: 'auto' })"
+              @click="
+                cfg.objects.push({
+                  key: '',
+                  name: '',
+                  unit: '',
+                  text_encoding: 'auto',
+                  icon: 'knx',
+                })
+              "
             >
               Objekt hinzufügen
             </button>
@@ -293,6 +312,7 @@ onBeforeUnmount(() => {
             : 'Noch kein Wert empfangen'
         "
       >
+        <component :is="giraIcon(item.icon)" :size="17" aria-hidden="true" />
         <strong
           >{{ display(item.value) }} <small v-if="item.unit">{{ item.unit }}</small></strong
         ><small v-if="item.name">{{ item.name }}</small>

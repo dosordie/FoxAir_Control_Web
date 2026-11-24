@@ -19,8 +19,11 @@ class CloudDialogTests(unittest.TestCase):
         with patch("backend.cloud_dialogs.catalog", return_value=catalog):
             dialogs = cloud_dialogs.definitions()
         self.assertEqual({row["id"] for row in dialogs},
-                         {"wp", "at", "sg", "silent", "timer", "fault"})
-        self.assertEqual({row["id"] for row in dialogs if row["read_only"]}, {"fault"})
+                         {"wp", "at", "sg", "silent", "timer", "fault", "decoder"})
+        self.assertEqual({row["id"] for row in dialogs if row["read_only"]}, {"fault", "decoder"})
+        decoder = next(row for row in dialogs if row["id"] == "decoder")
+        self.assertEqual(decoder["local_registers"], [2018, 2019, 2034])
+        self.assertEqual(decoder["codes"], [])
         sg = next(row for row in dialogs if row["id"] == "sg")
         self.assertEqual(sg["codes"], ["SG01", "SG Status"])
         at = next(row for row in dialogs if row["id"] == "at")

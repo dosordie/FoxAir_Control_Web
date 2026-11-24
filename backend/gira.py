@@ -24,6 +24,32 @@ router = APIRouter()
 class ObjectConfig(BaseModel):
     key: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9@_./:-]+$")
     name: str = Field(default="", max_length=60)
+    icon: Literal[
+        "knx",
+        "temperature",
+        "heating",
+        "cooling",
+        "hot_water",
+        "heat",
+        "water",
+        "flow",
+        "pressure",
+        "fan",
+        "air",
+        "weather",
+        "electricity",
+        "current",
+        "voltage",
+        "energy",
+        "charging",
+        "efficiency",
+        "switch",
+        "status",
+        "house",
+        "info",
+        "text",
+        "unknown",
+    ] = "knx"
     unit: str = Field(default="", max_length=16)
     text_encoding: Literal["auto", "plain", "utf8", "latin1"] = "auto"
 
@@ -90,6 +116,7 @@ def overview_options(request: Request):
                 "layout_key": layout_key(item["key"]),
                 "name": item["name"],
                 "object_key": item["key"],
+                "icon": item.get("icon", "knx"),
             }
             for item in config()["objects"]
         ]
@@ -223,6 +250,7 @@ class GiraClient:
                     "id": index,
                     "layout_key": layout_key(obj["key"]),
                     "name": obj["name"],
+                    "icon": obj.get("icon", "knx"),
                     "unit": obj["unit"],
                     "value": row["value"] if row else None,
                     "timestamp": row["timestamp"] if row else None,

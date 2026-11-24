@@ -26,10 +26,12 @@ it('selects multiple configured Gira objects independently of their live values'
     columns.value = '7'
     columns.dispatchEvent(new Event('change'))
     await nextTick()
+    host.querySelector<HTMLButtonElement>('[aria-label="CO@11 nach oben"]')!.click()
+    await nextTick()
     ;[...host.querySelectorAll('button')].find(button => button.textContent?.includes('Übersicht speichern'))!.click()
     expect(save).toHaveBeenCalledWith({
       ...defaultOverview, desktop_columns: 7,
-      desktop: [...defaultOverview.desktop, 'gira:first', 'gira:second'],
+      desktop: [...defaultOverview.desktop, 'gira:second', 'gira:first'],
     })
   } finally {
     app.unmount()

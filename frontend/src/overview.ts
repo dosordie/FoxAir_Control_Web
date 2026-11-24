@@ -1,5 +1,5 @@
 import {
-  ArrowDownLeft, ArrowUpRight, Activity, Clock, Fan, Gauge, Network,
+  ArrowDownLeft, ArrowUpRight, Activity, Clock, Fan, Gauge,
   Snowflake, Sun, Thermometer, Waves, Zap,
 } from 'lucide-vue-next'
 
@@ -46,4 +46,3 @@ export const defaultOverview: OverviewLayout = {
   mobile: ['return', 'supply', 'spread', 'flow', 'tank', 'outdoor'],
   desktop: ['flow', 'tank', 'outdoor', 'return', 'supply', 'spread'],
 }
-export const knxIcon = Network

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Dashboard, GiraItem } from '../api'
-import { knxIcon, overviewFields, type OverviewField } from '../overview'
+import { giraIcon } from '../giraIcons'
+import { overviewFields, type OverviewField } from '../overview'
 
 const props = defineProps<{
   metrics?: Dashboard['metrics']
@@ -22,7 +23,7 @@ const fields = computed(() =>
         {
           key,
           label: item?.name || '',
-          icon: knxIcon,
+          icon: giraIcon(item?.icon),
           unit: item?.unit || '',
           text: format(item?.value),
           stale: item?.quality === 'stale',

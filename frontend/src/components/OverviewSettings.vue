@@ -26,6 +26,10 @@ const columnsKey = computed(() =>
 )
 const draft = ref<OverviewLayout>(structuredClone(defaultOverview))
 const busy = ref(false)
+const dragged = ref<string | null>(null)
+watch(layoutKey, () => {
+  dragged.value = null
+})
 const gira = ref<GiraOption[]>([])
 const giraError = ref('')
 watch(
@@ -63,6 +67,34 @@ watch(
   },
   { immediate: true },
 )
+
+function labelFor(key: string) {
+  return (
+    overviewFields[key as keyof typeof overviewFields]?.label ||
+    glanceActions[key as keyof typeof glanceActions] ||
+    gira.value.find((item) => item.layout_key === key)?.name ||
+    gira.value.find((item) => item.layout_key === key)?.object_key ||
+    'Gira-Objekt'
+  )
+}
+
+function move(key: string, index: number) {
+  const keys = draft.value[layoutKey.value]
+  const from = keys.indexOf(key)
+  if (from < 0 || index < 0 || index >= keys.length || from === index) return
+  keys.splice(from, 1)
+  keys.splice(index, 0, key)
+}
+
+function startDrag(key: string, event: DragEvent) {
+  dragged.value = key
+  event.dataTransfer?.setData('text/plain', key)
+}
+
+function drop(target: number) {
+  if (dragged.value) move(dragged.value, target)
+  dragged.value = null
+}
 
 function restoreDefault() {
   draft.value[layoutKey.value] = [...defaultOverview[layoutKey.value]]
@@ -163,6 +195,40 @@ async function save() {
         <input type="checkbox" checked @change="toggle(key, false)" /> Gira-Objekt derzeit nicht
         verfügbar
       </label>
+    </fieldset>
+    <fieldset v-if="draft[layoutKey].length" :disabled="busy" class="overview-order">
+      <legend>Reihenfolge</legend>
+      <ol>
+        <li
+          v-for="(key, index) in draft[layoutKey]"
+          :key="key"
+          :draggable="!busy"
+          @dragstart="startDrag(key, $event)"
+          @dragend="dragged = null"
+          @dragover.prevent
+          @drop.prevent="drop(index)"
+        >
+          <span>{{ labelFor(key) }}</span>
+          <button
+            type="button"
+            class="outlined-action"
+            :aria-label="labelFor(key) + ' nach oben'"
+            :disabled="index === 0"
+            @click="move(key, index - 1)"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            class="outlined-action"
+            :aria-label="labelFor(key) + ' nach unten'"
+            :disabled="index === draft[layoutKey].length - 1"
+            @click="move(key, index + 1)"
+          >
+            ↓
+          </button>
+        </li>
+      </ol>
     </fieldset>
     <button type="button" class="outlined-action" :disabled="busy" @click="restoreDefault">
       Standard wiederherstellen

@@ -529,3 +529,19 @@ a{color:inherit}
 @media(max-width:1000px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-tablet),minmax(0,1fr))}}
 @media(max-width:800px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-mobile),minmax(0,1fr))}}
 @media(max-width:350px){.hero-metrics[style]{grid-template-columns:repeat(var(--overview-narrow),minmax(0,1fr))}}
+.glance-order{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;gap:10px;margin:18px 0}
+.glance-order>.glance-wide{grid-column:1/-1}
+.glance-order>.power-summary{display:block;margin:0}
+.glance-order>.power-summary>div{height:100%}
+.glance-order>.expert-metrics .power-summary{margin:0}
+.target-delta.delta-neutral,.target-delta.delta-cold,.target-delta.delta-warm{align-self:center;display:inline-block;padding:3px 9px;border-radius:8px;background:#222b}
+.target-delta.delta-neutral{color:#e4e6e9}.target-delta.delta-cold{color:#a9dcff}.target-delta.delta-warm{color:#ffb8b8}
+.overview-order{border:0;padding:12px 0;margin:0}.overview-order ol{margin:0;padding:0;list-style:none}
+.overview-order li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef0f2;cursor:grab}
+.overview-order li>span{flex:1}.overview-order li button{padding:5px 10px}
+.history-plot{position:relative}.history-plot .history-chart{display:block}
+.history-tooltip{position:absolute;z-index:2;pointer-events:none;transform:translate(8px,calc(-100% - 8px));display:grid;gap:3px;background:#1d2735;color:#fff;padding:7px 11px;border-radius:8px;white-space:nowrap;font-size:12px;box-shadow:0 3px 12px #0003}
+.history-tooltip.tip-left{transform:translate(calc(-100% - 8px),calc(-100% - 8px))}
+.history-tooltip.tip-below{transform:translate(8px,8px)}.history-tooltip.tip-left.tip-below{transform:translate(calc(-100% - 8px),8px)}
+.register-decoder dl{margin:0 0 16px}.register-decoder dl>div{display:flex;justify-content:space-between;gap:12px;padding:6px;border-bottom:1px solid #eef0f2}
+.register-decoder dd{margin:0;white-space:nowrap;font-weight:600}.register-decoder .decoder-on{color:#206443}

@@ -33,6 +33,7 @@ _BASE_DIALOGS = (
            for suffix in ("Start", "End", "Mode", "Heating Target",
                           "Cooling Target", "Hot Water Target", "Max. Power")) +
      ("M1_2 Enalbe", "M3_4 Enalbe", "M5_6 Enalbe")),
+    ("decoder", "Register-Decoder", "Lastausgänge und Eingangskontakte", ()),
     ("fault", "Störungsübersicht", "Status- und Fehlerwörter, keine Fehlerfreiheit bei fehlenden Werten",
      ("O01~023",) + tuple(f"Fault{i}" for i in range(1, 11))),
 )
@@ -46,6 +47,7 @@ _LOCAL_REGISTERS = {
     "at": (1236, 1234, 1235, 1250, 1251, 1252, 1253, 1254, 1255, 1164, 1165, 2048, 2014),
     "sg": (*range(1334, 1342), 2034, 2133),
     "fault": tuple(range(2081, 2091)),
+    "decoder": (2018, 2019, 2034),
 }
 
 
@@ -59,7 +61,7 @@ def definitions() -> list[dict[str, Any]]:
             "curve_points": [{"outdoor":at,"register":register} for at,register in AT_CURVE_POINTS] if slug == "at" else [],
             "id": slug, "title": name, "description": description,
             "codes": [row["code"] for row in rows],
-            "read_only": slug == "fault", "count": len(rows),
+            "read_only": slug in ("fault", "decoder"), "count": len(rows),
             "local_registers": list(_LOCAL_REGISTERS.get(slug, ())),
             "registers": list(dict.fromkeys(row["register"] for row in rows if isinstance(row.get("register"),int) and row["register"] <= 65535 and (row.get("confidence") == "confirmed" or row.get("write_allowed")))),
         })

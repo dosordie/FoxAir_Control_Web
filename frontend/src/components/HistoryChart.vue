@@ -10,6 +10,8 @@ const props = defineProps<{
   cloud?: boolean
 }>()
 const selected = ref<number | null>(null)
+const tooltip = ref(false)
+const pointer = ref<{ x: number; y: number } | null>(null)
 const plot = { left: 72, right: 570, top: 15, bottom: 147 }
 const tickFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 })
 const model = computed(() => {
@@ -49,10 +51,17 @@ const model = computed(() => {
 })
 watch(model, () => {
   selected.value = null
+  tooltip.value = false
+  pointer.value = null
 })
 const active = computed(() =>
   selected.value === null ? null : model.value?.coordinates[selected.value],
 )
+const tipPosition = computed(() => {
+  const point = active.value
+  if (!point) return null
+  return pointer.value ?? { x: point.x / 6, y: (point.y / 179) * 100 }
+})
 const clock = (time: number, detail = false) =>
   new Intl.DateTimeFormat('de-DE', {
     ...(props.cloud ? { timeZone: 'Etc/GMT-1' } : {}),
@@ -73,8 +82,18 @@ function selectPoint(event: PointerEvent) {
     if (Math.abs(point.x - x) < Math.abs(model.value.coordinates[closest]!.x - x)) closest = index
   }
   selected.value = closest
+  pointer.value =
+    event.pointerType === 'touch'
+      ? null
+      : {
+          x: Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100)),
+          y: Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100)),
+        }
+  tooltip.value = true
 }
 function navigate(direction: number) {
+  pointer.value = null
+  tooltip.value = true
   if (model.value)
     selected.value = Math.min(
       model.value.coordinates.length - 1,
@@ -90,68 +109,86 @@ function navigate(direction: number) {
         (UTC+1)</template
       >
     </figcaption>
-    <svg
-      viewBox="0 0 600 179"
-      class="history-chart"
-      role="group"
-      :aria-label="'Diagramm: ' + label"
-      tabindex="0"
-      @pointermove="selectPoint"
-      @pointerup="selectPoint"
-      @keydown.left.prevent="navigate(-1)"
-      @keydown.right.prevent="navigate(1)"
-    >
-      <g v-for="index in 5" :key="index">
-        <line
-          :x1="plot.left"
-          :x2="plot.right"
-          :y1="plot.top + ((index - 1) / 4) * (plot.bottom - plot.top)"
-          :y2="plot.top + ((index - 1) / 4) * (plot.bottom - plot.top)"
-          stroke="#d7dce3"
+    <div class="history-plot">
+      <svg
+        viewBox="0 0 600 179"
+        class="history-chart"
+        role="group"
+        :aria-label="'Diagramm: ' + label"
+        tabindex="0"
+        @pointermove="selectPoint"
+        @pointerup="selectPoint"
+        @pointerleave="
+          (event) => {
+            if (event.pointerType !== 'touch') tooltip = false
+          }
+        "
+        @blur="tooltip = false"
+        @keydown.left.prevent="navigate(-1)"
+        @keydown.right.prevent="navigate(1)"
+      >
+        <g v-for="index in 5" :key="index">
+          <line
+            :x1="plot.left"
+            :x2="plot.right"
+            :y1="plot.top + ((index - 1) / 4) * (plot.bottom - plot.top)"
+            :y2="plot.top + ((index - 1) / 4) * (plot.bottom - plot.top)"
+            stroke="#d7dce3"
+          />
+          <text
+            :x="plot.left - 8"
+            :y="plot.top + ((index - 1) / 4) * (plot.bottom - plot.top) + 5"
+            text-anchor="end"
+          >
+            {{ tickFormat.format(model.high - ((index - 1) / 4) * (model.high - model.low)) }}
+          </text>
+        </g>
+        <path
+          :d="`M${plot.left} ${plot.top}V${plot.bottom}H${plot.right}`"
+          fill="none"
+          stroke="#727b8a"
         />
         <text
-          :x="plot.left - 8"
-          :y="plot.top + ((index - 1) / 4) * (plot.bottom - plot.top) + 5"
-          text-anchor="end"
+          v-for="tick in model.span ? [0, 0.5, 1] : [0.5]"
+          :key="tick"
+          :x="plot.left + tick * (plot.right - plot.left)"
+          y="171"
+          text-anchor="middle"
         >
-          {{ tickFormat.format(model.high - ((index - 1) / 4) * (model.high - model.low)) }}
+          {{ clock(model.first + model.span * tick) }}
         </text>
-      </g>
-      <path
-        :d="`M${plot.left} ${plot.top}V${plot.bottom}H${plot.right}`"
-        fill="none"
-        stroke="#727b8a"
-      />
-      <text
-        v-for="tick in model.span ? [0, 0.5, 1] : [0.5]"
-        :key="tick"
-        :x="plot.left + tick * (plot.right - plot.left)"
-        y="171"
-        text-anchor="middle"
-      >
-        {{ clock(model.first + model.span * tick) }}
-      </text>
-      <path :d="model.path" fill="none" stroke="#d76b21" stroke-width="3" />
-      <circle
-        v-for="point in model.coordinates.length <= 80 ? model.coordinates : []"
-        :key="point.time"
-        :cx="point.x"
-        :cy="point.y"
-        r="2.8"
-        fill="#d76b21"
-      />
-      <g v-if="active">
-        <line
-          :x1="active.x"
-          :x2="active.x"
-          :y1="plot.top"
-          :y2="plot.bottom"
-          stroke="#727b8a"
-          stroke-dasharray="4 4"
+        <path :d="model.path" fill="none" stroke="#d76b21" stroke-width="3" />
+        <circle
+          v-for="point in model.coordinates.length <= 80 ? model.coordinates : []"
+          :key="point.time"
+          :cx="point.x"
+          :cy="point.y"
+          r="2.8"
+          fill="#d76b21"
         />
-        <circle :cx="active.x" :cy="active.y" r="5" fill="#d76b21" />
-      </g>
-    </svg>
+        <g v-if="active">
+          <line
+            :x1="active.x"
+            :x2="active.x"
+            :y1="plot.top"
+            :y2="plot.bottom"
+            stroke="#727b8a"
+            stroke-dasharray="4 4"
+          />
+          <circle :cx="active.x" :cy="active.y" r="5" fill="#d76b21" />
+        </g>
+      </svg>
+      <div
+        v-if="active && tooltip && tipPosition"
+        class="history-tooltip"
+        aria-hidden="true"
+        :class="{ 'tip-left': tipPosition.x >= 52, 'tip-below': tipPosition.y < 32 }"
+        :style="{ left: tipPosition.x + '%', top: tipPosition.y + '%' }"
+      >
+        <span>{{ clock(active.time, true) }}</span>
+        <strong>{{ tickFormat.format(active.value) }} {{ unit }}</strong>
+      </div>
+    </div>
     <p v-if="active" class="section-hint" role="status">
       {{ clock(active.time, true) }} · {{ tickFormat.format(active.value) }} {{ unit }}
     </p>
