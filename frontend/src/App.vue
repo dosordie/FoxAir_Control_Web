@@ -1085,7 +1085,7 @@ onBeforeUnmount(() => {
     </main>
 
 
-    <dialog ref="cameraDialog" class="connection-dialog panel" aria-labelledby="camera-dialog-title" @close="cameraOpen = false">
+    <dialog ref="cameraDialog" class="connection-dialog camera-dialog panel" aria-labelledby="camera-dialog-title" @close="cameraOpen = false">
       <div class="connection-dialog-content">
         <header class="connection-dialog-header">
           <h2 id="camera-dialog-title">Kamerabild der Wärmepumpe</h2>
