@@ -25,10 +25,14 @@ it('decodes active-low contacts, active-high SG inputs and missing load outputs'
   app.mount(root)
   try {
     await vi.waitFor(() => expect(root.textContent).toContain('Hochdruckschalter'))
-    const rows = Object.fromEntries([...root.querySelectorAll('dl > div')].map(row => [
-      row.querySelector('dt')?.textContent, row.querySelector('dd')?.textContent,
+    const rows = Object.fromEntries([...root.querySelectorAll('tbody tr')].map(row => [
+      row.querySelector('th')?.textContent, row.querySelector('td:last-child')?.textContent,
     ]))
-    expect(rows).toEqual({ Kompressor: 'Unbekannt', Tankheizer: 'Unbekannt', Hochdruckschalter: 'Ein', 'SG Kontakt 1': 'Ein' })
+    const contacts = root.querySelector<HTMLButtonElement>('#decoder-tab-1')!
+    contacts.click()
+    await nextTick()
+    expect(contacts.getAttribute('aria-selected')).toBe('true')
+    expect(rows).toEqual({ 'Kompressor läuft': 'Unbekannt', '025 Elektrischer Wassertankheizer': 'Unbekannt', Hochdruckschalter: 'Ein', 'SG Kontakt 1': 'Ein' })
   } finally {
     app.unmount()
     vi.restoreAllMocks()
@@ -80,10 +84,10 @@ it('reads cloud bit words in both the binary and decimal formats', async () => {
   app.mount(root)
   try {
     await vi.waitFor(() => expect(root.textContent).toContain('Hochdruckschalter'))
-    const rows = Object.fromEntries([...root.querySelectorAll('dl > div')].map(row => [
-      row.querySelector('dt')?.textContent, row.querySelector('dd')?.textContent,
+    const rows = Object.fromEntries([...root.querySelectorAll('tbody tr')].map(row => [
+      row.querySelector('th')?.textContent, row.querySelector('td:last-child')?.textContent,
     ]))
-    expect(rows).toEqual({ Kompressor: 'Ein', Alarm: 'Ein', Hochdruckschalter: 'Aus', 'SG Kontakt 1': 'Ein' })
+    expect(rows).toEqual({ 'Kompressor läuft': 'Ein', Alarm: 'Ein', Hochdruckschalter: 'Aus', 'SG Kontakt 1': 'Ein' })
   } finally {
     app.unmount()
     vi.restoreAllMocks()

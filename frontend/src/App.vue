@@ -390,7 +390,7 @@ const actionButtons = [
   { label: 'AT-Kurve', hint: 'Heizkennlinie', icon: Sun, color: 'lilac', dialog: 'at' },
   { label: 'Wärmepumpe', hint: 'Sollwerte', icon: Thermometer, color: 'mint', dialog: 'wp' },
   { label: 'Ruhemodus', hint: 'Silent-Timer', icon: VolumeX, color: 'apricot', dialog: 'silent' },
-  { label: 'Register-Decoder', hint: 'Lastausgänge und Schalter', icon: SlidersHorizontal, color: 'mint', dialog: 'decoder' },
+  { label: 'Schalterzustände', hint: 'Lastausgänge und Schalter', icon: SlidersHorizontal, color: 'mint', dialog: 'decoder' },
   { label: 'Störungen', hint: 'Fehlerstatus', icon: Bell, color: 'lilac', dialog: 'fault' },
 ]
 const pumpPwm = computed(() => {
@@ -802,6 +802,7 @@ onBeforeUnmount(() => {
                   <button v-else-if="key === 'mode'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
                   <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
                   <button v-else-if="key === 'parameters'" type="button" class="main-action glance-wide" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
+                  <div v-else-if="key.startsWith('spacer:')" class="glance-spacer" aria-hidden="true"></div>
                   <PowerSummary v-else :metrics="snapshot?.metrics" :selection="[key]" :gira="giraItems" :spread="waterSpread" />
                 </template>
               </div>

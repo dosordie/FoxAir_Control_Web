@@ -9,10 +9,17 @@ const props = defineProps<{
 }>()
 const definitions = ref<Register[]>([])
 const error = ref('')
+const selectedTab = ref(0)
+const tabButtons = ref<HTMLButtonElement[]>([])
 const sections = [
   { title: 'Lastausgänge', registers: [2019, 2018] },
   { title: 'Schalterzustände', registers: [2034] },
 ]
+function selectTab(index: number, focus = false) {
+  selectedTab.value = index
+  if (focus) tabButtons.value[index]?.focus()
+}
+
 onMounted(async () => {
   try {
     definitions.value = (
@@ -55,7 +62,15 @@ function decode(register: number) {
   if (!definition) return []
   const raw = sample(register)?.raw
   if (register === 2018) {
-    return [{ bit: -1, label: definition.name, on: raw === 0 ? false : raw === 1 ? true : null }]
+    return [
+      {
+        bit: -1,
+        label: '025 Elektrischer Wassertankheizer',
+        detail: definition.name,
+        rawBit: raw === 0 || raw === 1 ? raw : null,
+        on: raw === 0 ? false : raw === 1 ? true : null,
+      },
+    ]
   }
   return Object.entries(definition.bit_map ?? {}).flatMap(([key, label]) => {
     const bit = Number(key)
@@ -63,8 +78,21 @@ function decode(register: number) {
       return []
     const set = raw == null ? null : Boolean(raw & (1 << bit))
     const activeLow = register === 2034 && bit < 10
-    const name = label.replace(/ \((?:0=AUS\/1=EIN|active-high:[^)]*)\)$/i, '')
-    return [{ bit, label: name, on: set === null ? null : activeLow ? !set : set }]
+    const name =
+      register === 2019 && bit === 0
+        ? 'Kompressor läuft'
+        : register === 2019 && bit === 2
+          ? 'Lüfter aktiv'
+          : label.replace(/ \((?:0=AUS\/1=EIN|active-high:[^)]*)\)$/i, '')
+    return [
+      {
+        bit,
+        label: name,
+        detail: label,
+        rawBit: set === null ? null : Number(set),
+        on: set === null ? null : activeLow ? !set : set,
+      },
+    ]
   })
 }
 </script>
@@ -77,28 +105,71 @@ function decode(register: number) {
       Die Cloud liefert die Ausgänge 2019 und Eingangskontakte 2034. Für Register 2018 ist nur die
       Modbus-Zuordnung bestätigt.
     </p>
-    <section v-for="section in sections" :key="section.title">
-      <h3>{{ section.title }}</h3>
-      <div v-for="register in section.registers" :key="register">
-        <p class="section-hint">
-          Register {{ register }} ·
-          {{
-            !sample(register)
-              ? 'Wert fehlt'
-              : sample(register)?.quality === 'stale'
-                ? 'Letzter bekannter Wert'
-                : 'Empfangener Wert'
-          }}
-        </p>
-        <dl>
-          <div v-for="entry in decode(register)" :key="entry.bit">
-            <dt>{{ entry.label }}</dt>
-            <dd :class="{ 'decoder-on': entry.on }">
-              {{ entry.on === null ? 'Unbekannt' : entry.on ? 'Ein' : 'Aus' }}
-            </dd>
-          </div>
-        </dl>
-      </div>
-    </section>
+    <div class="decoder-tabs" role="tablist" aria-label="Statusgruppen">
+      <button
+        v-for="(section, index) in sections"
+        :key="section.title"
+        ref="tabButtons"
+        type="button"
+        class="outlined-action"
+        role="tab"
+        :id="'decoder-tab-' + index"
+        :aria-selected="selectedTab === index"
+        :aria-controls="'decoder-panel-' + index"
+        :tabindex="selectedTab === index ? 0 : -1"
+        @click="selectTab(index)"
+        @keydown.right.prevent="selectTab((index + 1) % sections.length, true)"
+        @keydown.left.prevent="selectTab((index + sections.length - 1) % sections.length, true)"
+      >
+        {{ section.title }}
+      </button>
+    </div>
+    <div class="decoder-scroll" tabindex="0" aria-label="Registerwerte">
+      <section
+        v-for="(section, index) in sections"
+        v-show="selectedTab === index"
+        :key="section.title"
+        role="tabpanel"
+        :id="'decoder-panel-' + index"
+        :aria-labelledby="'decoder-tab-' + index"
+      >
+        <div v-for="register in section.registers" :key="register">
+          <p class="section-hint">
+            Register {{ register }} ·
+            {{
+              !sample(register)
+                ? 'Wert fehlt'
+                : sample(register)?.quality === 'stale'
+                  ? 'Letzter bekannter Wert'
+                  : 'Empfangener Wert'
+            }}
+          </p>
+          <table
+            v-if="decode(register).length"
+            class="decoder-table"
+            :aria-label="'Register ' + register"
+          >
+            <thead>
+              <tr>
+                <th scope="col">Bit</th>
+                <th scope="col">Wert</th>
+                <th scope="col">{{ section.title === 'Lastausgänge' ? 'Ausgang' : 'Kontakt' }}</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="entry in decode(register)" :key="entry.bit">
+                <td>{{ entry.bit < 0 ? '—' : entry.bit }}</td>
+                <td>{{ entry.rawBit ?? '—' }}</td>
+                <th scope="row" :title="entry.detail">{{ entry.label }}</th>
+                <td :class="{ 'decoder-on': entry.on }">
+                  {{ entry.on === null ? 'Unbekannt' : entry.on ? 'Ein' : 'Aus' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </div>
 </template>

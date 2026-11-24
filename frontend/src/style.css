@@ -534,7 +534,6 @@ a{color:inherit}
 .glance-order>.power-summary{display:block;margin:0}
 .glance-order>.power-summary>div{height:100%}
 .glance-order>.expert-metrics .power-summary{margin:0}
-.target-delta.delta-neutral,.target-delta.delta-cold,.target-delta.delta-warm{align-self:center;display:inline-block;padding:3px 9px;border-radius:8px;background:#222b}
 .target-delta.delta-neutral{color:#e4e6e9}.target-delta.delta-cold{color:#a9dcff}.target-delta.delta-warm{color:#ffb8b8}
 .overview-order{border:0;padding:12px 0;margin:0}.overview-order ol{margin:0;padding:0;list-style:none}
 .overview-order li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef0f2;cursor:grab}
@@ -543,5 +542,12 @@ a{color:inherit}
 .history-tooltip{position:absolute;z-index:2;pointer-events:none;transform:translate(8px,calc(-100% - 8px));display:grid;gap:3px;background:#1d2735;color:#fff;padding:7px 11px;border-radius:8px;white-space:nowrap;font-size:12px;box-shadow:0 3px 12px #0003}
 .history-tooltip.tip-left{transform:translate(calc(-100% - 8px),calc(-100% - 8px))}
 .history-tooltip.tip-below{transform:translate(8px,8px)}.history-tooltip.tip-left.tip-below{transform:translate(calc(-100% - 8px),8px)}
-.register-decoder dl{margin:0 0 16px}.register-decoder dl>div{display:flex;justify-content:space-between;gap:12px;padding:6px;border-bottom:1px solid #eef0f2}
-.register-decoder dd{margin:0;white-space:nowrap;font-weight:600}.register-decoder .decoder-on{color:#206443}
+.register-decoder{display:flex;flex-direction:column;min-height:0;flex:1}
+.decoder-tabs{display:flex;flex-wrap:wrap;gap:8px;flex:none;margin:0 0 8px}
+.decoder-tabs [aria-selected=true]{background:#fff1e2;border-color:#edaa7a;color:#92440d}
+.decoder-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 4px 12px}
+.decoder-table{width:100%;border-collapse:collapse;margin:0 0 16px;font-size:13px}
+.decoder-table th,.decoder-table td{text-align:left;border-bottom:1px solid #eef0f2;padding:7px 5px}
+.decoder-table thead th{background:#f6f7f9}.decoder-table tbody th{font-weight:500;overflow-wrap:anywhere}
+.decoder-table td:last-child{white-space:nowrap;font-weight:600}.register-decoder .decoder-on{color:#206443}
+.glance-spacer{min-width:0;pointer-events:none}

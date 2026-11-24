@@ -21,6 +21,14 @@ const layoutKey = computed(() =>
       : 'desktop_glance',
 )
 
+const selectedCount = computed(
+  () => draft.value[layoutKey.value].filter((key) => !key.startsWith('spacer:')).length,
+)
+const spareSlots = Array.from({ length: 6 }, (_, index) => 'spacer:' + (index + 1))
+const nextSpacer = computed(() =>
+  spareSlots.find((key) => !draft.value[layoutKey.value].includes(key)),
+)
+
 const columnsKey = computed(() =>
   profile.value === 'mobile' ? 'mobile_columns' : 'desktop_columns',
 )
@@ -69,6 +77,7 @@ watch(
 )
 
 function labelFor(key: string) {
+  if (key.startsWith('spacer:')) return 'Leerplatz ' + key.slice(7)
   return (
     overviewFields[key as keyof typeof overviewFields]?.label ||
     glanceActions[key as keyof typeof glanceActions] ||
@@ -96,6 +105,10 @@ function drop(target: number) {
   dragged.value = null
 }
 
+function addSpacer() {
+  if (nextSpacer.value) draft.value[layoutKey.value].push(nextSpacer.value)
+}
+
 function restoreDefault() {
   draft.value[layoutKey.value] = [...defaultOverview[layoutKey.value]]
   if (area.value === 'hero') draft.value[columnsKey.value] = defaultOverview[columnsKey.value]
@@ -103,7 +116,7 @@ function restoreDefault() {
 
 function toggle(key: string, checked: boolean) {
   const keys = draft.value[layoutKey.value]
-  if (checked && keys.length < 12) keys.push(key)
+  if (checked && selectedCount.value < 12) keys.push(key)
   if (!checked) {
     draft.value[layoutKey.value] = keys.filter((item) => item !== key)
   }
@@ -148,9 +161,7 @@ async function save() {
         {{ count }}
       </option>
     </select>
-    <p class="section-hint">
-      {{ draft[layoutKey].length }} von 12 Werten ausgewählt (einschließlich Gira).
-    </p>
+    <p class="section-hint">{{ selectedCount }} von 12 Werten ausgewählt (einschließlich Gira).</p>
     <p v-if="giraError" class="read-error" role="alert">Gira-Liste: {{ giraError }}</p>
     <fieldset :disabled="busy" class="overview-options">
       <legend>
@@ -160,7 +171,7 @@ async function save() {
         <input
           type="checkbox"
           :checked="draft[layoutKey].includes(key)"
-          :disabled="draft[layoutKey].length >= 12 && !draft[layoutKey].includes(key)"
+          :disabled="selectedCount >= 12 && !draft[layoutKey].includes(key)"
           @change="toggle(key, ($event.target as HTMLInputElement).checked)"
         />
         {{ field.label }}
@@ -170,7 +181,7 @@ async function save() {
           <input
             type="checkbox"
             :checked="draft[layoutKey].includes(key)"
-            :disabled="draft[layoutKey].length >= 12 && !draft[layoutKey].includes(key)"
+            :disabled="selectedCount >= 12 && !draft[layoutKey].includes(key)"
             @change="toggle(key, ($event.target as HTMLInputElement).checked)"
           />
           {{ label }}
@@ -180,7 +191,7 @@ async function save() {
         <input
           type="checkbox"
           :checked="draft[layoutKey].includes(item.layout_key)"
-          :disabled="draft[layoutKey].length >= 12 && !draft[layoutKey].includes(item.layout_key)"
+          :disabled="selectedCount >= 12 && !draft[layoutKey].includes(item.layout_key)"
           @change="toggle(item.layout_key, ($event.target as HTMLInputElement).checked)"
         />
         {{ item.name || item.object_key }}
@@ -196,8 +207,21 @@ async function save() {
         verfügbar
       </label>
     </fieldset>
-    <fieldset v-if="draft[layoutKey].length" :disabled="busy" class="overview-order">
+    <fieldset
+      v-if="draft[layoutKey].length || area === 'glance'"
+      :disabled="busy"
+      class="overview-order"
+    >
       <legend>Reihenfolge</legend>
+      <button
+        v-if="area === 'glance'"
+        type="button"
+        class="outlined-action"
+        :disabled="!nextSpacer"
+        @click="addSpacer"
+      >
+        Leerplatz hinzufügen
+      </button>
       <ol>
         <li
           v-for="(key, index) in draft[layoutKey]"
@@ -209,6 +233,15 @@ async function save() {
           @drop.prevent="drop(index)"
         >
           <span>{{ labelFor(key) }}</span>
+          <button
+            v-if="key.startsWith('spacer:')"
+            type="button"
+            class="outlined-action"
+            :aria-label="labelFor(key) + ' entfernen'"
+            @click="toggle(key, false)"
+          >
+            Entfernen
+          </button>
           <button
             type="button"
             class="outlined-action"

@@ -33,7 +33,7 @@ _BASE_DIALOGS = (
            for suffix in ("Start", "End", "Mode", "Heating Target",
                           "Cooling Target", "Hot Water Target", "Max. Power")) +
      ("M1_2 Enalbe", "M3_4 Enalbe", "M5_6 Enalbe")),
-    ("decoder", "Register-Decoder", "Lastausgänge und Eingangskontakte", ("O01~023", "S01~S10")),
+    ("decoder", "Schalterzustände", "Lastausgänge und Eingangskontakte", ("O01~023", "S01~S10")),
     ("fault", "Störungsübersicht", "Status- und Fehlerwörter, keine Fehlerfreiheit bei fehlenden Werten",
      ("O01~023",) + tuple(f"Fault{i}" for i in range(1, 11))),
 )

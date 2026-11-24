@@ -27,6 +27,7 @@ GLANCE_DEFAULT = [
     "parameters",
 ]
 GLANCE_ACTIONS = set(GLANCE_DEFAULT)
+GLANCE_SPACERS = {f"spacer:{slot}" for slot in range(1, 7)}
 LOCK = Lock()
 
 
@@ -51,8 +52,8 @@ def settings():
 class Layout(BaseModel):
     mobile: list[str] = Field(max_length=12)
     desktop: list[str] = Field(max_length=12)
-    mobile_glance: list[str] | None = Field(default=None, max_length=12)
-    desktop_glance: list[str] | None = Field(default=None, max_length=12)
+    mobile_glance: list[str] | None = Field(default=None, max_length=18)
+    desktop_glance: list[str] | None = Field(default=None, max_length=18)
     mobile_columns: int = Field(default=3, ge=1, le=4)
     desktop_columns: int = Field(default=8, ge=1, le=9)
 
@@ -70,7 +71,13 @@ def save(payload: Layout, request: Request):
 def validate_profiles(profiles):
     for name in ("mobile", "desktop", "mobile_glance", "desktop_glance"):
         keys = profiles[name]
-        options = OPTIONS | GLANCE_ACTIONS if name.endswith("_glance") else OPTIONS
+        options = (
+            OPTIONS | GLANCE_ACTIONS | GLANCE_SPACERS
+            if name.endswith("_glance")
+            else OPTIONS
+        )
+        if sum(key not in GLANCE_SPACERS for key in keys) > 12:
+            raise HTTPException(422, "Höchstens zwölf Anzeigen pro Bereich")
         if len(set(keys)) != len(keys) or any(
             key not in options and not re.fullmatch(r"gira:[0-9a-f]{24}", key)
             for key in keys
