@@ -22,12 +22,16 @@ import LocalHistory from './components/LocalHistory.vue'
 import { giraIcon } from './giraIcons'
 import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
-import type { CameraSettings, GiraItem, TimerM1 } from './api'
-import { inM1Window } from './timerWindow'
+import type { CameraSettings, GiraItem } from './api'
+import { useTimerSummary } from './composables/useTimerSummary'
 import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
 import ExpertGira from './components/ExpertGira.vue'
+import CameraDialog from './components/CameraDialog.vue'
+import OperationDialog from './components/OperationDialog.vue'
+import TargetEditorDialog from './components/TargetEditorDialog.vue'
+import { useDashboardPolling } from './composables/useDashboardPolling'
 import ExpertCamera from './components/ExpertCamera.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import MainRegisterBrowser from './components/MainRegisterBrowser.vue'
@@ -43,7 +47,7 @@ import { useRegisterFavorites } from './composables/useRegisterFavorites'
 import { useRegisterCatalog } from './composables/useRegisterCatalog'
 import { useLteConnection } from './composables/useLteConnection'
 import { useBrowserConnection } from './composables/useBrowserConnection'
-import { api, writeValueText } from './api'
+import { api } from './api'
 import { fanIsRunning } from './telemetry'
 import type { CloudRow, CloudLog, CloudValues, Dashboard, Metric, Register, RegisterValue, SpecialDialog, Transport, TransportId } from './api'
 
@@ -51,9 +55,8 @@ const { browserOnline } = useBrowserConnection()
 const { selectedTransport, transportPaused, setTransportPaused, transportBusy, transportError, initializeTransport } = useSharedTransport()
 const transports = ref<Transport[]>([])
 const page = ref<Page>('home')
-const snapshot = ref<Dashboard | null>(null)
-const refreshing = ref(false)
-const error = ref('')
+const { snapshot, refreshing, error, liveEnabled, liveInterval, loadDashboard, scheduleRefresh, stopRefresh } =
+  useDashboardPolling(selectedTransport, page, loadLastValues, loadCloudValues)
 const cloudRows = ref<CloudRow[]>([])
 const cloudOverview = ref<CloudValues | null>(null)
 const cloudLogs = ref<CloudLog[]>([])
@@ -89,16 +92,10 @@ let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const { status: updateStatus, version: installedVersion, loading: updateLoading, error: updateCheckError, checkedAt: updateCheckedAt, refresh: refreshUpdateStatus } = useUpdateStatus()
 const { signedIn, sessionChecked, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
-const cameraStreamUrl = '/api/camera/stream'
 const cameraConfig = ref<CameraSettings>()
-const cameraImageUrl = ref('')
-let cameraTimer: ReturnType<typeof setTimeout> | undefined
-let cameraFrame = 0
-const cameraDialog = ref<HTMLDialogElement>()
-const cameraOpen = ref(false)
-const cameraFailed = ref(false)
+const cameraDialog = ref<InstanceType<typeof CameraDialog> | null>(null)
 const canOpenCamera = computed(() =>
-  cameraConfig.value?.enabled && signedIn.value && browserOnline.value && !transportPaused.value)
+  !!cameraConfig.value?.enabled && signedIn.value && browserOnline.value && !transportPaused.value)
 watch([signedIn, browserOnline], async ([active, online], _, cleanup) => {
   let current = true
   cleanup(() => { current = false })
@@ -111,75 +108,10 @@ watch([signedIn, browserOnline], async ([active, online], _, cleanup) => {
     // The camera remains unavailable until settings can be read.
   }
 }, { immediate: true })
-function openCamera() {
-  if (!canOpenCamera.value || !cameraDialog.value) return
-  cameraFailed.value = false
-  cameraOpen.value = true
-  requestCameraImage()
-  cameraDialog.value.showModal()
-}
-function requestCameraImage() {
-  cameraImageUrl.value = cameraConfig.value?.mode === 'jpeg'
-    ? cameraStreamUrl + '?frame=' + ++cameraFrame
-    : cameraStreamUrl
-}
-function cameraImageSettled(failed: boolean) {
-  cameraFailed.value = failed
-  clearTimeout(cameraTimer)
-  const config = cameraConfig.value
-  if (cameraOpen.value && config?.mode === 'jpeg')
-    cameraTimer = setTimeout(requestCameraImage, config.interval_ms)
-}
-watch(cameraOpen, (opened) => {
-  if (!opened) {
-    clearTimeout(cameraTimer)
-    cameraImageUrl.value = ''
-  }
-})
-function closeCamera() {
-  cameraOpen.value = false
-  cameraDialog.value?.close()
-}
-watch([canOpenCamera, page], ([available, currentPage]) => {
-  if (cameraOpen.value && (!available || currentPage !== 'home')) closeCamera()
-})
 
 watch(signedIn, (active) => { if (active) void refreshUpdateStatus() })
 
-type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
-const controlRegisters = {Power:1011,Mode:1012,H22:1030,R02:1158}
-const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
-const writeBusy = ref(false)
-const writeReading = ref(false)
-const lteWriteSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
-const operationCode = ref<'Power'|'Mode'|'H22'|null>(null)
-const operationDialogElement = ref<HTMLDialogElement|null>(null)
-const operationSources = ref<Partial<Record<FirstWriteCode,RegisterValue>>>({})
-const operationLabels = {Power:'Ein / Aus',Mode:'Betriebsart',H22:'Ruhemodus',R02:'Heizungs-Basissollwert'}
-watch(operationCode, code => {
-  const dialog=operationDialogElement.value
-  if(code && dialog && !dialog.open) dialog.showModal()
-  else if(!code){if(dialog?.open) dialog.close();operationSources.value={}}
-})
-async function refreshOperation(){
-  const code=operationCode.value
-  if(!code)return
-  const transport=selectedTransport.value
-  writeReading.value=true;writeError.value=''
-  try {
-    const row=await api.read(controlRegisters[code],transport)
-    if(transport!==selectedTransport.value || code!==operationCode.value)return
-    const rawValue=transport==='cloud'?row.value:row.raw??row.value
-    const value=Number.isFinite(Number(rawValue))?Number(rawValue):rawValue
-    operationSources.value[code]={...row,value}
-    writeDrafts.value[code]=String(value)
-  } catch(e){writeError.value=e instanceof Error?e.message:'Lesen fehlgeschlagen'}
-  finally{writeReading.value=false}
-}
-async function openOperation(code:'Power'|'Mode'|'H22'){
-  writeFeedback.value='';writeError.value='';operationSources.value={};operationCode.value=code
-  await refreshOperation()
-}
+const operationDialog = ref<InstanceType<typeof OperationDialog> | null>(null)
 const connectionSettingsOpen = ref(false)
 const overviewLayout = ref<OverviewLayout>(defaultOverview)
 const giraItems = ref<GiraItem[]>([])
@@ -194,27 +126,9 @@ async function loadOverview() {
     if (Array.isArray(layout.mobile) && Array.isArray(layout.desktop)) overviewLayout.value = { ...defaultOverview, ...layout }
   } catch { /* Retain the available layout during a connection interruption. */ }
 }
-const targetEditor = ref<HTMLDialogElement | null>(null)
-const targetDefinition = ref<Register | null>(null)
-const targetError = ref('')
-const targetLoading = ref(false)
+const targetEditor = ref<InstanceType<typeof TargetEditorDialog> | null>(null)
 const canEditTarget = computed(() => !transportPaused.value && canOperate.value && browserOnline.value &&
   secureAdminContext.value && selectedTransport.value !== 'display_modbus')
-async function openTargetEditor() {
-  if (!canEditTarget.value) return
-  targetEditor.value?.showModal()
-  targetError.value = ''
-  if (targetDefinition.value) return
-  targetLoading.value = true
-  try {
-    targetDefinition.value = (await api.registers('1158')).items.find(item => item.register === 1158) ?? null
-    if (!targetDefinition.value) targetError.value = 'Heizungs-Basissollwert nicht verfügbar.'
-  } catch (cause) {
-    targetError.value = (cause as Error).message
-  } finally {
-    targetLoading.value = false
-  }
-}
 const historyOpen=ref(false)
 const historyDialogElement=ref<HTMLDialogElement|null>(null)
 watch(historyOpen, async opened=>{
@@ -225,91 +139,8 @@ watch(historyOpen, async opened=>{
 })
 
 const { busState, localValues, lteScan, pushConnected, scanStarting, startLteScan, refreshSnapshot } = useLteConnection(
-  selectedTransport, snapshot, () => { currentValue.value = null; lteWriteSources.value = {} },
+  selectedTransport, snapshot, () => { currentValue.value = null },
 )
-async function refreshWriteSources() {
-  writeReading.value = true; writeError.value = ''
-  const transport = selectedTransport.value
-  try {
-    const codes:FirstWriteCode[]=page.value==='parameters'&&writableRegisterCode.value?[writableRegisterCode.value]:['Mode','R02']
-    for (const code of codes) {
-      const reg=controlRegisters[code]
-      const row = await api.read(reg, transport)
-      if (transport !== selectedTransport.value) return
-      const value = transport === 'warmlink_raw' && code !== 'R02' ? row.raw ?? row.value : row.value
-      if (transport === 'warmlink_raw') lteWriteSources.value[code] = {...row, value}
-      writeDrafts.value[code] = String(value)
-    }
-    if (transport === 'cloud') await loadCloudValues()
-  } catch(e) { writeError.value = e instanceof Error ? e.message : 'Lesen fehlgeschlagen' }
-  finally { writeReading.value = false }
-}
-const writeFeedback = ref('')
-const writeError = ref('')
-const writableRegisterCode = computed<FirstWriteCode | null>(() => {
-  if (selectedRegister.value?.register === 1011) return 'Power'
-  if (selectedRegister.value?.register === 1030) return 'H22'
-  if (selectedRegister.value?.register === 1012) return 'Mode'
-  if (selectedRegister.value?.register === 1158) return 'R02'
-  return null
-})
-function writeSource(code: FirstWriteCode): CloudRow | RegisterValue | null {
-  if(operationSources.value[code]) return operationSources.value[code] || null
-  if (selectedTransport.value === 'warmlink_raw') return lteWriteSources.value[code] || null
-  if (selectedTransport.value === 'standard_modbus') return null
-  return cloudRows.value.find(row => row.code === code) || null
-}
-function operationValueLabel(code:FirstWriteCode){
-  const value=String(writeSource(code)?.value ?? '—')
-  if(code==='Mode')return ({'0':'Warmwasser','1':'Heizen','2':'Kühlen','3':'Warmwasser + Heizen','4':'Warmwasser + Kühlen'} as Record<string,string>)[value] || value
-  return value==='0'?'Aus':value==='1'?'Ein':value
-}
-function canWrite(code: FirstWriteCode): boolean {
-  const source = writeSource(code)
-  return !transportPaused.value && browserOnline.value && secureAdminContext.value && adminAuthenticated.value && ['cloud', 'warmlink_raw', 'standard_modbus'].includes(selectedTransport.value) &&
-    !writeBusy.value && !writeReading.value && !!source && source.value !== null && ['fresh', 'cached'].includes(source.quality)
-}
-async function submitCloudWrite(code: FirstWriteCode) {
-  const source = writeSource(code)
-  const desired = writeValueText(writeDrafts.value[code])
-  if (!canWrite(code) || !source || source.value === null || !desired) return
-  const description = operationLabels[code]
-  const transport = selectedTransport.value
-  const isLte = transport === 'warmlink_raw'
-  if (transport === 'standard_modbus' && (!('raw' in source) || source.raw == null || source.transport !== transport)) return
-  writeBusy.value = true
-  writeFeedback.value = ''
-  writeError.value = ''
-  try {
-    const result = transport === 'standard_modbus' && 'raw' in source
-      ? await api.writeParameter(controlRegisters[code], transport, desired, String(source.raw), transport)
-      : await (isLte ? api.warmlinkWrite : api.cloudWrite)(code, desired, String(source.value))
-    if (result.confirmed) {
-      writeFeedback.value = result.status === 'unchanged' ? 'Wert ist bereits eingestellt.' :
-        description + ' wurde durch ' + (transport === 'standard_modbus' ? 'Standard-Modbus' : isLte ? 'LTE' : 'Cloud') + '-Readback bestätigt.'
-      writeDrafts.value[code] = String(result.value ?? desired)
-    } else {
-      writeError.value = result.message || 'Schreiben nicht bestätigt; bitte Wert kontrollieren.'
-    }
-    if(operationCode.value) await refreshOperation()
-    else if (isLte) {
-      lteWriteSources.value = {}
-      await refreshWriteSources()
-    } else await loadCloudValues()
-    if (page.value === 'home') void loadDashboard(false)
-  } catch (e) {
-    writeError.value = e instanceof Error ? e.message : 'Schreiben fehlgeschlagen'
-    await loadCloudValues()
-  } finally {
-    writeBusy.value = false
-  }
-}
-const liveEnabled = ref(window.localStorage.getItem('foxair.cloudLiveEnabled') !== 'false')
-const storedInterval = Number(window.localStorage.getItem('foxair.cloudLiveInterval') || 30)
-const liveInterval = ref(Number.isFinite(storedInterval) ? Math.max(10, Math.min(3600, storedInterval)) : 30)
-const liveActive = computed(() => page.value === 'home' && !document.hidden &&
-  (selectedTransport.value === 'standard_modbus' || (selectedTransport.value === 'cloud' && liveEnabled.value)))
-let refreshTimer: ReturnType<typeof setTimeout> | undefined
 let unmounted = false
 const { favoriteIds, favoritesOnly, isFavorite, toggleFavorite } = useRegisterFavorites()
 const activeFavorites = computed(() => favoritesOnly.value ? favoriteIds.value : undefined)
@@ -466,33 +297,10 @@ function readingHint(key: string) {
   const hints: Record<string,string> = {flow:'Volumenstrom des Heizwassers. Die Pumpen-PWM zeigt die gemeldete Ansteuerung aus Register 2115; bei ausgeschalteter Pumpe kann der Registerwert trotzdem 100 % sein.',tank:'Temperatur im Warmwasserspeicher.',outdoor:'Gemessene Außentemperatur.',return:'Eintritt des Heizwassers in die Wärmepumpe (Rücklauf).',supply:'Austritt des erwärmten Heizwassers aus der Wärmepumpe (Vorlauf).'}
   return hints[key] || ''
 }
-const m1Limit = ref<TimerM1 | null>(null)
-const m1Clock = ref(new Date())
-const m1Status = computed(() =>
-  m1Limit.value?.enabled == null ? 'Status unbekannt' : m1Limit.value.enabled ? 'Aktiviert' : 'Deaktiviert')
-const m1InWindow = computed(() => inM1Window(m1Limit.value, m1Clock.value))
 const m1Selected = computed(() =>
   overviewLayout.value[mobileProfile ? 'mobile' : 'desktop'].includes('timer_m1') || glance.value.includes('timer_m1'))
-watch([page, selectedTransport, transportPaused, m1Selected], ([current, transport, paused, visible], _, cleanup) => {
-  m1Limit.value = null
-  if (current !== 'home' || paused || !visible) return
-  let active = true
-  let timer: ReturnType<typeof setTimeout> | undefined
-  cleanup(() => { active = false; clearTimeout(timer) })
-  async function refresh() {
-    m1Clock.value = new Date()
-    if (!document.hidden && navigator.onLine) {
-      try {
-        const value = await api.timerM1(transport)
-        if (active) m1Limit.value = value
-      } catch {
-        if (active && m1Limit.value) m1Limit.value = {...m1Limit.value, stale:true}
-      }
-    }
-    if (active) timer = setTimeout(refresh, 30000)
-  }
-  void refresh()
-}, { immediate: true })
+const { m1Limit, m1Status, m1InWindow } =
+  useTimerSummary(page, selectedTransport, transportPaused, m1Selected)
 const readings = computed(() => {
   const keys = overviewLayout.value[mobileProfile ? 'mobile' : 'desktop']
   return keys.flatMap(key => {
@@ -545,47 +353,12 @@ function navigate(target: Page, term = '') {
     void loadCloudValues()
   }
 }
-function scheduleRefresh() {
-  clearTimeout(refreshTimer)
-  if (unmounted || !liveActive.value) return
-  const seconds = Number.isFinite(liveInterval.value)
-    ? Math.max(10, Math.min(3600, liveInterval.value)) : 30
-  refreshTimer = setTimeout(() => { void loadDashboard(true) }, seconds * 1000)
-}
-
-let dashboardGeneration = 0
-let dashboardSource: TransportId | null = null
-async function loadDashboard(live = false) {
-  const source = selectedTransport.value
-  if (refreshing.value && dashboardSource === source) return
-  const generation = ++dashboardGeneration
-  dashboardSource = source
-  refreshing.value = true
-  error.value = ''
-  try {
-    const data = await api.dashboard(source, live && source === 'cloud')
-    if (generation !== dashboardGeneration || source !== selectedTransport.value) return
-    snapshot.value = data
-    void loadLastValues()
-    if (data.error) error.value = data.error
-    if (source === 'cloud') void loadCloudValues()
-  } catch (err) {
-    if (generation === dashboardGeneration && source === selectedTransport.value)
-      error.value = err instanceof Error ? err.message : 'Keine Verbindung zum Webserver'
-  } finally {
-    if (generation === dashboardGeneration) {
-      refreshing.value = false
-      scheduleRefresh()
-    }
-  }
-}
-
 function onVisibilityChange() {
   if(['warmlink_raw','display_modbus'].includes(selectedTransport.value)){
     if(!document.hidden && !pushConnected.value)void refreshSnapshot().catch(()=>{})
     return
   }
-  clearTimeout(refreshTimer)
+  stopRefresh()
   if (!document.hidden && page.value === 'home') {
     void loadDashboard(false)
   }
@@ -609,12 +382,6 @@ async function loadCloudValues() {
     void loadLastValues()
     cloudOverview.value = await api.cloudValues()
     cloudRows.value = cloudOverview.value.items
-    for (const code of ['Mode', 'R02'] as FirstWriteCode[]) {
-      const row = cloudRows.value.find(entry => entry.code === code)
-      if (row?.value != null && writeDrafts.value[code] === '') {
-        writeDrafts.value[code] = String(row.value)
-      }
-    }
     if (cloudCodeSelected.value) {
       cloudCodeSelected.value = cloudRows.value.find(row => row.code === cloudCodeSelected.value?.code) || null
     }
@@ -683,7 +450,6 @@ async function loadCloudLogs() {
 
 
 async function reloadTransportOptions(source: TransportId) {
-  lteWriteSources.value = {}
   try {
     transports.value = (await api.transports()).items
     if(source==='cloud'&&selectedTransport.value==='cloud')void loadDashboard()
@@ -694,8 +460,6 @@ function selectRegister(item: Register) {
   selectedRegister.value = item
   currentValue.value = null
   readError.value = ''
-  writeFeedback.value = ''
-  writeError.value = ''
 }
 let parameterReadGeneration = 0
 async function readRegister() {
@@ -720,31 +484,12 @@ async function readRegister() {
 watch(page, async (value) => {
   if (value === 'home' || value === 'settings') void loadOverview()
 })
-watch([canEditTarget, selectedTransport], () => targetEditor.value?.close())
-watch(selectedTransport, (value) => {
+watch(selectedTransport, () => {
   currentValue.value = null
-  lteWriteSources.value = {}
-  operationSources.value = {}
-  operationCode.value = null
   if (selectedRegister.value) selectedRegister.value = {...selectedRegister.value, cloud: null}
-  clearTimeout(refreshTimer)
-  if (snapshot.value) {
-    snapshot.value = {
-      ...snapshot.value, transport:value, status:'unavailable', error:null,
-      metrics:Object.fromEntries(Object.entries(snapshot.value.metrics).map(([key, metric])=>[
-        key, metric ? {...metric,quality:Date.now()-Date.parse(metric.timestamp)>300000?'stale':'cached'} : null,
-      ])) as Dashboard['metrics'],
-    }
-  }
-  void loadDashboard()
 })
 watch([page,selectedTransport],([current,transport],[previous,previousTransport])=>{
   if(current==='parameters' && transport==='warmlink_raw' && (current!==previous || transport!==previousTransport))void startLteScan()
-})
-watch([liveEnabled, liveInterval], () => {
-  window.localStorage.setItem('foxair.cloudLiveEnabled', String(liveEnabled.value))
-  window.localStorage.setItem('foxair.cloudLiveInterval', String(liveInterval.value))
-  scheduleRefresh()
 })
 onMounted(async () => {
   syncRoute()
@@ -771,7 +516,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('hashchange', syncRoute)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   document.removeEventListener('keydown', closeSpecialOnEscape)
-  clearTimeout(refreshTimer)
   clearTimeout(valuesTimer)
   cloudAdminPassword.value = ''
 })
@@ -804,7 +548,7 @@ onBeforeUnmount(() => {
                     <svg class="fan-rotor" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="rotor-metal" x2="1" y2="1"><stop stop-color="#a6a9ac"/><stop offset=".5" stop-color="#343b40"/><stop offset="1" stop-color="#717a80"/></linearGradient></defs><g fill="url(#rotor-metal)" stroke="#1b2024" stroke-width=".6"><path v-for="rotation in [0,90,180,270]" :key="rotation" :transform="'rotate('+rotation+' 50 50)'" d="M49 48 C27 46 14 34 21 18 C35 8 52 19 56 37 L54 48Z"/></g><circle cx="50" cy="50" r="10" fill="#50585e" stroke="#828a90"/><circle cx="50" cy="50" r="3" fill="#252b30"/></svg>
                   </div>
                   <button v-if="canOpenCamera" class="heatpump-camera-trigger" type="button"
-                    aria-label="Kamerabild der Wärmepumpe öffnen" title="Kamerabild öffnen" @click="openCamera"></button>
+                    aria-label="Kamerabild der Wärmepumpe öffnen" title="Kamerabild öffnen" @click="cameraDialog?.open()"></button>
                   <HeatpumpStatus :mode="currentRegisterValue(1012)" :run="currentRegisterValue(2012)" :power="snapshot?.metrics.power || null" />
 
                 </div>
@@ -812,7 +556,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="target-temperature">
                 <span class="overline" title="Aktuell von der Regelung gewählter Wassersollwert (Register 2014), einschließlich aktiver Wetterkompensation.">Aktueller Sollwert</span>
-                <button v-if="canEditTarget" type="button" class="temp-adjust target-edit" aria-label="Heizungs-Basissollwert einstellen" @click="openTargetEditor">
+                <button v-if="canEditTarget" type="button" class="temp-adjust target-edit" aria-label="Heizungs-Basissollwert einstellen" @click="targetEditor?.open()">
                   <strong>{{ metric('target') }}<small v-if="snapshot?.metrics.target"> °C</small></strong>
                 </button>
                 <div v-else class="temp-adjust target-readonly">
@@ -897,9 +641,9 @@ onBeforeUnmount(() => {
               <div class="glance-order">
                 <template v-for="key in glanceOrder" :key="key">
                   <ExpertGira v-if="key === 'gira'" class="glance-wide" @values="giraItems = $event" />
-                  <button v-else-if="key === 'power'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
-                  <button v-else-if="key === 'mode'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
-                  <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
+                  <button v-else-if="key === 'power'" type="button" class="operation operation-button" :disabled="transportPaused" @click="operationDialog?.open('Power')"><span class="operation-icon"><Power :size="24" /></span><span>Ein / Aus</span><strong>{{ powerText }}</strong></button>
+                  <button v-else-if="key === 'mode'" type="button" class="operation operation-button" :disabled="transportPaused" @click="operationDialog?.open('Mode')"><span class="operation-icon"><Sun :size="24" /></span><span>Modus</span><strong>{{ modeText }}</strong></button>
+                  <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="operationDialog?.open('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
                   <button v-else-if="key === 'parameters'" type="button" class="main-action glance-wide" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
                   <div v-else-if="key.startsWith('spacer:')" class="glance-spacer" aria-hidden="true"></div>
                   <div v-else-if="key === 'timer_m1'" class="power-summary">
@@ -1085,17 +829,8 @@ onBeforeUnmount(() => {
     </main>
 
 
-    <dialog ref="cameraDialog" class="connection-dialog camera-dialog panel" aria-labelledby="camera-dialog-title" @close="cameraOpen = false">
-      <div class="connection-dialog-content">
-        <header class="connection-dialog-header">
-          <h2 id="camera-dialog-title">Kamerabild der Wärmepumpe</h2>
-          <button class="outlined-action" type="button" @click="closeCamera">Schließen</button>
-        </header>
-        <p v-if="cameraFailed" role="alert">Kamerabild nicht verfügbar. Prüfe URL und Bildquelle in den Experteneinstellungen.</p>
-        <img v-if="cameraOpen && cameraImageUrl" v-show="!cameraFailed" class="heatpump-camera-stream" :src="cameraImageUrl"
-          alt="Livebild der Wärmepumpe" @load="cameraImageSettled(false)" @error="cameraImageSettled(true)" />
-      </div>
-    </dialog>
+    <CameraDialog ref="cameraDialog" :available="canOpenCamera && page === 'home'"
+      :mode="cameraConfig?.mode" :interval="cameraConfig?.interval_ms ?? 2000" />
     <dialog ref="historyDialogElement" class="connection-dialog panel" aria-labelledby="history-dialog-title" @close="historyOpen=false" @cancel="historyOpen=false">
       <div class="connection-dialog-content">
         <header class="connection-dialog-header"><div><span class="section-caption">VERLAUF</span><h2 id="history-dialog-title">Verlauf &amp; Diagramme</h2></div><button class="outlined-action" aria-label="Verlauf schließen" @click="historyOpen=false">Schließen</button></header>
@@ -1108,30 +843,12 @@ onBeforeUnmount(() => {
       :bus-state="busState" :cloud-overview="cloudOverview" @login="loginAsAdmin" @logout="logoutAsAdmin"
       @connections-changed="reloadTransportOptions" @refresh-cloud="loadCloudValues" />
 
-    <dialog ref="targetEditor" class="operation-dialog panel" aria-labelledby="target-editor-title">
-      <div class="special-top"><h2 id="target-editor-title">Heizungs-Basissollwert</h2><button type="button" class="outlined-action" @click="targetEditor?.close()">Schließen</button></div>
-      <p>Aktuell wirksamer Sollwert: {{ snapshot?.metrics.target?.source_code === '2014' ? metric('target') + ' °C' : '—' }}</p>
-      <p class="section-hint">Die Heizkurve kann den wirksamen Sollwert gegenüber dem eingestellten Basiswert verändern.</p>
-      <p v-if="targetLoading" role="status">Parameter wird geladen …</p>
-      <p v-if="targetError" class="read-error" role="alert">{{ targetError }}</p>
-      <ParameterEditor v-if="targetDefinition && canEditTarget" :key="selectedTransport" :register="targetDefinition"
-        :transport="selectedTransport" :admin="canEditTarget" :value="currentRegisterValue(1158)" @updated="loadDashboard(false)" />
-    </dialog>
-    <dialog ref="operationDialogElement" class="operation-dialog panel" aria-labelledby="operation-title" @close="operationCode=null" @cancel="operationCode=null">
-      <div class="special-top"><h2 id="operation-title">{{ operationCode?operationLabels[operationCode]:'' }}</h2><button class="outlined-action" aria-label="Betriebsdialog schließen" @click="operationCode=null">Schließen</button></div>
-      <template v-if="operationCode">
-        <p class="section-hint">{{ transportLabel }} · Aktueller Wert: {{ operationValueLabel(operationCode) }}</p>
-        <button class="outlined-action" :disabled="writeReading||writeBusy" @click="refreshOperation">Wert aktualisieren</button>
-        <label class="field-label" for="operation-value">Neuer Wert</label>
-        <select id="operation-value" class="settings-input" v-model="writeDrafts[operationCode]" :disabled="writeBusy||writeReading">
-          <template v-if="operationCode==='Mode'"><option value="0">Warmwasser</option><option value="1">Heizen</option><option value="2">Kühlen</option><option value="3">Warmwasser + Heizen</option><option value="4">Warmwasser + Kühlen</option></template>
-          <template v-else><option value="0">Aus</option><option value="1">Ein</option></template>
-        </select>
-        <p v-if="writeError" class="read-error" role="alert">{{ writeError }}</p><p v-if="writeFeedback" class="success-text" role="status">{{ writeFeedback }}</p>
-        <p v-if="!adminAuthenticated" class="section-hint">Zum Ändern oben rechts als Administrator anmelden.</p>
-        <button class="main-action" :disabled="!canWrite(operationCode)" @click="submitCloudWrite(operationCode)">{{ writeBusy?'Prüfe und schreibe …':'Wert mit Readback senden' }}</button>
-      </template>
-    </dialog>
+    <TargetEditorDialog ref="targetEditor" :can-edit="canEditTarget" :transport="selectedTransport"
+      :effective-target="snapshot?.metrics.target?.source_code === '2014' ? metric('target') + ' °C' : '—'"
+      :current-value="currentRegisterValue(1158)" @updated="loadDashboard(false)" />
+    <OperationDialog ref="operationDialog" :transport="selectedTransport" :transport-label="transportLabel"
+      :admin="adminAuthenticated" :can-operate="adminAuthenticated && secureAdminContext && browserOnline && !transportPaused"
+      :cloud-rows="cloudRows" @updated="page === 'home' && loadDashboard(false)" @refresh-cloud="loadCloudValues" />
 
     <dialog ref="specialDialogElement" class="special-modal panel native-special" aria-labelledby="special-modal-title" @close="specialDialog=null" @cancel="specialDialog=null" @click.self="specialDialog=null">
       <div v-if="specialDialog" class="special-dialog-content">
