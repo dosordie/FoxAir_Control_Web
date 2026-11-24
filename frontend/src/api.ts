@@ -177,7 +177,10 @@ async function get<T>(path: string): Promise<T> {
 }
 export type WarmlinkConfig = {medium?:'tcp'|'serial';serial_device?:string;baudrate?:number;idle_timeout_seconds?:number;browser_timeout_seconds?:number;connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
+export type CameraSettings = {enabled: boolean; url: string}
 export const api = {
+  cameraSettings: () => get<CameraSettings>('/api/camera/settings'),
+  saveCamera: (settings: CameraSettings) => post<CameraSettings>('/api/camera/settings', settings),
   writeParameter:(register:number,transport:TransportId,value:string,expected:string,expected_transport?:string)=>post<CloudWriteResult>('/api/parameters/'+register+'/write',{transport,value,expected,expected_transport}),
   refreshParameters:(transport:TransportId,registers:number[])=>post<{values:Record<string,RegisterValue>;updated:number;status:string}>('/api/parameters/refresh',{transport,registers}),
   lastValues:()=>get<{values:Record<string,RegisterValue>}>('/api/last-values'),
