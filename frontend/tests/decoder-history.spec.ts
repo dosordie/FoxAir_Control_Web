@@ -1,6 +1,6 @@
 import { createApp, nextTick } from 'vue'
 import { expect, it, vi } from 'vitest'
-import { api, type Register, type RegisterValue } from '../src/api'
+import { api, type CloudRow, type Register, type RegisterValue } from '../src/api'
 import RegisterDecoder from '../src/components/RegisterDecoder.vue'
 import HistoryChart from '../src/components/HistoryChart.vue'
 
@@ -57,5 +57,35 @@ it('shows the chart tooltip and the existing value below on keyboard navigation'
     expect(root.querySelector('[role="status"]')?.textContent).toContain('31,5 °C')
   } finally {
     app.unmount()
+  }
+})
+
+
+it('reads cloud bit words in both the binary and decimal formats', async () => {
+  vi.spyOn(api, 'registers').mockResolvedValue({
+    catalog_size: 2,
+    items: [
+      { register: 2019, bit_map: { '0': 'Kompressor', '10': 'Alarm' } },
+      { register: 2034, bit_map: { '0': 'Hochdruckschalter', '12': 'SG Kontakt 1' } },
+    ] as Register[],
+  })
+  const root = document.createElement('div')
+  const app = createApp(RegisterDecoder, {
+    transport: 'cloud', valueFor: () => null,
+    cloudRows: [
+      { register: 2019, code: 'O01~023', value: '0000010000000001', confidence: 'confirmed' },
+      { register: 2034, code: 'S01~S10', value: '4097', confidence: 'confirmed' },
+    ] as CloudRow[],
+  })
+  app.mount(root)
+  try {
+    await vi.waitFor(() => expect(root.textContent).toContain('Hochdruckschalter'))
+    const rows = Object.fromEntries([...root.querySelectorAll('dl > div')].map(row => [
+      row.querySelector('dt')?.textContent, row.querySelector('dd')?.textContent,
+    ]))
+    expect(rows).toEqual({ Kompressor: 'Ein', Alarm: 'Ein', Hochdruckschalter: 'Aus', 'SG Kontakt 1': 'Ein' })
+  } finally {
+    app.unmount()
+    vi.restoreAllMocks()
   }
 })

@@ -545,7 +545,7 @@ async function openSpecialDialog(dialog: string) {
 }
 async function refreshSelectedSpecial() {
   const id = specialDialog.value
-  if (!id || specialLoading.value || transportPaused.value || (id === 'decoder' && selectedTransport.value === 'cloud')) return
+  if (!id || specialLoading.value || transportPaused.value) return
   specialLoading.value = true
   specialError.value = ''
   specialMessage.value = ''
@@ -1021,7 +1021,7 @@ onBeforeUnmount(() => {
         <template v-else>
         <p class="section-hint">Werte aus der ausgewählten Verbindung wie in FoxAir_Control. Bekannte Einstellungen sind für Administratoren bearbeitbar. Jeder Wert wird vor dem Schreiben geprüft und danach zurückgelesen. Störungswerte bleiben lesend.</p>
         <div class="special-toolbar">
-          <button v-if="specialDialog !== 'decoder' || selectedTransport !== 'cloud'" type="button" class="outlined-action" :disabled="specialLoading || transportPaused" @click="refreshSelectedSpecial">
+          <button type="button" class="outlined-action" :disabled="specialLoading || transportPaused" @click="refreshSelectedSpecial">
             <RefreshCw :size="16" :class="{ spinning: specialLoading }" />
             {{ specialLoading ? 'Werte werden gelesen …' : 'Werte aktualisieren' }}
           </button>
@@ -1029,7 +1029,7 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
-        <RegisterDecoder v-if="specialDialog === 'decoder'" :transport="selectedTransport" :value-for="currentRegisterValue" />
+        <RegisterDecoder v-if="specialDialog === 'decoder'" :transport="selectedTransport" :value-for="currentRegisterValue" :cloud-rows="cloudRows" />
         <SpecialControls v-if="selectedSpecial && (['at','sg','wp'].includes(selectedSpecial.id) || selectedSpecial.id === 'fault' && selectedTransport !== 'cloud')" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
         <div v-if="!selectedSpecial || selectedSpecial.id === 'fault' && selectedTransport === 'cloud'" class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
