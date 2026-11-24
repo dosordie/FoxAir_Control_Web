@@ -20,6 +20,7 @@ from backend.warmlink import open_warmlink
 SILENT = dict(zip(range(1244, 1250), ('Timer_Mute_On_En', 'TimerMuteOnHour', 'TimerMuteOnMinute', 'Timer_Mute_Off_En', 'TimerMuteOffHour', 'TimerMuteOffMinute')))
 WEEKLY = {**{1256+i:f'KG{i+1}' for i in range(12)},1268:'KG13~KG28',1269:'KG29~KG44',1270:'KG45~KG60'}
 OPERATING = {**{1281+(n-1)*7+i:f'M{n} {suffix}' for n in range(1,7) for i,suffix in enumerate(('Start','End','Hot Water Target','Heating Target','Cooling Target','Mode','Max. Power'))},1323:'M1_2 Enalbe',1324:'M3_4 Enalbe',1325:'M5_6 Enalbe'}
+M1_START, M1_END = 1281, 1282
 M1_ENABLE = 1323
 M1_LIMIT = 1287
 SCHEMAS = {'silent': SILENT, 'weekly': WEEKLY, 'operating': OPERATING}
@@ -163,14 +164,23 @@ def cache_words(kind,transport,words,identity):
         merge({code:{'value':wire_value(reg,words[str(reg)])} for reg,code in schema(kind).items()},source=identity)
 
 
+def minute_of_day(word):
+    if isinstance(word, int) and 0 <= word <= 65535:
+        hour, minute = word >> 8, word & 255
+        if hour < 24 and minute < 60:
+            return hour * 60 + minute
+    return None
+
+
 def read_m1(transport):
     from backend.transport_selection import paused
 
     words = {}
     stale = False
-    registers = (M1_ENABLE, M1_LIMIT)
+    registers = (M1_ENABLE, M1_LIMIT, M1_START, M1_END)
+    unavailable = {"enabled": None, "max_kw": None, "window": None, "stale": True}
     if paused():
-        return {"enabled": None, "max_kw": None, "stale": True}
+        return unavailable
     if transport == "display_modbus":
         from backend.display_bus import manager
         manager.lease()
@@ -182,7 +192,7 @@ def read_m1(transport):
         if transport == "warmlink_raw":
             from backend.register_scan import status
             if status()["status"] == "running":
-                return {"enabled": None, "max_kw": None, "stale": True}
+                return unavailable
         with _lock, connection(transport) as (client, identity):
             if transport == "cloud":
                 rows = client.read_codes([OPERATING[reg] for reg in registers])
@@ -191,11 +201,19 @@ def read_m1(transport):
                     if row and row.get("value") not in (None, ""):
                         words[reg] = cloud_word(reg, row["value"])
             else:
-                words = {reg: client.read_holding(reg, 1)[0] for reg in registers}
+                start_word, end_word = client.read_holding(M1_START, 2)
+                words = {M1_START: start_word, M1_END: end_word}
+                words.update({reg: client.read_holding(reg, 1)[0] for reg in (M1_ENABLE, M1_LIMIT)})
             check_connection(transport, identity)
     mask_word, watts_word = words.get(M1_ENABLE), words.get(M1_LIMIT)
+    start = minute_of_day(words.get(M1_START))
+    end = minute_of_day(words.get(M1_END))
+    window = None
+    if isinstance(mask_word, int) and start is not None and end is not None and start != end:
+        window = {"start": start, "end": end, "days": mask_word & 127}
     return {
         "enabled": bool(mask_word & 128) if isinstance(mask_word, int) else None,
+        "window": window,
         "max_kw": watts_word / 10 if isinstance(watts_word, int) and 0 <= watts_word <= 32767 else None,
         "stale": stale,
     }

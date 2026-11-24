@@ -66,7 +66,7 @@ function decode(register: number) {
     return [
       {
         bit: -1,
-        label: '025 Elektrischer Wassertankheizer',
+        label: 'Elektrischer Wassertankheizer',
         detail: definition.name,
         rawBit: raw === 0 || raw === 1 ? raw : null,
         on: raw === 0 ? false : raw === 1 ? true : null,
@@ -79,12 +79,13 @@ function decode(register: number) {
       return []
     const set = raw == null ? null : Boolean(raw & (1 << bit))
     const activeLow = register === 2034 && activeLowContacts.has(bit)
-    const name =
+    let name =
       register === 2019 && bit === 0
         ? 'Kompressor läuft'
         : register === 2019 && bit === 2
           ? 'Lüfter aktiv'
           : label.replace(/ \((?:0=AUS\/1=EIN|active-high:[^)]*)\)$/i, '')
+    if (register === 2019) name = name.replace(/^0\d{2}\s+/, '')
     return [
       {
         bit,

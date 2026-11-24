@@ -4,7 +4,7 @@ import {
 } from 'lucide-vue-next'
 
 export const overviewFields = {
-  timer_m1: { label: 'Leistungsgrenze M1', icon: Gauge, unit: 'kW' },
+  timer_m1: { label: 'Last Timer', icon: Gauge, unit: 'kW' },
   flow: { label: 'Durchfluss', icon: Waves, unit: 'm³/h' },
   tank: { label: 'Warmwasser', icon: Thermometer, unit: '°C' },
   outdoor: { label: 'Außen', icon: Sun, unit: '°C' },

@@ -12,16 +12,26 @@ class TimerSchemaTests(unittest.TestCase):
         self.assertEqual(TimerWrite(transport='standard_modbus', values={}, expected={}).transport, 'standard_modbus')
 
     def test_m1_summary_uses_only_low_enable_byte_and_display_cache(self):
-        rows = {'1323': {'raw': 0x8000, 'quality': 'observed'}, '1287': {'raw': 25, 'quality': 'observed'}}
+        rows = {
+            '1323': {'raw': 0x8001, 'quality': 'observed'},
+            '1287': {'raw': 25, 'quality': 'observed'},
+            '1281': {'raw': 0x1600, 'quality': 'observed'},
+            '1282': {'raw': 0x061E, 'quality': 'observed'},
+        }
         with patch('backend.transport_selection.paused', return_value=False), \
              patch('backend.display_bus.manager.lease'), \
              patch('backend.display_bus.manager.values', return_value=rows), \
              patch('backend.timers.connection') as connection:
-            self.assertEqual(timers.read_m1('display_modbus'), {'enabled': False, 'max_kw': 2.5, 'stale': False})
+            self.assertEqual(timers.read_m1('display_modbus'), {
+                'enabled': False, 'max_kw': 2.5, 'stale': False,
+                'window': {'start': 1320, 'end': 390, 'days': 1},
+            })
             rows['1323']['raw'] |= 0x80
             self.assertTrue(timers.read_m1('display_modbus')['enabled'])
             del rows['1287']
             self.assertIsNone(timers.read_m1('display_modbus')['max_kw'])
+            rows['1282']['raw'] = 0xFFFF
+            self.assertIsNone(timers.read_m1('display_modbus')['window'])
             connection.assert_not_called()
 
     def test_word_scaling_and_mask_payloads(self):

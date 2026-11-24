@@ -32,7 +32,7 @@ it('decodes active-low contacts, active-high SG inputs and missing load outputs'
     contacts.click()
     await nextTick()
     expect(contacts.getAttribute('aria-selected')).toBe('true')
-    expect(rows).toEqual({ 'Kompressor läuft': 'Unbekannt', '025 Elektrischer Wassertankheizer': 'Unbekannt', Hochdruckschalter: 'Ein', 'SG Kontakt 1': 'Ein' })
+    expect(rows).toEqual({ 'Kompressor läuft': 'Unbekannt', 'Elektrischer Wassertankheizer': 'Unbekannt', Hochdruckschalter: 'Ein', 'SG Kontakt 1': 'Ein' })
   } finally {
     app.unmount()
     vi.restoreAllMocks()
@@ -65,12 +65,12 @@ it('shows the chart tooltip and the existing value below on keyboard navigation'
 })
 
 
-it('reads cloud bit words in both the binary and decimal formats', async () => {
+it.each(['0011110000000000', '15360'])('decodes cloud contacts from %s', async (contacts) => {
   vi.spyOn(api, 'registers').mockResolvedValue({
     catalog_size: 2,
     items: [
-      { register: 2019, bit_map: { '0': 'Kompressor', '10': 'Alarm' } },
-      { register: 2034, bit_map: { '0': 'Hochdruckschalter', '12': 'SG Kontakt 1' } },
+      { register: 2019, bit_map: { '0': 'Kompressor', '10': '011 Alarm (0=AUS/1=EIN)' } },
+      { register: 2034, bit_map: { '0': 'Hochdruckschalter', '12': 'SG Kontakt 1', '13': 'SG Kontakt 2' } },
     ] as Register[],
   })
   const root = document.createElement('div')
@@ -78,7 +78,7 @@ it('reads cloud bit words in both the binary and decimal formats', async () => {
     transport: 'cloud', valueFor: () => null,
     cloudRows: [
       { register: 2019, code: 'O01~023', value: '0000010000000001', confidence: 'confirmed' },
-      { register: 2034, code: 'S01~S10', value: '4097', confidence: 'confirmed' },
+      { register: 2034, code: 'S01~S10', value: contacts, confidence: 'confirmed' },
     ] as CloudRow[],
   })
   app.mount(root)
@@ -87,9 +87,29 @@ it('reads cloud bit words in both the binary and decimal formats', async () => {
     const rows = Object.fromEntries([...root.querySelectorAll('tbody tr')].map(row => [
       row.querySelector('th')?.textContent, row.querySelector('td:last-child')?.textContent,
     ]))
-    expect(rows).toEqual({ 'Kompressor läuft': 'Ein', Alarm: 'Ein', Hochdruckschalter: 'Aus', 'SG Kontakt 1': 'Ein' })
+    expect(rows).toEqual({ 'Kompressor läuft': 'Ein', Alarm: 'Ein', Hochdruckschalter: 'Ein', 'SG Kontakt 1': 'Ein', 'SG Kontakt 2': 'Ein' })
   } finally {
     app.unmount()
     vi.restoreAllMocks()
+  }
+})
+
+it('connects sparse local samples but leaves multi-hour gaps open', () => {
+  const root = document.createElement('div')
+  const app = createApp(HistoryChart, {
+    label: 'Außen', unit: '°C', maxGapSeconds: 3600,
+    points: [
+      { time: '2026-11-24T09:00:00Z', value: 2 },
+      { time: '2026-11-24T09:30:00Z', value: 3 },
+      { time: '2026-11-24T13:00:00Z', value: 5 },
+      { time: '2026-11-24T13:15:00Z', value: 6 },
+    ],
+  })
+  app.mount(root)
+  try {
+    const line = root.querySelector('path[stroke="#d76b21"]')
+    expect(line?.getAttribute('d')?.match(/[ML]/g)).toEqual(['M', 'L', 'M', 'L'])
+  } finally {
+    app.unmount()
   }
 })

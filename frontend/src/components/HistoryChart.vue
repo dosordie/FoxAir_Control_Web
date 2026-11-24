@@ -6,7 +6,7 @@ const props = defineProps<{
   points: HistoryPoint[]
   label: string
   unit: string
-  step?: number
+  maxGapSeconds?: number
   cloud?: boolean
 }>()
 const selected = ref<number | null>(null)
@@ -44,7 +44,8 @@ const model = computed(() => {
   const segments: string[] = []
   for (const [index, point] of coordinates.entries()) {
     const previous = coordinates[index - 1]
-    const gap = !previous || (props.step && point.time - previous.time > props.step * 1500)
+    const gap =
+      !previous || (props.maxGapSeconds && point.time - previous.time > props.maxGapSeconds * 1000)
     segments.push(`${gap ? 'M' : 'L'}${point.x},${point.y}`)
   }
   return { coordinates, path: segments.join(' '), first, span, low, high }

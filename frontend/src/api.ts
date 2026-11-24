@@ -1,6 +1,11 @@
 import type { OverviewField, OverviewLayout } from './overview'
 
-export type TimerM1 = { enabled: boolean | null; max_kw: number | null; stale: boolean }
+export type TimerM1 = {
+  enabled: boolean | null
+  max_kw: number | null
+  window: { start: number; end: number; days: number } | null
+  stale: boolean
+}
 export type GiraOption = { layout_key: string; name: string; object_key: string; icon?: string }
 export type GiraItem = { id: number; layout_key: string; name: string; icon?: string; decimals?: number | null; unit: string; value: string | number | null; timestamp: string | null; quality: string }
 export type HistorySettings = { enabled: boolean; retention_days: number; fields: { register: number; label: string; unit: string }[] }

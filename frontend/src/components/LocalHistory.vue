@@ -174,7 +174,7 @@ async function load() {
         :points="series.points"
         :label="series.label"
         :unit="series.unit"
-        :step="series.step_seconds"
+        :max-gap-seconds="Math.max(3600, (series.step_seconds ?? 0) * 1.5)"
       />
       <p v-else>Für diesen Zeitraum sind keine Messwerte gespeichert.</p>
     </template>

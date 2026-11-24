@@ -23,6 +23,7 @@ import { giraIcon } from './giraIcons'
 import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
 import type { GiraItem, TimerM1 } from './api'
+import { inM1Window } from './timerWindow'
 import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
@@ -410,7 +411,10 @@ function readingHint(key: string) {
   return hints[key] || ''
 }
 const m1Limit = ref<TimerM1 | null>(null)
-const m1Status = computed(() => m1Limit.value?.enabled == null ? 'Timerstatus unbekannt' : m1Limit.value.enabled ? 'Timer eingeschaltet' : 'Timer ausgeschaltet')
+const m1Clock = ref(new Date())
+const m1Status = computed(() =>
+  m1Limit.value?.enabled == null ? 'Status unbekannt' : m1Limit.value.enabled ? 'Aktiviert' : 'Deaktiviert')
+const m1InWindow = computed(() => inM1Window(m1Limit.value, m1Clock.value))
 const m1Selected = computed(() =>
   overviewLayout.value[mobileProfile ? 'mobile' : 'desktop'].includes('timer_m1') || glance.value.includes('timer_m1'))
 watch([page, selectedTransport, transportPaused, m1Selected], ([current, transport, paused, visible], _, cleanup) => {
@@ -420,6 +424,7 @@ watch([page, selectedTransport, transportPaused, m1Selected], ([current, transpo
   let timer: ReturnType<typeof setTimeout> | undefined
   cleanup(() => { active = false; clearTimeout(timer) })
   async function refresh() {
+    m1Clock.value = new Date()
     if (!document.hidden && navigator.onLine) {
       try {
         const value = await api.timerM1(transport)
@@ -768,7 +773,10 @@ onBeforeUnmount(() => {
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong :class="{'gira-text':item.compactText}">{{ item.text }} <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
                 <span v-if="item.label" class="metric-label">{{ item.label }}</span>
-                <small v-if="item.key === 'timer_m1'">{{ m1Status }}</small>
+                <template v-if="item.key === 'timer_m1'">
+                  <small>{{ m1Status }}</small>
+                  <small v-if="m1InWindow" title="Berechnet mit der Ortszeit des Browsers">Im Zeitfenster</small>
+                </template>
                 <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">UP {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
               </div>
             </div>
@@ -836,7 +844,15 @@ onBeforeUnmount(() => {
                   <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
                   <button v-else-if="key === 'parameters'" type="button" class="main-action glance-wide" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
                   <div v-else-if="key.startsWith('spacer:')" class="glance-spacer" aria-hidden="true"></div>
-                  <div v-else-if="key === 'timer_m1'" class="power-summary"><div :class="{'is-stale':m1Limit?.stale}"><Gauge :size="17" aria-hidden="true" /><strong>{{ m1Limit?.max_kw?.toLocaleString('de-DE', { maximumFractionDigits: 1 }) ?? '—' }} kW</strong><small>Leistungsgrenze M1</small><small>{{ m1Status }}</small></div></div>
+                  <div v-else-if="key === 'timer_m1'" class="power-summary">
+                    <div :class="{'is-stale':m1Limit?.stale}">
+                      <Gauge :size="17" aria-hidden="true" />
+                      <strong>{{ m1Limit?.max_kw?.toLocaleString('de-DE', { maximumFractionDigits: 1 }) ?? '—' }} kW</strong>
+                      <small>{{ overviewFields.timer_m1.label }}</small>
+                      <small>{{ m1Status }}</small>
+                      <small v-if="m1InWindow" title="Berechnet mit der Ortszeit des Browsers">Im Zeitfenster</small>
+                    </div>
+                  </div>
                   <PowerSummary v-else :metrics="snapshot?.metrics" :selection="[key]" :gira="giraItems" :spread="waterSpread" />
                 </template>
               </div>
