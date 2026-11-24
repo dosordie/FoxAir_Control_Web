@@ -88,6 +88,8 @@ from backend.routes.overview import router as overview_router, standard_ranges
 from backend.local_history import router as history_router
 app.include_router(overview_router)
 app.include_router(history_router)
+from backend.routes.camera import router as camera_router
+app.include_router(camera_router)
 app.add_middleware(AccessMiddleware)
 
 VALID_TRANSPORTS = set(TRANSPORTS)

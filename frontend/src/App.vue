@@ -22,12 +22,13 @@ import LocalHistory from './components/LocalHistory.vue'
 import { giraIcon } from './giraIcons'
 import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
-import type { GiraItem, TimerM1 } from './api'
+import type { CameraSettings, GiraItem, TimerM1 } from './api'
 import { inM1Window } from './timerWindow'
 import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
 import ExpertGira from './components/ExpertGira.vue'
+import ExpertCamera from './components/ExpertCamera.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import MainRegisterBrowser from './components/MainRegisterBrowser.vue'
 import SpecialControls from './components/SpecialControls.vue'
@@ -88,6 +89,61 @@ let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const { status: updateStatus, version: installedVersion, loading: updateLoading, error: updateCheckError, checkedAt: updateCheckedAt, refresh: refreshUpdateStatus } = useUpdateStatus()
 const { signedIn, sessionChecked, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
+const cameraStreamUrl = '/api/camera/stream'
+const cameraConfig = ref<CameraSettings>()
+const cameraImageUrl = ref('')
+let cameraTimer: ReturnType<typeof setTimeout> | undefined
+let cameraFrame = 0
+const cameraDialog = ref<HTMLDialogElement>()
+const cameraOpen = ref(false)
+const cameraFailed = ref(false)
+const canOpenCamera = computed(() =>
+  cameraConfig.value?.enabled && signedIn.value && browserOnline.value && !transportPaused.value)
+watch([signedIn, browserOnline], async ([active, online], _, cleanup) => {
+  let current = true
+  cleanup(() => { current = false })
+  cameraConfig.value = undefined
+  if (!active || !online) return
+  try {
+    const config = await api.cameraSettings()
+    if (current) cameraConfig.value = config
+  } catch {
+    // The camera remains unavailable until settings can be read.
+  }
+}, { immediate: true })
+function openCamera() {
+  if (!canOpenCamera.value || !cameraDialog.value) return
+  cameraFailed.value = false
+  cameraOpen.value = true
+  requestCameraImage()
+  cameraDialog.value.showModal()
+}
+function requestCameraImage() {
+  cameraImageUrl.value = cameraConfig.value?.mode === 'jpeg'
+    ? cameraStreamUrl + '?frame=' + ++cameraFrame
+    : cameraStreamUrl
+}
+function cameraImageSettled(failed: boolean) {
+  cameraFailed.value = failed
+  clearTimeout(cameraTimer)
+  const config = cameraConfig.value
+  if (cameraOpen.value && config?.mode === 'jpeg')
+    cameraTimer = setTimeout(requestCameraImage, config.interval_ms)
+}
+watch(cameraOpen, (opened) => {
+  if (!opened) {
+    clearTimeout(cameraTimer)
+    cameraImageUrl.value = ''
+  }
+})
+function closeCamera() {
+  cameraOpen.value = false
+  cameraDialog.value?.close()
+}
+watch([canOpenCamera, page], ([available, currentPage]) => {
+  if (cameraOpen.value && (!available || currentPage !== 'home')) closeCamera()
+})
+
 watch(signedIn, (active) => { if (active) void refreshUpdateStatus() })
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
@@ -747,6 +803,8 @@ onBeforeUnmount(() => {
                   <div class="fan-ring integrated-fan" :class="{ 'fan-running': fanRunning }" :aria-label="fanRunning?'Lüfter dreht':'Lüfter steht'">
                     <svg class="fan-rotor" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="rotor-metal" x2="1" y2="1"><stop stop-color="#a6a9ac"/><stop offset=".5" stop-color="#343b40"/><stop offset="1" stop-color="#717a80"/></linearGradient></defs><g fill="url(#rotor-metal)" stroke="#1b2024" stroke-width=".6"><path v-for="rotation in [0,90,180,270]" :key="rotation" :transform="'rotate('+rotation+' 50 50)'" d="M49 48 C27 46 14 34 21 18 C35 8 52 19 56 37 L54 48Z"/></g><circle cx="50" cy="50" r="10" fill="#50585e" stroke="#828a90"/><circle cx="50" cy="50" r="3" fill="#252b30"/></svg>
                   </div>
+                  <button v-if="canOpenCamera" class="heatpump-camera-trigger" type="button"
+                    aria-label="Kamerabild der Wärmepumpe öffnen" title="Kamerabild öffnen" @click="openCamera"></button>
                   <HeatpumpStatus :mode="currentRegisterValue(1012)" :run="currentRegisterValue(2012)" :power="snapshot?.metrics.power || null" />
 
                 </div>
@@ -1018,11 +1076,26 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <LanAccessSettings v-if="adminAuthenticated && browserOnline" />
-        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" @saved="giraRevision++" />
+        <details v-if="adminAuthenticated" class="settings-panel panel expert-settings">
+          <summary>Experteneinstellungen</summary>
+          <ExpertCamera v-if="secureAdminContext && browserOnline" @saved="cameraConfig = $event" />
+          <ExpertGira settings :admin="adminAuthenticated" :secure="secureAdminContext" @saved="giraRevision++" />
+        </details>
       </template>
     </main>
 
 
+    <dialog ref="cameraDialog" class="connection-dialog camera-dialog panel" aria-labelledby="camera-dialog-title" @close="cameraOpen = false">
+      <div class="connection-dialog-content">
+        <header class="connection-dialog-header">
+          <h2 id="camera-dialog-title">Kamerabild der Wärmepumpe</h2>
+          <button class="outlined-action" type="button" @click="closeCamera">Schließen</button>
+        </header>
+        <p v-if="cameraFailed" role="alert">Kamerabild nicht verfügbar. Prüfe URL und Bildquelle in den Experteneinstellungen.</p>
+        <img v-if="cameraOpen && cameraImageUrl" v-show="!cameraFailed" class="heatpump-camera-stream" :src="cameraImageUrl"
+          alt="Livebild der Wärmepumpe" @load="cameraImageSettled(false)" @error="cameraImageSettled(true)" />
+      </div>
+    </dialog>
     <dialog ref="historyDialogElement" class="connection-dialog panel" aria-labelledby="history-dialog-title" @close="historyOpen=false" @cancel="historyOpen=false">
       <div class="connection-dialog-content">
         <header class="connection-dialog-header"><div><span class="section-caption">VERLAUF</span><h2 id="history-dialog-title">Verlauf &amp; Diagramme</h2></div><button class="outlined-action" aria-label="Verlauf schließen" @click="historyOpen=false">Schließen</button></header>

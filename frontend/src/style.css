@@ -5,7 +5,8 @@ body{margin:0;min-width:min(320px,100%)}
 button,input,select{font:inherit}button{cursor:pointer}
 button:disabled{cursor:not-allowed;opacity:.6}
 a{color:inherit}
-.app-shell{max-width:1320px;margin:0 auto;min-height:100vh;background:#f4f5f7;box-shadow:0 0 70px #00000007}
+:root{--app-shell-max-width:1320px}
+.app-shell{max-width:var(--app-shell-max-width);margin:0 auto;min-height:100vh;background:#f4f5f7;box-shadow:0 0 70px #00000007}
 .shell-header{display:flex;align-items:center;justify-content:space-between;height:76px;padding:0 38px;background:#fff;position:relative;z-index:5}
 .brand{display:flex;align-items:center;gap:12px;border:0;background:transparent;padding:0;color:#262930;text-align:left}
 .brand-mark{width:39px;height:39px;border-radius:13px;background:#ff8b37;color:white;display:grid;place-items:center}
@@ -552,3 +553,11 @@ a{color:inherit}
 .decoder-table thead th{background:#f6f7f9}.decoder-table tbody th{font-weight:500;overflow-wrap:anywhere}
 .decoder-table td:last-child{white-space:nowrap;font-weight:600}.register-decoder .decoder-on{color:#206443}
 .glance-spacer{min-width:0;pointer-events:none}
+.heatpump-camera-trigger{position:absolute;inset:0;width:100%;border:0;background:transparent;cursor:pointer;border-radius:12px}
+.heatpump-camera-trigger:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.heatpump-camera-stream{display:block;width:100%;max-height:70dvh;object-fit:contain}
+
+@media(min-width:601px){
+  .connection-dialog.camera-dialog{width:min(var(--app-shell-max-width),calc(100vw - 32px))}
+  .heatpump-camera-stream{max-height:calc(90dvh - 100px)}
+}
