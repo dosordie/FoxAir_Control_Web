@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
     class="panel expert-settings"
     @toggle="open = ($event.target as HTMLDetailsElement).open"
   >
-    <summary>Experteneinstellungen</summary>
+    <summary>Gira-WebSocket</summary>
     <div v-if="open">
       <p class="section-hint" role="status">
         {{

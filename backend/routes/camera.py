@@ -5,10 +5,11 @@ import re
 import socket
 from threading import BoundedSemaphore
 from urllib.parse import urlsplit
+from typing import Literal
 
 import anyio
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend import cloud_config
@@ -22,6 +23,14 @@ LAN_NETWORKS = tuple(
 )
 STREAM_SLOTS = BoundedSemaphore(4)
 TIMEOUT = 5
+MAX_JPEG_BYTES = 8 * 1024 * 1024
+IMAGE_HEADERS = {
+    "Cache-Control": "no-store",
+    "X-Accel-Buffering": "no",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "sandbox; default-src 'none'",
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
 
 
 class CameraStream(StreamingResponse):
@@ -39,6 +48,8 @@ class CameraStream(StreamingResponse):
 class CameraSettings(BaseModel):
     enabled: bool = False
     url: str = Field(default="", max_length=2048)
+    mode: Literal["jpeg", "mjpeg"] = "mjpeg"
+    interval_ms: int = Field(default=2000, ge=200, le=60000)
 
 
 def settings_path():
@@ -77,7 +88,7 @@ def endpoint(url):
 def get_settings(request: Request):
     config = camera_settings()
     return {
-        "enabled": config.enabled,
+        **config.model_dump(),
         "url": config.url if cloud_config.is_admin_session(request) else "",
     }
 
@@ -92,7 +103,7 @@ def save_settings(payload: CameraSettings, request: Request):
     return payload
 
 
-def open_camera(parts):
+def open_camera(parts, mode="mjpeg"):
     secure = parts.scheme == "https"
     port = parts.port or (443 if secure else 80)
     addresses = socket.getaddrinfo(parts.hostname, port, type=socket.SOCK_STREAM)
@@ -115,10 +126,16 @@ def open_camera(parts):
     )
     path = (parts.path or "/") + ("?" + parts.query if parts.query else "")
     try:
-        connection.request("GET", path, headers={"Accept": "multipart/x-mixed-replace"})
+        accept = "image/jpeg" if mode == "jpeg" else "multipart/x-mixed-replace"
+        connection.request("GET", path, headers={"Accept": accept})
         response = connection.getresponse()
         media_type = Message()
         media_type["Content-Type"] = response.getheader("Content-Type", "")
+        if mode == "jpeg":
+            if response.status == 200 and media_type.get_content_type() == "image/jpeg":
+                return connection, response, "image/jpeg"
+            response.close()
+            raise HTTPException(502, "Die Kamera liefert kein JPEG-Einzelbild.")
         boundary = media_type.get_boundary()
         if (
             response.status != 200
@@ -147,7 +164,9 @@ def camera_stream(request: Request):
     if not STREAM_SLOTS.acquire(blocking=False):
         raise HTTPException(503, "Zu viele offene Kamerastreams.")
     try:
-        connection, response, content_type = open_camera(endpoint(config.url))
+        connection, response, content_type = open_camera(
+            endpoint(config.url), config.mode
+        )
     except (OSError, UpstreamError):
         STREAM_SLOTS.release()
         raise HTTPException(502, "Kamera ist nicht erreichbar.") from None
@@ -164,6 +183,19 @@ def camera_stream(request: Request):
             finally:
                 STREAM_SLOTS.release()
 
+    if config.mode == "jpeg":
+        try:
+            image = response.read(MAX_JPEG_BYTES + 1)
+            if len(image) > MAX_JPEG_BYTES or not image.startswith(b"\xff\xd8"):
+                raise HTTPException(502, "Ungültiges oder zu großes JPEG-Einzelbild.")
+            return Response(image, media_type=content_type, headers=IMAGE_HEADERS)
+        except (OSError, UpstreamError):
+            raise HTTPException(
+                502, "Kamerabild konnte nicht gelesen werden."
+            ) from None
+        finally:
+            close_stream()
+
     async def chunks():
         try:
             while not paused() and camera_settings() == config:
@@ -177,12 +209,6 @@ def camera_stream(request: Request):
     return CameraStream(
         chunks(),
         media_type=content_type,
-        headers={
-            "Cache-Control": "no-store",
-            "X-Accel-Buffering": "no",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "sandbox; default-src 'none'",
-            "Cross-Origin-Resource-Policy": "same-origin",
-        },
+        headers=IMAGE_HEADERS,
         release=close_stream,
     )

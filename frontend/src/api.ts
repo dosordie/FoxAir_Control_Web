@@ -177,7 +177,12 @@ async function get<T>(path: string): Promise<T> {
 }
 export type WarmlinkConfig = {medium?:'tcp'|'serial';serial_device?:string;baudrate?:number;idle_timeout_seconds?:number;browser_timeout_seconds?:number;connection_mode:'on_demand'|'browser'|'permanent';host:string;port:number;enabled:boolean;slave:number}
 export type TimerSnapshot = {values:Record<string,number>;transport:TransportId;kind:string}
-export type CameraSettings = {enabled: boolean; url: string}
+export type CameraSettings = {
+  enabled: boolean
+  url: string
+  mode: 'jpeg' | 'mjpeg'
+  interval_ms: number
+}
 export const api = {
   cameraSettings: () => get<CameraSettings>('/api/camera/settings'),
   saveCamera: (settings: CameraSettings) => post<CameraSettings>('/api/camera/settings', settings),

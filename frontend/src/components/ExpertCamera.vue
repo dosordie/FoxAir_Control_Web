@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { api } from '../api'
+import { api, type CameraSettings } from '../api'
 
-const emit = defineEmits<{ saved: [enabled: boolean] }>()
+const emit = defineEmits<{ saved: [settings: CameraSettings] }>()
 const enabled = ref(false)
 const url = ref('')
+const mode = ref<CameraSettings['mode']>('mjpeg')
+const interval = ref(2000)
 const busy = ref(true)
 const loaded = ref(false)
 const error = ref('')
@@ -15,6 +17,8 @@ onMounted(async () => {
     const settings = await api.cameraSettings()
     enabled.value = settings.enabled
     url.value = settings.url
+    mode.value = settings.mode
+    interval.value = settings.interval_ms
     loaded.value = true
   } catch (cause) {
     error.value = (cause as Error).message
@@ -28,9 +32,14 @@ async function save() {
   saved.value = false
   error.value = ''
   try {
-    const settings = await api.saveCamera({ enabled: enabled.value, url: url.value })
+    const settings = await api.saveCamera({
+      enabled: enabled.value,
+      url: url.value,
+      mode: mode.value,
+      interval_ms: interval.value,
+    })
     url.value = settings.url
-    emit('saved', settings.enabled)
+    emit('saved', settings)
     saved.value = true
   } catch (cause) {
     error.value = (cause as Error).message
@@ -42,12 +51,30 @@ async function save() {
 
 <template>
   <details class="settings-panel panel">
-    <summary>Experteneinstellungen · Wärmepumpenkamera</summary>
+    <summary>Kamera</summary>
     <form v-if="loaded" @submit.prevent="save">
       <label class="settings-check"
         ><input v-model="enabled" type="checkbox" /> Kamera aktivieren</label
       >
-      <label class="field-label" for="camera-url">MJPEG-Stream-URL</label>
+      <label class="field-label" for="camera-mode">Bildquelle</label>
+      <select id="camera-mode" v-model="mode" class="settings-input">
+        <option value="jpeg">JPEG · Einzelbild</option>
+        <option value="mjpeg">MJPEG · Livestream</option>
+      </select>
+      <template v-if="mode === 'jpeg'">
+        <label class="field-label" for="camera-interval">Abrufintervall in Millisekunden</label>
+        <input
+          id="camera-interval"
+          v-model.number="interval"
+          class="settings-input"
+          type="number"
+          min="200"
+          max="60000"
+          step="1"
+          required
+        />
+      </template>
+      <label class="field-label" for="camera-url">Kamera-URL</label>
       <input
         id="camera-url"
         v-model.trim="url"

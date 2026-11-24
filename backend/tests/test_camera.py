@@ -59,3 +59,24 @@ class CameraTests(TestCase):
                 camera.open_camera(camera.endpoint(self.settings["url"]))
             self.assertEqual(error.exception.status_code, 422)
             connect.assert_not_called()
+
+    def test_jpeg_mode_returns_a_single_uncached_image_and_closes_the_camera(self):
+        camera.cloud_config._atomic_json(
+            camera.settings_path(),
+            {**self.settings, "mode": "jpeg", "interval_ms": 1500},
+        )
+        connection, upstream = Mock(), Mock()
+        upstream.read.return_value = b"\xff\xd8test\xff\xd9"
+        with (
+            patch.object(camera, "principal", return_value={"role": "viewer"}),
+            patch.object(
+                camera, "open_camera", return_value=(connection, upstream, "image/jpeg")
+            ) as open_camera,
+        ):
+            result = self.client.get("/api/camera/stream?frame=1")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.content, upstream.read.return_value)
+        self.assertEqual(result.headers["cache-control"], "no-store")
+        self.assertEqual(open_camera.call_args.args[1], "jpeg")
+        upstream.close.assert_called_once()
+        connection.close.assert_called_once()

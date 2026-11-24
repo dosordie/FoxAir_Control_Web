@@ -22,7 +22,7 @@ import LocalHistory from './components/LocalHistory.vue'
 import { giraIcon } from './giraIcons'
 import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
-import type { GiraItem, TimerM1 } from './api'
+import type { CameraSettings, GiraItem, TimerM1 } from './api'
 import { inM1Window } from './timerWindow'
 import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
@@ -90,20 +90,23 @@ const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const { status: updateStatus, version: installedVersion, loading: updateLoading, error: updateCheckError, checkedAt: updateCheckedAt, refresh: refreshUpdateStatus } = useUpdateStatus()
 const { signedIn, sessionChecked, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
 const cameraStreamUrl = '/api/camera/stream'
-const cameraEnabled = ref(false)
+const cameraConfig = ref<CameraSettings>()
+const cameraImageUrl = ref('')
+let cameraTimer: ReturnType<typeof setTimeout> | undefined
+let cameraFrame = 0
 const cameraDialog = ref<HTMLDialogElement>()
 const cameraOpen = ref(false)
 const cameraFailed = ref(false)
 const canOpenCamera = computed(() =>
-  cameraEnabled.value && signedIn.value && browserOnline.value && !transportPaused.value)
+  cameraConfig.value?.enabled && signedIn.value && browserOnline.value && !transportPaused.value)
 watch([signedIn, browserOnline], async ([active, online], _, cleanup) => {
   let current = true
   cleanup(() => { current = false })
-  cameraEnabled.value = false
+  cameraConfig.value = undefined
   if (!active || !online) return
   try {
     const config = await api.cameraSettings()
-    if (current) cameraEnabled.value = config.enabled
+    if (current) cameraConfig.value = config
   } catch {
     // The camera remains unavailable until settings can be read.
   }
@@ -112,8 +115,27 @@ function openCamera() {
   if (!canOpenCamera.value || !cameraDialog.value) return
   cameraFailed.value = false
   cameraOpen.value = true
+  requestCameraImage()
   cameraDialog.value.showModal()
 }
+function requestCameraImage() {
+  cameraImageUrl.value = cameraConfig.value?.mode === 'jpeg'
+    ? cameraStreamUrl + '?frame=' + ++cameraFrame
+    : cameraStreamUrl
+}
+function cameraImageSettled(failed: boolean) {
+  cameraFailed.value = failed
+  clearTimeout(cameraTimer)
+  const config = cameraConfig.value
+  if (cameraOpen.value && config?.mode === 'jpeg')
+    cameraTimer = setTimeout(requestCameraImage, config.interval_ms)
+}
+watch(cameraOpen, (opened) => {
+  if (!opened) {
+    clearTimeout(cameraTimer)
+    cameraImageUrl.value = ''
+  }
+})
 function closeCamera() {
   cameraOpen.value = false
   cameraDialog.value?.close()
@@ -1054,8 +1076,11 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <LanAccessSettings v-if="adminAuthenticated && browserOnline" />
-        <ExpertCamera v-if="adminAuthenticated && secureAdminContext && browserOnline" @saved="cameraEnabled = $event" />
-        <ExpertGira v-if="adminAuthenticated" settings :admin="adminAuthenticated" :secure="secureAdminContext" @saved="giraRevision++" />
+        <details v-if="adminAuthenticated" class="settings-panel panel expert-settings">
+          <summary>Experteneinstellungen</summary>
+          <ExpertCamera v-if="secureAdminContext && browserOnline" @saved="cameraConfig = $event" />
+          <ExpertGira settings :admin="adminAuthenticated" :secure="secureAdminContext" @saved="giraRevision++" />
+        </details>
       </template>
     </main>
 
@@ -1066,9 +1091,9 @@ onBeforeUnmount(() => {
           <h2 id="camera-dialog-title">Kamerabild der Wärmepumpe</h2>
           <button class="outlined-action" type="button" @click="closeCamera">Schließen</button>
         </header>
-        <p v-if="cameraFailed" role="alert">Kamerastream nicht verfügbar. Prüfe die MJPEG-Adresse in den Experteneinstellungen.</p>
-        <img v-else-if="cameraOpen" class="heatpump-camera-stream" :src="cameraStreamUrl"
-          alt="Livebild der Wärmepumpe" @error="cameraFailed = true" />
+        <p v-if="cameraFailed" role="alert">Kamerabild nicht verfügbar. Prüfe URL und Bildquelle in den Experteneinstellungen.</p>
+        <img v-if="cameraOpen && cameraImageUrl" v-show="!cameraFailed" class="heatpump-camera-stream" :src="cameraImageUrl"
+          alt="Livebild der Wärmepumpe" @load="cameraImageSettled(false)" @error="cameraImageSettled(true)" />
       </div>
     </dialog>
     <dialog ref="historyDialogElement" class="connection-dialog panel" aria-labelledby="history-dialog-title" @close="historyOpen=false" @cancel="historyOpen=false">
