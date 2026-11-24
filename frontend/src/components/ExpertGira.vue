@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { giraIcon, giraIcons } from '../giraIcons'
+import { formatGiraValue } from '../giraValues'
 import type { GiraItem } from '../api'
 const emit = defineEmits<{ values: [GiraItem[]]; saved: [] }>()
 const props = defineProps<{ settings?: boolean; admin?: boolean; secure?: boolean }>()
@@ -15,7 +16,14 @@ type Config = {
   password_configured?: boolean
   clear_password: boolean
   auth_header: boolean
-  objects: { key: string; name: string; unit: string; text_encoding?: string; icon?: string }[]
+  objects: {
+    key: string
+    name: string
+    unit: string
+    text_encoding?: string
+    icon?: string
+    decimals?: number | null
+  }[]
 }
 type State = {
   enabled: boolean
@@ -26,6 +34,7 @@ type State = {
     id: number
     name: string
     icon?: string
+    decimals?: number | null
     unit: string
     value: number | string | null
     timestamp: string | null
@@ -88,6 +97,7 @@ async function load() {
           ...item,
           text_encoding: item.text_encoding || 'auto',
           icon: item.icon || 'knx',
+          decimals: item.decimals ?? null,
         })),
       }
   } catch (error) {
@@ -150,12 +160,6 @@ async function refresh() {
   if (!disposed && (!props.settings || open.value))
     timer = setTimeout(refresh, state.value.enabled ? 2000 : 30000)
 }
-const display = (value: number | string | null) =>
-  value === null
-    ? '—'
-    : typeof value === 'number'
-      ? value.toLocaleString('de-DE', { maximumFractionDigits: 3 })
-      : value
 onMounted(() => {
   if (!props.settings) void refresh()
 })
@@ -264,6 +268,15 @@ onBeforeUnmount(() => {
                 </select>
               </label>
               <label
+                >Nachkommastellen für Zahlen
+                <select v-model="object.decimals" class="settings-input">
+                  <option :value="null">Automatisch</option>
+                  <option v-for="count in 7" :key="count" :value="count - 1">
+                    {{ count - 1 }}
+                  </option>
+                </select>
+              </label>
+              <label
                 >Textdarstellung<select class="settings-input" v-model="object.text_encoding">
                   <option value="auto">Automatisch (UTF-8/Base64)</option>
                   <option value="plain">Klartext unverändert</option>
@@ -286,6 +299,7 @@ onBeforeUnmount(() => {
                   unit: '',
                   text_encoding: 'auto',
                   icon: 'knx',
+                  decimals: null,
                 })
               "
             >
@@ -314,7 +328,8 @@ onBeforeUnmount(() => {
       >
         <component :is="giraIcon(item.icon)" :size="17" aria-hidden="true" />
         <strong
-          >{{ display(item.value) }} <small v-if="item.unit">{{ item.unit }}</small></strong
+          >{{ formatGiraValue(item.value, item.decimals, 3) }}
+          <small v-if="item.unit">{{ item.unit }}</small></strong
         ><small v-if="item.name">{{ item.name }}</small>
       </div>
     </div>

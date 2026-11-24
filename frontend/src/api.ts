@@ -1,7 +1,7 @@
 import type { OverviewField, OverviewLayout } from './overview'
 
 export type GiraOption = { layout_key: string; name: string; object_key: string; icon?: string }
-export type GiraItem = { id: number; layout_key: string; name: string; icon?: string; unit: string; value: string | number | null; timestamp: string | null; quality: string }
+export type GiraItem = { id: number; layout_key: string; name: string; icon?: string; decimals?: number | null; unit: string; value: string | number | null; timestamp: string | null; quality: string }
 export type HistorySettings = { enabled: boolean; retention_days: number; fields: { register: number; label: string; unit: string }[] }
 export type HistoryPoint = { time: string; value: number; min?: number; max?: number; source?: string }
 export type HistorySeries = { label: string; unit: string; points: HistoryPoint[]; step_seconds?: number }

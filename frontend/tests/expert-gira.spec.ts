@@ -1,3 +1,4 @@
+import { formatGiraValue } from '../src/giraValues'
 import {createApp,defineComponent,h,nextTick,reactive} from 'vue'
 import {afterEach,it,expect,vi} from 'vitest'
 import ExpertGira from '../src/components/ExpertGira.vue'
@@ -24,4 +25,11 @@ it('does not restore private connection fields from a late response after losing
  await flush()
  expect(root.querySelector('fieldset')?.disabled).toBe(true)
  expect(Array.from(root.querySelectorAll('input')).some(input=>input.value==='192.168.1.50')).toBe(false)
+})
+
+it('applies explicit Gira precision only to pure numbers', () => {
+  expect(formatGiraValue(12.3456, 2)).toBe('12,35')
+  expect(formatGiraValue('12,3', 3)).toBe('12,300')
+  expect(formatGiraValue(12.7, 0)).toBe('13')
+  expect(formatGiraValue('Ein seit 20h:42 min', 0)).toBe('Ein seit 20h:42 min')
 })

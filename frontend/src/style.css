@@ -534,6 +534,7 @@ a{color:inherit}
 .glance-order>.power-summary{display:block;margin:0}
 .glance-order>.power-summary>div{height:100%}
 .glance-order>.expert-metrics .power-summary{margin:0}
+@media(min-width:1024px){.target-delta{font-size:16px;font-weight:700}}
 .target-delta.delta-neutral{color:#e4e6e9}.target-delta.delta-cold{color:#a9dcff}.target-delta.delta-warm{color:#ffb8b8}
 .overview-order{border:0;padding:12px 0;margin:0}.overview-order ol{margin:0;padding:0;list-style:none}
 .overview-order li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef0f2;cursor:grab}

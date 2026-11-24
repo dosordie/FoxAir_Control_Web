@@ -24,6 +24,7 @@ router = APIRouter()
 class ObjectConfig(BaseModel):
     key: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9@_./:-]+$")
     name: str = Field(default="", max_length=60)
+    decimals: int | None = Field(default=None, ge=0, le=6)
     icon: Literal[
         "knx",
         "temperature",
@@ -251,6 +252,7 @@ class GiraClient:
                     "layout_key": layout_key(obj["key"]),
                     "name": obj["name"],
                     "icon": obj.get("icon", "knx"),
+                    "decimals": obj.get("decimals"),
                     "unit": obj["unit"],
                     "value": row["value"] if row else None,
                     "timestamp": row["timestamp"] if row else None,

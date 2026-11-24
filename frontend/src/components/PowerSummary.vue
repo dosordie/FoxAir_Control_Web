@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { Dashboard, GiraItem } from '../api'
 import { giraIcon } from '../giraIcons'
+import { formatGiraValue } from '../giraValues'
 import { overviewFields, type OverviewField } from '../overview'
 
 const props = defineProps<{
@@ -25,7 +26,7 @@ const fields = computed(() =>
           label: item?.name || '',
           icon: giraIcon(item?.icon),
           unit: item?.unit || '',
-          text: format(item?.value),
+          text: formatGiraValue(item?.value, item?.decimals),
           stale: item?.quality === 'stale',
         },
       ]

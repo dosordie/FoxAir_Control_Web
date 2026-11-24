@@ -34,6 +34,7 @@ onMounted(async () => {
   }
 })
 
+const activeLowContacts = new Set([0, 1, 2, 3, 4, 5, 6, 9])
 const cloudCodes: Partial<Record<number, string>> = { 2019: 'O01~023', 2034: 'S01~S10' }
 
 function sample(register: number) {
@@ -77,7 +78,7 @@ function decode(register: number) {
     if (!Number.isInteger(bit) || bit < 0 || bit > 15 || /reserviert|unbekannt/i.test(label))
       return []
     const set = raw == null ? null : Boolean(raw & (1 << bit))
-    const activeLow = register === 2034 && bit < 10
+    const activeLow = register === 2034 && activeLowContacts.has(bit)
     const name =
       register === 2019 && bit === 0
         ? 'Kompressor läuft'
@@ -134,6 +135,10 @@ function decode(register: number) {
         :aria-labelledby="'decoder-tab-' + index"
       >
         <div v-for="register in section.registers" :key="register">
+          <p v-if="register === 2034" class="section-hint">
+            Die bekannten Kontakte S01–S10 sind bei Rohbit 0 aktiv. Die beiden SG-Kontakte sind bei
+            Rohbit 1 aktiv. Der Kontaktstatus allein zeigt keine Störung an.
+          </p>
           <p class="section-hint">
             Register {{ register }} ·
             {{
@@ -152,7 +157,7 @@ function decode(register: number) {
             <thead>
               <tr>
                 <th scope="col">Bit</th>
-                <th scope="col">Wert</th>
+                <th scope="col">Rohbit</th>
                 <th scope="col">{{ section.title === 'Lastausgänge' ? 'Ausgang' : 'Kontakt' }}</th>
                 <th scope="col">Status</th>
               </tr>

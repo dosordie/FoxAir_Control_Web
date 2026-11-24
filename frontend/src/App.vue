@@ -20,6 +20,7 @@ import CompressorGauge from './components/CompressorGauge.vue'
 import OverviewSettings from './components/OverviewSettings.vue'
 import LocalHistory from './components/LocalHistory.vue'
 import { giraIcon } from './giraIcons'
+import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
 import type { GiraItem } from './api'
 import RegisterDecoder from './components/RegisterDecoder.vue'
@@ -408,8 +409,8 @@ const readings = computed(() => {
     if (key.startsWith('gira:')) {
       const item = giraItems.value.find(row => row.layout_key === key)
       return [{ key, label: item?.name || '', unit: item?.unit || '', icon: giraIcon(item?.icon),
-        text: displayMetric(item ? { ...item, raw: null, timestamp: item.timestamp || '' } as Metric : null),
-        compactText: typeof item?.value === 'string' && !/^[-+]?[0-9]+(?:[.,][0-9]+)?$/.test(item.value.trim()),
+        text: formatGiraValue(item?.value, item?.decimals),
+        compactText: isGiraText(item?.value),
         stale: item?.quality === 'stale' }]
     }
     if (!Object.hasOwn(overviewFields, key)) return []
