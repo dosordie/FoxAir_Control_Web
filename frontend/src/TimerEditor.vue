@@ -17,10 +17,9 @@ const base=computed(()=>kind.value==='operating'?1281+tab.value*7:1256+tab.value
 const maskReg=computed(()=> (kind.value==='operating'?1323:1268)+Math.floor(tab.value/2))
 const shift=computed(()=>8*(tab.value%2))
 const ownByte=computed(()=> (values.value[maskReg.value]??0)>>shift.value &255)
-const transportSupported=computed(()=>['cloud','warmlink_raw','standard_modbus'].includes(props.transport))
 let generation=0
 async function read(){
-  if(busy.value || !transportSupported.value)return
+  if(busy.value)return
   const request=++generation, transport=props.transport, group=kind.value
   busy.value=true; loaded.value=false; invalid.value.clear(); numberDrafts.value={};timeDrafts.value={}; error.value=''; message.value=''
   try{
@@ -62,11 +61,10 @@ onMounted(read)
       <button :disabled="busy" :class="{selected:kind==='operating'}" @click="kind='operating'">Betriebsarten M1–M6</button>
       <button :disabled="busy" :class="{selected:kind==='weekly'}" @click="kind='weekly'">Ein-/Aus-Wochentimer</button>
     </div>
-    <p class="section-hint">Quelle: {{ {cloud:'PHNIX Cloud',warmlink_raw:'LTE-/Warmlink-Modbus',standard_modbus:'Standard-Modbus',display_modbus:'Display-Modbus'}[transport] }} · Änderungen werden erst nach Lesen des vollständigen Ausgangszustands freigegeben.</p>
-    <p v-if="!transportSupported" class="read-error">Zeitprogramme sind über Cloud, LTE-Modbus und Standard-Modbus verfügbar.</p>
+    <p class="section-hint">Quelle: {{ {cloud:'PHNIX Cloud',warmlink_raw:'LTE-/Warmlink-Modbus',standard_modbus:'Standard-Modbus',display_modbus:'Display-Modbus'}[transport] }} · {{ transport === 'display_modbus' ? 'Lesend. Fehlende Timerwerte über die Display-Parametersynchronisation anfordern.' : 'Änderungen werden erst nach Lesen des vollständigen Ausgangszustands freigegeben.' }}</p>
     <p v-if="error" role="alert" class="read-error">{{ error }}</p>
     <p v-if="message" role="status" class="success-text">{{ message }}</p>
-    <button type="button" class="outlined-action" :disabled="busy||!transportSupported" @click="read">{{ busy?'Bitte warten …':'Werte aktualisieren' }}</button>
+    <button type="button" class="outlined-action" :disabled="busy" @click="read">{{ busy?'Bitte warten …':'Werte aktualisieren' }}</button>
     <template v-if="loaded">
       <div v-if="!silent" class="timer-tabs program-tabs"><button v-for="n in 6" :key="n" type="button" :disabled="busy" :class="{selected:tab===n-1}" @click="tab=n-1">{{ kind==='operating'?'M':'' }}{{ n }}</button></div>
       <fieldset :disabled="busy||!admin||transport==='display_modbus'" class="timer-fields">
@@ -91,10 +89,10 @@ onMounted(read)
           </div>
         </template>
       </fieldset>
-      <p class="section-hint">Aktive betroffene Programme werden vor Parameteränderungen deaktiviert und erst nach bestätigten Zwischenwerten wieder freigegeben. Bei Fehlern stoppt der Auftrag.</p>
+      <p v-if="transport !== 'display_modbus'" class="section-hint">Aktive betroffene Programme werden vor Parameteränderungen deaktiviert und erst nach bestätigten Zwischenwerten wieder freigegeben. Bei Fehlern stoppt der Auftrag.</p>
       <p v-if="invalid.size" class="read-error">Bitte gültige Uhrzeiten und Zahlen in 0,1-Schritten eingeben.</p>
-      <button class="main-action" :disabled="busy||!admin||transport==='display_modbus'||invalid.size>0" @click="save">Änderungen mit Readback senden</button>
-      <p v-if="!admin" class="section-hint">Zum Ändern oben rechts als Administrator anmelden.</p>
+      <button v-if="transport !== 'display_modbus'" class="main-action" :disabled="busy||!admin||invalid.size>0" @click="save">Änderungen mit Readback senden</button>
+      <p v-if="!admin && transport !== 'display_modbus'" class="section-hint">Zum Ändern oben rechts als Administrator anmelden.</p>
     </template>
   </div>
 </template>

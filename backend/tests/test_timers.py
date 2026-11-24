@@ -7,6 +7,23 @@ from backend.cloud_write import WriteValidationError,WriteConflictError,_format_
 
 
 class TimerSchemaTests(unittest.TestCase):
+    def test_standard_is_accepted_by_timer_write_api(self):
+        from backend.main import TimerWrite
+        self.assertEqual(TimerWrite(transport='standard_modbus', values={}, expected={}).transport, 'standard_modbus')
+
+    def test_m1_summary_uses_only_low_enable_byte_and_display_cache(self):
+        rows = {'1323': {'raw': 0x8000, 'quality': 'observed'}, '1287': {'raw': 25, 'quality': 'observed'}}
+        with patch('backend.transport_selection.paused', return_value=False), \
+             patch('backend.display_bus.manager.lease'), \
+             patch('backend.display_bus.manager.values', return_value=rows), \
+             patch('backend.timers.connection') as connection:
+            self.assertEqual(timers.read_m1('display_modbus'), {'enabled': False, 'max_kw': 2.5, 'stale': False})
+            rows['1323']['raw'] |= 0x80
+            self.assertTrue(timers.read_m1('display_modbus')['enabled'])
+            del rows['1287']
+            self.assertIsNone(timers.read_m1('display_modbus')['max_kw'])
+            connection.assert_not_called()
+
     def test_word_scaling_and_mask_payloads(self):
         self.assertEqual(timers.cloud_word(1284,'35.1'),351)
         self.assertEqual(timers.cloud_word(1323,'1000000110000010'),0x8182)

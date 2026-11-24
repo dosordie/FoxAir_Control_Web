@@ -20,6 +20,8 @@ from backend.warmlink import open_warmlink
 SILENT = dict(zip(range(1244, 1250), ('Timer_Mute_On_En', 'TimerMuteOnHour', 'TimerMuteOnMinute', 'Timer_Mute_Off_En', 'TimerMuteOffHour', 'TimerMuteOffMinute')))
 WEEKLY = {**{1256+i:f'KG{i+1}' for i in range(12)},1268:'KG13~KG28',1269:'KG29~KG44',1270:'KG45~KG60'}
 OPERATING = {**{1281+(n-1)*7+i:f'M{n} {suffix}' for n in range(1,7) for i,suffix in enumerate(('Start','End','Hot Water Target','Heating Target','Cooling Target','Mode','Max. Power'))},1323:'M1_2 Enalbe',1324:'M3_4 Enalbe',1325:'M5_6 Enalbe'}
+M1_ENABLE = 1323
+M1_LIMIT = 1287
 SCHEMAS = {'silent': SILENT, 'weekly': WEEKLY, 'operating': OPERATING}
 _lock = threading.RLock()
 _last_write = 0.0
@@ -161,13 +163,51 @@ def cache_words(kind,transport,words,identity):
         merge({code:{'value':wire_value(reg,words[str(reg)])} for reg,code in schema(kind).items()},source=identity)
 
 
+def read_m1(transport):
+    from backend.transport_selection import paused
+
+    words = {}
+    stale = False
+    registers = (M1_ENABLE, M1_LIMIT)
+    if paused():
+        return {"enabled": None, "max_kw": None, "stale": True}
+    if transport == "display_modbus":
+        from backend.display_bus import manager
+        manager.lease()
+        values = manager.values()
+        rows = [values.get(str(reg)) for reg in registers]
+        stale = any(row and row.get("quality") == "stale" for row in rows)
+        words = {reg: row.get("raw") for reg, row in zip(registers, rows) if row}
+    else:
+        if transport == "warmlink_raw":
+            from backend.register_scan import status
+            if status()["status"] == "running":
+                return {"enabled": None, "max_kw": None, "stale": True}
+        with _lock, connection(transport) as (client, identity):
+            if transport == "cloud":
+                rows = client.read_codes([OPERATING[reg] for reg in registers])
+                for reg in registers:
+                    row = rows.get(OPERATING[reg])
+                    if row and row.get("value") not in (None, ""):
+                        words[reg] = cloud_word(reg, row["value"])
+            else:
+                words = {reg: client.read_holding(reg, 1)[0] for reg in registers}
+            check_connection(transport, identity)
+    mask_word, watts_word = words.get(M1_ENABLE), words.get(M1_LIMIT)
+    return {
+        "enabled": bool(mask_word & 128) if isinstance(mask_word, int) else None,
+        "max_kw": watts_word / 10 if isinstance(watts_word, int) and 0 <= watts_word <= 32767 else None,
+        "stale": stale,
+    }
+
+
 def read(kind, transport):
     schema(kind)
     if transport == 'display_modbus':
         from backend.display_bus import manager
         manager.lease()
         available = manager.values()
-        if any(str(reg) not in available for reg in schema(kind)):
+        if any(available.get(str(reg), {}).get('raw') is None for reg in schema(kind)):
             raise WriteValidationError('Display-Zeitprogramm noch unvollständig; alle Werte vom Bus lesen')
         return {'values':{str(reg):available[str(reg)]['raw'] for reg in schema(kind)},'transport':transport,'kind':kind}
 

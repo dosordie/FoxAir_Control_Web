@@ -14,7 +14,7 @@ DEFAULT = ["flow", "tank", "outdoor", "return", "supply", "spread"]
 OPTIONS = (
     set(DEFAULT)
     | DIAGNOSTIC_FIELDS.keys()
-    | {"electrical_power", "thermal_power", "cop", "compressor_frequency"}
+    | {"electrical_power", "thermal_power", "cop", "compressor_frequency", "timer_m1"}
 )
 GLANCE_DEFAULT = [
     "electrical_power",

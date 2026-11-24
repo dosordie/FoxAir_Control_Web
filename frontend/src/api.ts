@@ -1,5 +1,6 @@
 import type { OverviewField, OverviewLayout } from './overview'
 
+export type TimerM1 = { enabled: boolean | null; max_kw: number | null; stale: boolean }
 export type GiraOption = { layout_key: string; name: string; object_key: string; icon?: string }
 export type GiraItem = { id: number; layout_key: string; name: string; icon?: string; decimals?: number | null; unit: string; value: string | number | null; timestamp: string | null; quality: string }
 export type HistorySettings = { enabled: boolean; retention_days: number; fields: { register: number; label: string; unit: string }[] }
@@ -187,6 +188,7 @@ export const api = {
   busLease: () => post<object>('/api/warmlink/lease',{}),
   passiveDashboard: () => get<Dashboard>('/api/dashboard?transport=warmlink_raw&passive=true'),
   busConnection: () => get<{connected:boolean;mode:string;error:string|null;last_rx:number|null;lease_seconds:number;observed:Record<string,{raw:number;age_seconds:number}>}>('/api/warmlink/connection'),
+  timerM1: (transport: TransportId) => get<TimerM1>('/api/timers/m1/summary?transport=' + encodeURIComponent(transport)),
   timerRead: (kind:string,transport:TransportId) => get<TimerSnapshot>('/api/timers/'+kind+'?transport='+encodeURIComponent(transport)),
   timerWrite: (kind:string,transport:TransportId,values:Record<string,number>,expected:Record<string,number>) => post<{confirmed:boolean;status:string;values?:Record<string,number>;message?:string}>('/api/timers/'+kind,{transport,values,expected}),
   warmlinkConfig: () => post<WarmlinkConfig>('/api/warmlink/config', {}),

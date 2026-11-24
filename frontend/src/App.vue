@@ -22,7 +22,7 @@ import LocalHistory from './components/LocalHistory.vue'
 import { giraIcon } from './giraIcons'
 import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
-import type { GiraItem } from './api'
+import type { GiraItem, TimerM1 } from './api'
 import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
 import HeatpumpStatus from './components/HeatpumpStatus.vue'
@@ -90,6 +90,7 @@ const { signedIn, sessionChecked, username, role, canOperate, ssoAvailable, logi
 watch(signedIn, (active) => { if (active) void refreshUpdateStatus() })
 
 type FirstWriteCode = 'Power' | 'Mode' | 'H22' | 'R02'
+const controlRegisters = {Power:1011,Mode:1012,H22:1030,R02:1158}
 const writeDrafts = ref<Record<FirstWriteCode,string>>({ Power:'', Mode: '', H22:'', R02: '' })
 const writeBusy = ref(false)
 const writeReading = ref(false)
@@ -109,7 +110,7 @@ async function refreshOperation(){
   const transport=selectedTransport.value
   writeReading.value=true;writeError.value=''
   try {
-    const row=await api.read({Power:1011,Mode:1012,H22:1030}[code],transport)
+    const row=await api.read(controlRegisters[code],transport)
     if(transport!==selectedTransport.value || code!==operationCode.value)return
     const rawValue=transport==='cloud'?row.value:row.raw??row.value
     const value=Number.isFinite(Number(rawValue))?Number(rawValue):rawValue
@@ -175,7 +176,7 @@ async function refreshWriteSources() {
   try {
     const codes:FirstWriteCode[]=page.value==='parameters'&&writableRegisterCode.value?[writableRegisterCode.value]:['Mode','R02']
     for (const code of codes) {
-      const reg={Power:1011,Mode:1012,H22:1030,R02:1158}[code]
+      const reg=controlRegisters[code]
       const row = await api.read(reg, transport)
       if (transport !== selectedTransport.value) return
       const value = transport === 'warmlink_raw' && code !== 'R02' ? row.raw ?? row.value : row.value
@@ -198,6 +199,7 @@ const writableRegisterCode = computed<FirstWriteCode | null>(() => {
 function writeSource(code: FirstWriteCode): CloudRow | RegisterValue | null {
   if(operationSources.value[code]) return operationSources.value[code] || null
   if (selectedTransport.value === 'warmlink_raw') return lteWriteSources.value[code] || null
+  if (selectedTransport.value === 'standard_modbus') return null
   return cloudRows.value.find(row => row.code === code) || null
 }
 function operationValueLabel(code:FirstWriteCode){
@@ -207,7 +209,7 @@ function operationValueLabel(code:FirstWriteCode){
 }
 function canWrite(code: FirstWriteCode): boolean {
   const source = writeSource(code)
-  return !transportPaused.value && browserOnline.value && secureAdminContext.value && adminAuthenticated.value && ['cloud', 'warmlink_raw'].includes(selectedTransport.value) &&
+  return !transportPaused.value && browserOnline.value && secureAdminContext.value && adminAuthenticated.value && ['cloud', 'warmlink_raw', 'standard_modbus'].includes(selectedTransport.value) &&
     !writeBusy.value && !writeReading.value && !!source && source.value !== null && ['fresh', 'cached'].includes(source.quality)
 }
 async function submitCloudWrite(code: FirstWriteCode) {
@@ -215,15 +217,19 @@ async function submitCloudWrite(code: FirstWriteCode) {
   const desired = writeValueText(writeDrafts.value[code])
   if (!canWrite(code) || !source || source.value === null || !desired) return
   const description = operationLabels[code]
-  const isLte = selectedTransport.value === 'warmlink_raw'
+  const transport = selectedTransport.value
+  const isLte = transport === 'warmlink_raw'
+  if (transport === 'standard_modbus' && (!('raw' in source) || source.raw == null || source.transport !== transport)) return
   writeBusy.value = true
   writeFeedback.value = ''
   writeError.value = ''
   try {
-    const result = await (isLte ? api.warmlinkWrite : api.cloudWrite)(code, desired, String(source.value))
+    const result = transport === 'standard_modbus' && 'raw' in source
+      ? await api.writeParameter(controlRegisters[code], transport, desired, String(source.raw), transport)
+      : await (isLte ? api.warmlinkWrite : api.cloudWrite)(code, desired, String(source.value))
     if (result.confirmed) {
       writeFeedback.value = result.status === 'unchanged' ? 'Wert ist bereits eingestellt.' :
-        description + ' wurde durch ' + (isLte ? 'LTE' : 'Cloud') + '-Readback bestätigt.'
+        description + ' wurde durch ' + (transport === 'standard_modbus' ? 'Standard-Modbus' : isLte ? 'LTE' : 'Cloud') + '-Readback bestätigt.'
       writeDrafts.value[code] = String(result.value ?? desired)
     } else {
       writeError.value = result.message || 'Schreiben nicht bestätigt; bitte Wert kontrollieren.'
@@ -403,6 +409,29 @@ function readingHint(key: string) {
   const hints: Record<string,string> = {flow:'Volumenstrom des Heizwassers. Die Pumpen-PWM zeigt die gemeldete Ansteuerung aus Register 2115; bei ausgeschalteter Pumpe kann der Registerwert trotzdem 100 % sein.',tank:'Temperatur im Warmwasserspeicher.',outdoor:'Gemessene Außentemperatur.',return:'Eintritt des Heizwassers in die Wärmepumpe (Rücklauf).',supply:'Austritt des erwärmten Heizwassers aus der Wärmepumpe (Vorlauf).'}
   return hints[key] || ''
 }
+const m1Limit = ref<TimerM1 | null>(null)
+const m1Status = computed(() => m1Limit.value?.enabled == null ? 'Timerstatus unbekannt' : m1Limit.value.enabled ? 'Timer eingeschaltet' : 'Timer ausgeschaltet')
+const m1Selected = computed(() =>
+  overviewLayout.value[mobileProfile ? 'mobile' : 'desktop'].includes('timer_m1') || glance.value.includes('timer_m1'))
+watch([page, selectedTransport, transportPaused, m1Selected], ([current, transport, paused, visible], _, cleanup) => {
+  m1Limit.value = null
+  if (current !== 'home' || paused || !visible) return
+  let active = true
+  let timer: ReturnType<typeof setTimeout> | undefined
+  cleanup(() => { active = false; clearTimeout(timer) })
+  async function refresh() {
+    if (!document.hidden && navigator.onLine) {
+      try {
+        const value = await api.timerM1(transport)
+        if (active) m1Limit.value = value
+      } catch {
+        if (active && m1Limit.value) m1Limit.value = {...m1Limit.value, stale:true}
+      }
+    }
+    if (active) timer = setTimeout(refresh, 30000)
+  }
+  void refresh()
+}, { immediate: true })
 const readings = computed(() => {
   const keys = overviewLayout.value[mobileProfile ? 'mobile' : 'desktop']
   return keys.flatMap(key => {
@@ -415,6 +444,8 @@ const readings = computed(() => {
     }
     if (!Object.hasOwn(overviewFields, key)) return []
     const field = key as OverviewField
+    if (field === 'timer_m1') return [{ key, ...overviewFields[field], stale: m1Limit.value?.stale === true,
+      compactText: false, text: m1Limit.value?.max_kw?.toLocaleString('de-DE', { maximumFractionDigits: 1 }) ?? '—' }]
     const row = field === 'spread' ? null : snapshot.value?.metrics[field]
     const stale = field === 'spread'
       ? snapshot.value?.metrics.return?.quality === 'stale' || snapshot.value?.metrics.supply?.quality === 'stale'
@@ -737,6 +768,7 @@ onBeforeUnmount(() => {
                 <component :is="item.icon" :size="24" :stroke-width="1.8" />
                 <strong :class="{'gira-text':item.compactText}">{{ item.text }} <small v-if="item.unit" class="metric-unit">{{ item.unit }}</small></strong>
                 <span v-if="item.label" class="metric-label">{{ item.label }}</span>
+                <small v-if="item.key === 'timer_m1'">{{ m1Status }}</small>
                 <small v-if="item.key==='flow'" class="pump-pwm" :class="{'is-stale':pumpPwm?.quality==='stale'}" :title="pumpPwm?'UP PWM aktuell · Register 2115 · Quelle: '+valueSource(2115)+' · '+relativeTimestamp(pumpPwm.timestamp):'Noch kein bestätigter Pumpen-PWM-Wert vorhanden'">UP {{ pumpPwm ? displayMetric(pumpPwm) : '—' }} %</small>
               </div>
             </div>
@@ -804,6 +836,7 @@ onBeforeUnmount(() => {
                   <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="openOperation('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
                   <button v-else-if="key === 'parameters'" type="button" class="main-action glance-wide" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
                   <div v-else-if="key.startsWith('spacer:')" class="glance-spacer" aria-hidden="true"></div>
+                  <div v-else-if="key === 'timer_m1'" class="power-summary"><div :class="{'is-stale':m1Limit?.stale}"><Gauge :size="17" aria-hidden="true" /><strong>{{ m1Limit?.max_kw?.toLocaleString('de-DE', { maximumFractionDigits: 1 }) ?? '—' }} kW</strong><small>Leistungsgrenze M1</small><small>{{ m1Status }}</small></div></div>
                   <PowerSummary v-else :metrics="snapshot?.metrics" :selection="[key]" :gira="giraItems" :spread="waterSpread" />
                 </template>
               </div>

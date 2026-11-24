@@ -372,9 +372,18 @@ def write_cloud_first(payload: CloudFirstWrite, request: Request):
 
 
 class TimerWrite(BaseModel):
-    transport: Literal["cloud", "warmlink_raw"]
+    transport: Literal["cloud", "warmlink_raw", "standard_modbus"]
     values: dict[str, StrictInt]
     expected: dict[str, StrictInt]
+
+
+@app.get("/api/timers/m1/summary")
+def timer_m1_summary(transport: str = "cloud"):
+    from backend import timers
+    try:
+        return timers.read_m1(transport)
+    except (OSError, ValueError, CloudError, WriteValidationError) as exc:
+        raise HTTPException(503, str(exc)) from None
 
 
 @app.get("/api/timers/{kind}")
