@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.1.12
+
+- Die Kachel **Last Timer** zeigt die Leistungsgrenze von M1, seinen Status und das aktuelle Zeitfenster. Sie ist für den farbigen Bereich und **Auf einen Blick** auswählbar.
+- Zeitprogramme sind über Display-Modbus lesbar. Standard-Modbus unterstützt auch das Speichern von Zeitprogrammen sowie Ein/Aus, Betriebsart und Ruhemodus direkt auf der Startseite.
+- **Schalterzustände** zeigt Lastausgänge und Eingangskontakte in getrennten Reitern, auch mit bestätigten Cloudwerten. Die Anzeige berücksichtigt die unterschiedliche Schaltlogik der Eingangskontakte.
+- Werte in der Übersicht lassen sich sortieren. Gira-Datenpunkte unterstützen eigene Symbole und einstellbare Nachkommastellen. Die Sollwertabweichung ist farblich hervorgehoben.
+- Diagramme zeigen Messwerte am Mauszeiger oder beim Antippen. Der lokale Verlauf verbindet dichter beieinanderliegende Messpunkte und lässt längere Aufzeichnungslücken sichtbar.
+
 ## v0.1.11
 
 - Die Kommunikationspause stoppt Cloud, Modbus, Gira und automatische Updateprüfungen. Gespeicherte Daten bleiben abrufbar.
