@@ -89,6 +89,7 @@ let valuesTimer: ReturnType<typeof setTimeout> | undefined
 const deviceName = computed(() => snapshot.value?.device_name || 'FoxAir')
 const { status: updateStatus, version: installedVersion, loading: updateLoading, error: updateCheckError, checkedAt: updateCheckedAt, refresh: refreshUpdateStatus } = useUpdateStatus()
 const { signedIn, sessionChecked, username, role, canOperate, ssoAvailable, loginWithSso, secureAdminContext, adminAuthenticated, adminBusy, loginOpen, cloudAdminPassword, adminLoginError, checkAdminSession, loginAsAdmin, logoutAsAdmin } = useAdminSession()
+const cameraStreamUrl = '/api/camera/stream'
 const cameraEnabled = ref(false)
 const cameraDialog = ref<HTMLDialogElement>()
 const cameraOpen = ref(false)
@@ -1066,7 +1067,7 @@ onBeforeUnmount(() => {
           <button class="outlined-action" type="button" @click="closeCamera">Schließen</button>
         </header>
         <p v-if="cameraFailed" role="alert">Kamerastream nicht verfügbar. Prüfe die MJPEG-Adresse in den Experteneinstellungen.</p>
-        <img v-else-if="cameraOpen" class="heatpump-camera-stream" src="/api/camera/stream"
+        <img v-else-if="cameraOpen" class="heatpump-camera-stream" :src="cameraStreamUrl"
           alt="Livebild der Wärmepumpe" @error="cameraFailed = true" />
       </div>
     </dialog>
