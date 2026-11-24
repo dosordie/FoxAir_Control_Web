@@ -1,5 +1,11 @@
 # Änderungen
 
+## v0.1.13
+
+- Die Wärmepumpen-Kamera lässt sich unter **Experteneinstellungen → Kamera** aktivieren. Ein Klick auf die Wärmepumpengrafik öffnet das Kamerabild für angemeldete Benutzer. FoxWeb ruft die Kamera im privaten Netz serverseitig ab.
+- Unterstützt werden MJPEG-Livestreams und JPEG-Einzelbilder mit einstellbarem Abrufintervall. Die Kamera wird nur abgefragt, solange das Pop-up geöffnet ist.
+- Das Kamera-Pop-up nutzt am Desktop die Breite der Übersicht. Kamera und Gira-WebSocket haben eigene Abschnitte unter **Experteneinstellungen**.
+
 ## v0.1.12
 
 - Die Kachel **Last Timer** zeigt die Leistungsgrenze von M1, seinen Status und das aktuelle Zeitfenster. Sie ist für den farbigen Bereich und **Auf einen Blick** auswählbar.
