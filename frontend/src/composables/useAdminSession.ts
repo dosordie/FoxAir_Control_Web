@@ -15,6 +15,7 @@ export function useAdminSession(
   const signedIn = ref(false)
   const sessionChecked = ref(false)
   const username = ref('admin')
+  const sessionUsername = ref('')
   const role = ref('reader')
   const canOperate = ref(false)
   const adminAuthenticated = ref(false)
@@ -28,6 +29,7 @@ export function useAdminSession(
   function clearAuthorization() {
     adminAuthenticated.value = false
     signedIn.value = false
+    sessionUsername.value = ''
     role.value = 'reader'
     canOperate.value = false
   }
@@ -37,6 +39,7 @@ export function useAdminSession(
       const result = await api.adminSession()
       if (!disposed) {
         if (result.username) username.value = result.username
+        sessionUsername.value = result.authenticated ? (result.username ?? '') : ''
         signedIn.value = result.authenticated
         role.value = result.role
         canOperate.value = result.authenticated && result.role !== 'reader'
@@ -59,6 +62,7 @@ export function useAdminSession(
       const result = await api.adminLogin(cloudAdminPassword.value, username.value)
       if (disposed) return
       if (result.username) username.value = result.username
+      sessionUsername.value = result.authenticated ? (result.username ?? '') : ''
       signedIn.value = result.authenticated
       role.value = result.role
       canOperate.value = result.authenticated && result.role !== 'reader'
@@ -83,6 +87,7 @@ export function useAdminSession(
       const result = await api.adminSsoLogin()
       if (disposed) return
       if (result.username) username.value = result.username
+      sessionUsername.value = result.authenticated ? (result.username ?? '') : ''
       signedIn.value = result.authenticated
       role.value = result.role
       canOperate.value = result.authenticated && result.role !== 'reader'
@@ -109,6 +114,7 @@ export function useAdminSession(
     }
     adminAuthenticated.value = false
     signedIn.value = false
+    sessionUsername.value = ''
     role.value = 'reader'
     canOperate.value = false
     cloudAdminPassword.value = ''
@@ -124,6 +130,7 @@ export function useAdminSession(
     secureAdminContext,
     signedIn,
     username,
+    sessionUsername,
     role,
     canOperate,
     ssoAvailable,

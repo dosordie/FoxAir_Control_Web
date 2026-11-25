@@ -38,23 +38,27 @@ const activeLowContacts = new Set([0, 1, 2, 3, 4, 5, 6, 9])
 const cloudCodes: Partial<Record<number, string>> = { 2019: 'O01~023', 2034: 'S01~S10' }
 
 function sample(register: number) {
-  if (props.transport === 'cloud') {
-    const code = cloudCodes[register]
-    if (!code) return null
-    const row = props.cloudRows?.find(
-      (item) => item.code === code && item.register === register && item.confidence === 'confirmed',
-    )
-    const text = String(row?.value ?? '').trim()
-    const raw = /^[01]{16}$/.test(text)
-      ? Number.parseInt(text, 2)
-      : /^\d{1,5}$/.test(text)
-        ? Number(text)
-        : NaN
-    return row && Number.isInteger(raw) && raw <= 65535 ? { raw, quality: row.quality } : null
-  }
   const row = props.valueFor(register)
-  return row?.transport === props.transport && row.raw != null && Number.isInteger(row.raw)
-    ? row
+  if (row && row.transport !== 'cloud' && row.raw != null && Number.isInteger(row.raw)) return row
+  const code = cloudCodes[register]
+  if (!code) return null
+  const cloud =
+    row?.transport === 'cloud' && row.code === code
+      ? row
+      : props.transport === 'cloud'
+        ? props.cloudRows?.find(
+            (item) =>
+              item.code === code && item.register === register && item.confidence === 'confirmed',
+          )
+        : null
+  const text = String(cloud?.value ?? '').trim()
+  const raw = /^[01]{16}$/.test(text)
+    ? Number.parseInt(text, 2)
+    : /^\d{1,5}$/.test(text)
+      ? Number(text)
+      : NaN
+  return cloud && Number.isInteger(raw) && raw <= 65535
+    ? { raw, quality: cloud.quality, transport: 'cloud' }
     : null
 }
 

@@ -20,8 +20,11 @@ class TimerSchemaTests(unittest.TestCase):
         }
         with patch('backend.transport_selection.paused', return_value=False), \
              patch('backend.display_bus.manager.lease'), \
-             patch('backend.display_bus.manager.values', return_value=rows), \
+             patch('backend.timers.cached_timer_words') as cached, \
              patch('backend.timers.connection') as connection:
+            cached.side_effect = lambda registers: (
+                {key: row['raw'] for key, row in rows.items()}, {}
+            )
             self.assertEqual(timers.read_m1('display_modbus'), {
                 'enabled': False, 'max_kw': 2.5, 'stale': False,
                 'window': {'start': 1320, 'end': 390, 'days': 1},
@@ -33,6 +36,24 @@ class TimerSchemaTests(unittest.TestCase):
             rows['1282']['raw'] = 0xFFFF
             self.assertIsNone(timers.read_m1('display_modbus')['window'])
             connection.assert_not_called()
+
+    def test_partial_display_timer_uses_lte_words_and_exact_cloud_format(self):
+        stored = {
+            '1281': {'raw': 0x0600, 'transport': 'warmlink_raw', 'timestamp': '2026-11-24T06:00:00Z'},
+            '1287': {'raw': None, 'value': '2.5', 'code': 'M1 Max. Power', 'transport': 'cloud',
+                     'timestamp': '2026-11-24T06:00:00Z'},
+            '1323': {'raw': None, 'value': '1000000010000001', 'code': 'M1_2 Enalbe',
+                     'transport': 'cloud', 'timestamp': '2026-11-24T06:00:00Z'},
+        }
+        with patch('backend.transport_selection.paused', return_value=False), \
+             patch('backend.display_bus.manager.lease'), \
+             patch('backend.last_values.store.values', return_value=stored), \
+             patch('backend.timers.connection') as connection:
+            result = timers.read('operating', 'display_modbus')
+        self.assertEqual(result['values'], {'1281': 0x0600, '1287': 25, '1323': 0x8081})
+        self.assertEqual(result['sources']['1281']['transport'], 'warmlink_raw')
+        self.assertTrue(result['read_only'])
+        connection.assert_not_called()
 
     def test_word_scaling_and_mask_payloads(self):
         self.assertEqual(timers.cloud_word(1284,'35.1'),351)

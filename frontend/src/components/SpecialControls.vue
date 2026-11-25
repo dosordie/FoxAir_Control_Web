@@ -85,6 +85,21 @@ function faults(entry: Register) {
     .filter((bit) => (raw & (1 << bit)) !== 0)
     .map((bit) => entry.bit_map?.[String(bit)] || 'Unbekannte Meldung (Bit ' + bit + ')')
 }
+const sourceLabels: Record<string, string> = {
+  cloud: 'Cloud',
+  warmlink_raw: 'LTE-Modbus',
+  standard_modbus: 'Standard-Modbus',
+  display_modbus: 'Display-Modbus',
+}
+function settingAge(register: number) {
+  const row = props.valueFor(register)
+  if (!row) return null
+  return Date.now() - Date.parse(row.timestamp)
+}
+function isStale(register: number) {
+  if (register >= 2000) return props.valueFor(register)?.quality === 'stale'
+  return (settingAge(register) ?? 0) > 12 * 60 * 60 * 1000
+}
 function display(register: number) {
   const row = props.valueFor(register)
   return row?.display_value ?? row?.value ?? '—'
@@ -123,12 +138,16 @@ function display(register: number) {
       <article v-for="entry in definitions" :key="entry.register" class="special-control-card">
         <span class="register-code">{{ entry.code || 'Register ' + entry.register }}</span>
         <h3>{{ entry.name }}</h3>
-        <p
-          class="special-current"
-          :class="{ 'is-stale': valueFor(entry.register)?.quality === 'stale' }"
-        >
+        <p class="special-current" :class="{ 'is-stale': isStale(entry.register) }">
           {{ display(entry.register) }} <small>{{ valueFor(entry.register)?.unit || '' }}</small>
         </p>
+        <small v-if="valueFor(entry.register)" class="section-hint">
+          {{
+            sourceLabels[valueFor(entry.register)!.transport] || valueFor(entry.register)!.transport
+          }}
+          · {{ new Date(valueFor(entry.register)!.timestamp).toLocaleString('de-DE') }}
+          <template v-if="isStale(entry.register)"> · veraltet</template>
+        </small>
         <template v-if="dialog.id === 'fault' && valueFor(entry.register)?.raw != null">
           <ul v-if="faults(entry).length">
             <li v-for="(text, index) in faults(entry)" :key="index">{{ text }}</li>

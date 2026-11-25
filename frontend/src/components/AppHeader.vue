@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ArrowUpCircle, Settings2, ShieldCheck } from 'lucide-vue-next'
 import type { Page } from '../types/navigation'
 const props = defineProps<{
@@ -8,11 +8,18 @@ const props = defineProps<{
   page: Page
   authenticated: boolean
   role?: string
+  sessionUsername?: string
   ssoAvailable?: boolean
   busy: boolean
   secure: boolean
   error: string
 }>()
+const roleLabel = computed(() =>
+  props.role === 'admin' ? 'Administrator' : props.role === 'operator' ? 'Bediener' : 'Leser',
+)
+const accountLabel = computed(() =>
+  props.authenticated ? props.sessionUsername || roleLabel.value : 'Anmelden',
+)
 const username = defineModel<string>('username', { default: 'admin' })
 const password = defineModel<string>('password', { required: true })
 const loginOpen = defineModel<boolean>('loginOpen', { required: true })
@@ -96,29 +103,12 @@ onBeforeUnmount(() => {
           @click="loginOpen = !loginOpen"
         >
           <ShieldCheck :size="17" />
-          {{
-            authenticated
-              ? role === 'admin'
-                ? 'Administrator'
-                : role === 'operator'
-                  ? 'Bediener'
-                  : 'Leser'
-              : role === 'operator'
-                ? 'Bediener'
-                : 'Anmelden'
-          }}
+          <span class="account-name" :title="accountLabel">{{ accountLabel }}</span>
         </button>
         <div v-if="loginOpen" class="login-popover">
           <p>
-            <strong>{{
-              authenticated
-                ? role === 'admin'
-                  ? 'Administrator'
-                  : role === 'operator'
-                    ? 'Bediener'
-                    : 'Leser'
-                : 'Lesender Gast'
-            }}</strong>
+            <strong>{{ authenticated ? accountLabel : 'Lesender Gast' }}</strong>
+            <template v-if="authenticated && sessionUsername"> · {{ roleLabel }}</template>
           </p>
           <button v-if="authenticated" class="outlined-action" @click="emit('logout')">
             Abmelden
@@ -168,3 +158,15 @@ onBeforeUnmount(() => {
     </div>
   </header>
 </template>
+
+<style scoped>
+.account-name {
+  max-width: 13ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.login-popover strong {
+  overflow-wrap: anywhere;
+}
+</style>
