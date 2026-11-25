@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { GripVertical } from 'lucide-vue-next'
 import { api, type GiraOption } from '../api'
 import {
   defaultOverview,
@@ -35,9 +36,20 @@ const columnsKey = computed(() =>
 const draft = ref<OverviewLayout>(structuredClone(defaultOverview))
 const busy = ref(false)
 const dragged = ref<string | null>(null)
-watch(layoutKey, () => {
+const dropIndex = ref<number | null>(null)
+const orderList = ref<HTMLOListElement>()
+let touchPointer: number | null = null
+let scrollFrame = 0
+
+function clearDrag() {
   dragged.value = null
-})
+  dropIndex.value = null
+  touchPointer = null
+  cancelAnimationFrame(scrollFrame)
+  scrollFrame = 0
+}
+watch([layoutKey, busy], clearDrag)
+onBeforeUnmount(clearDrag)
 const gira = ref<GiraOption[]>([])
 const giraError = ref('')
 watch(
@@ -102,7 +114,44 @@ function startDrag(key: string, event: DragEvent) {
 
 function drop(target: number) {
   if (dragged.value) move(dragged.value, target)
-  dragged.value = null
+  clearDrag()
+}
+
+function startTouchDrag(key: string, event: PointerEvent) {
+  if (event.pointerType === 'mouse' || !event.isPrimary || busy.value) return
+  touchPointer = event.pointerId
+  dragged.value = key
+  const handle = event.currentTarget as HTMLElement
+  handle.setPointerCapture(event.pointerId)
+}
+
+function targetAt(x: number, y: number) {
+  const row = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-order-index]')
+  dropIndex.value =
+    row && row.parentElement === orderList.value ? Number(row.dataset.orderIndex) : null
+}
+
+function trackTouchDrag(event: PointerEvent) {
+  if (event.pointerId !== touchPointer) return
+  const { clientX, clientY } = event
+  targetAt(clientX, clientY)
+  cancelAnimationFrame(scrollFrame)
+  const distance = clientY < 72 ? -10 : clientY > window.innerHeight - 72 ? 10 : 0
+  if (!distance) return
+  function scroll() {
+    const previous = window.scrollY
+    window.scrollBy(0, distance)
+    targetAt(clientX, clientY)
+    if (window.scrollY !== previous) scrollFrame = requestAnimationFrame(scroll)
+  }
+  scrollFrame = requestAnimationFrame(scroll)
+}
+
+function endTouchDrag(event: PointerEvent) {
+  if (event.pointerId !== touchPointer) return
+  targetAt(event.clientX, event.clientY)
+  if (dropIndex.value !== null) drop(dropIndex.value)
+  else clearDrag()
 }
 
 function addSpacer() {
@@ -222,17 +271,32 @@ async function save() {
       >
         Leerplatz hinzufügen
       </button>
-      <ol>
+      <p class="section-hint">Am Griff ziehen oder mit den Pfeilen verschieben.</p>
+      <ol ref="orderList" @dragleave.self="dropIndex = null">
         <li
           v-for="(key, index) in draft[layoutKey]"
           :key="key"
+          :data-order-index="index"
+          :class="{ 'overview-drop-target': dropIndex === index && dragged !== key }"
           :draggable="!busy"
           @dragstart="startDrag(key, $event)"
-          @dragend="dragged = null"
-          @dragover.prevent
+          @dragend="clearDrag"
+          @dragover.prevent="dropIndex = dragged ? index : null"
           @drop.prevent="drop(index)"
         >
-          <span>{{ labelFor(key) }}</span>
+          <span
+            class="overview-drag-handle"
+            title="Zum Sortieren ziehen"
+            aria-hidden="true"
+            @pointerdown="startTouchDrag(key, $event)"
+            @pointermove="trackTouchDrag"
+            @pointerup="endTouchDrag"
+            @pointercancel="clearDrag"
+            @lostpointercapture="clearDrag"
+          >
+            <GripVertical :size="18" />
+          </span>
+          <span class="overview-order-label">{{ labelFor(key) }}</span>
           <button
             v-if="key.startsWith('spacer:')"
             type="button"

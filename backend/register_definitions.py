@@ -16,8 +16,9 @@ STANDARD_DASHBOARD_BLOCKS = (
     (2077, 1),
     (2115, 1),
 )
-LTE_DASHBOARD_BLOCKS = ((1011, 20), (1158, 1), (2012, 66), (2115, 1))
+LTE_DASHBOARD_BLOCKS = ((1011, 20), (1158, 1), (2012, 66), (2115, 2))
 DIAGNOSTIC_FIELDS = {
+    "pump_feedback": 2116,
     "evaporator": 2049,
     "evi_in": 2063,
     "evi_out": 2064,

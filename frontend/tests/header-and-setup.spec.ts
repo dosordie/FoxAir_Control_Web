@@ -74,3 +74,28 @@ it('shows the signed-in account name in the header and the role in the menu', ()
   expect(root.querySelector('.user-menu > button')?.textContent).not.toContain('Administrator')
   expect(root.querySelector('.login-popover')?.textContent).toContain('Administrator')
 })
+
+it('opens settings and focuses the update section from the dashboard badge', async () => {
+  const oldHash = window.location.hash
+  window.history.replaceState(null, '', '#/')
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    ok: true,
+    json: async () => ({
+      items: [], values: {}, metrics: {}, transport: 'cloud', required: false,
+      role: 'reader', update_available: url === '/api/update/status',
+    }),
+  })))
+  const root = document.createElement('div')
+  document.body.append(root)
+  const app = createApp(App)
+  app.mount(root)
+  cleanup = () => {
+    app.unmount()
+    root.remove()
+    window.history.replaceState(null, '', oldHash || window.location.pathname)
+  }
+  await vi.waitFor(() => expect(root.querySelector('.update-badge')).not.toBeNull())
+  root.querySelector<HTMLButtonElement>('.update-badge')!.click()
+  await vi.waitFor(() => expect(document.activeElement?.id).toBe('settings-update-title'))
+  expect(window.location.hash).toBe('#/settings')
+})

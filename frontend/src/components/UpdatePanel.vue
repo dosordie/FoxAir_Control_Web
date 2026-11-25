@@ -41,11 +41,15 @@ async function submitGitUpdate() {
 }
 </script>
 <template>
-  <section class="settings-panel panel">
+  <section
+    id="settings-update"
+    class="settings-panel panel"
+    aria-labelledby="settings-update-title"
+  >
     <div class="section-head">
       <div>
         <span class="section-caption">VERSIONEN / GITHUB</span>
-        <h2>FoxAir-Web aktualisieren</h2>
+        <h2 id="settings-update-title" tabindex="-1">FoxAir-Web aktualisieren</h2>
       </div>
       <RefreshCw :size="22" />
     </div>

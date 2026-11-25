@@ -39,3 +39,35 @@ it('selects multiple configured Gira objects independently of their live values'
     vi.restoreAllMocks()
   }
 })
+
+it('moves a row from a touch handle and saves the new order', async () => {
+  vi.spyOn(api, 'giraOverviewOptions').mockResolvedValue({ items: [] })
+  const save = vi.spyOn(api, 'saveOverview').mockImplementation(async (layout) => layout)
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp(OverviewSettings, { layout: defaultOverview, giraRevision: 0 })
+  app.mount(host)
+  try {
+    const rows = host.querySelectorAll<HTMLElement>('[data-order-index]')
+    const handle = rows[0]!.querySelector<HTMLElement>('.overview-drag-handle')!
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(rows[2]!)
+    handle.setPointerCapture = vi.fn()
+    const touch = { pointerType: 'touch', isPrimary: true, pointerId: 3, clientY: 240 }
+    handle.dispatchEvent(new PointerEvent('pointerdown', touch))
+    handle.dispatchEvent(new PointerEvent('pointermove', touch))
+    await nextTick()
+    expect(rows[2]!.classList.contains('overview-drop-target')).toBe(true)
+    handle.dispatchEvent(new PointerEvent('pointerup', touch))
+    await nextTick()
+    const submit = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Übersicht speichern'))
+    submit!.click()
+    const [first, second, third, ...rest] = defaultOverview.desktop
+    expect(save).toHaveBeenCalledWith({
+      ...defaultOverview, desktop: [second, third, first, ...rest],
+    })
+  } finally {
+    app.unmount()
+    host.remove()
+    vi.restoreAllMocks()
+  }
+})

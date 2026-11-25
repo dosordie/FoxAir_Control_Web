@@ -365,6 +365,13 @@ function navigate(target: Page, term = '') {
     void loadCloudValues()
   }
 }
+async function openUpdate() {
+  navigate('settings')
+  await nextTick()
+  const heading = document.getElementById('settings-update-title')
+  heading?.focus({ preventScroll: true })
+  document.getElementById('settings-update')?.scrollIntoView({ block: 'start' })
+}
 function onVisibilityChange() {
   if(['warmlink_raw','display_modbus'].includes(selectedTransport.value)){
     if(!document.hidden && !pushConnected.value)void refreshSnapshot().catch(()=>{})
@@ -540,7 +547,7 @@ onBeforeUnmount(() => {
   <div class="app-shell">
     <SetupWizard @completed="checkAdminSession().then(() => { loginOpen = !signedIn })" />
     <AppHeader :version="installedVersion" :update-available="updateStatus?.update_available" v-model:username="username" :session-username="sessionUsername" :role="role" :sso-available="ssoAvailable" @sso-login="loginWithSso" :page="page" :authenticated="signedIn" :busy="adminBusy" :secure="secureAdminContext" :error="adminLoginError"
-      v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
+      v-model:password="cloudAdminPassword" v-model:login-open="loginOpen" @navigate="navigate" @open-update="openUpdate" @login="loginAsAdmin" @logout="logoutAsAdmin" />
 
     <main>
       <aside v-if="!browserOnline" class="notice" role="status">Offline – die Oberfläche ist verfügbar. Messwerte und Änderungen benötigen eine Verbindung zum Server.</aside>
@@ -887,7 +894,7 @@ onBeforeUnmount(() => {
         <p v-if="specialMessage" role="status" class="success-text">{{ specialMessage }}</p>
         <p v-if="specialError" role="alert" class="read-error">{{ specialError }}</p>
         <RegisterDecoder v-if="specialDialog === 'decoder'" :transport="selectedTransport" :value-for="currentRegisterValue" :cloud-rows="cloudRows" />
-        <SpecialControls v-if="selectedSpecial && (['at','sg','wp'].includes(selectedSpecial.id) || selectedSpecial.id === 'fault' && selectedTransport !== 'cloud')" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
+        <SpecialControls v-if="selectedSpecial && (['at','sg','wp'].includes(selectedSpecial.id) || selectedSpecial.id === 'fault' && selectedTransport !== 'cloud')" :key="selectedTransport+':'+selectedSpecial.id" :dialog="selectedSpecial" :transport="selectedTransport" :admin="adminAuthenticated && secureAdminContext && browserOnline && !transportPaused" :value-for="currentRegisterValue" @updated="refreshSelectedSpecial" />
         <div v-if="!selectedSpecial || selectedSpecial.id === 'fault' && selectedTransport === 'cloud'" class="special-rows">
           <div v-for="entry in specialRows" :key="entry.code" class="main-register-row"
             :class="{ 'is-stale': entry.quality === 'stale' }">

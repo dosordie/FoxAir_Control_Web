@@ -146,6 +146,23 @@ class LocalOverviewTests(TestCase):
                 ((2023, 1), (2063, 1), (2074, 2)),
             )
 
+    def test_pump_feedback_is_available_in_both_dashboard_areas(self):
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+        ):
+            from backend.register_definitions import LTE_DASHBOARD_BLOCKS
+
+            profiles = {
+                **overview.settings(),
+                "desktop": ["pump_feedback"],
+                "mobile_glance": ["pump_feedback"],
+            }
+            overview.validate_profiles(profiles)
+            cloud_config._atomic_json(overview.config_path(), profiles)
+            self.assertIn((2116, 1), overview.standard_ranges(STANDARD_DASHBOARD_BLOCKS))
+            self.assertIn((2115, 2), LTE_DASHBOARD_BLOCKS)
+
     def test_history_buffers_deduplicates_flushes_and_expires(self):
         with (
             TemporaryDirectory() as folder,
