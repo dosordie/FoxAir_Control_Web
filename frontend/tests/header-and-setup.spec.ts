@@ -60,3 +60,17 @@ it('shows the guest notice in settings and opens the account form from its butto
   expect(username).not.toBeNull()
   expect(document.activeElement).toBe(username)
 })
+
+it('shows the signed-in account name in the header and the role in the menu', () => {
+  const root = document.createElement('div')
+  const app = createApp(AppHeader, {
+    page: 'home', authenticated: true, sessionUsername: 'Testnutzer',
+    role: 'admin', username: 'login-draft', busy: false, secure: true,
+    error: '', loginOpen: true, password: '',
+  })
+  app.mount(root)
+  cleanup = () => app.unmount()
+  expect(root.querySelector('.user-menu > button')?.textContent).toContain('Testnutzer')
+  expect(root.querySelector('.user-menu > button')?.textContent).not.toContain('Administrator')
+  expect(root.querySelector('.login-popover')?.textContent).toContain('Administrator')
+})
