@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.1.14
+
+- Die Abweichung zwischen Vorlauf und Sollwert ist kräftiger rot oder blau. Im Neutralbereich entspricht die Schriftfarbe dem aktuellen Sollwert.
+- Timer und weitere Einstellungsdialoge zeigen letzte bekannte Werte aus dem gemeinsamen Speicher, auch nach einem Wechsel der Verbindung. Quelle und Abrufzeit bleiben sichtbar. Fehlende Timerfelder bleiben leer, Display-Modbus bleibt lesend.
+- Einstellwerte werden nach zwölf Stunden als veraltet markiert. Die Übersicht weist darauf hin, wenn über die gewählte Verbindung seit mehr als 30 Minuten keine neuen Werte eintreffen.
+- Die Kopfzeile zeigt bei SSO und lokaler Anmeldung den Benutzernamen. Die Rolle steht im geöffneten Benutzermenü.
+- Kamera, Bedien- und Sollwertdialoge sowie die Messwertabfragen der Übersicht sind in eigene Frontend-Module aufgeteilt.
+
 ## v0.1.13
 
 - Die Wärmepumpen-Kamera lässt sich unter **Experteneinstellungen → Kamera** aktivieren. Ein Klick auf die Wärmepumpengrafik öffnet das Kamerabild für angemeldete Benutzer. FoxWeb ruft die Kamera im privaten Netz serverseitig ab.
