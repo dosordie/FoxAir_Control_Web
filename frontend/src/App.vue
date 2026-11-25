@@ -261,6 +261,18 @@ function relativeTimestamp(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleString('de-DE') : 'Noch kein Messwert'
 }
 
+const connectionClock = ref(Date.now())
+let connectionClockTimer: ReturnType<typeof setInterval> | undefined
+const longValuePause = computed(() => {
+  if (transportPaused.value) return false
+  const selected = selectedTransport.value
+  const rows = [...Object.values(sharedValues.value), ...Object.values(localValues.value)]
+  const latest = rows.reduce((stamp,row) => {
+    const time = Date.parse(row.timestamp)
+    return row.transport === selected && Number.isFinite(time) ? Math.max(stamp,time) : stamp
+  }, 0)
+  return latest > 0 && connectionClock.value - latest > 30 * 60 * 1000
+})
 const lastUpdated = computed(() => {
   if (!snapshot.value?.timestamp) return 'Noch keine Messwerte'
   if (snapshot.value.status === 'unavailable') {
@@ -416,11 +428,12 @@ async function refreshSelectedSpecial() {
       if (!registers.length) { specialMessage.value = 'Für diesen Dialog sind keine lokalen Register hinterlegt.'; return }
       const result = await api.refreshParameters(transport, registers)
       if (selectedTransport.value !== transport || specialDialog.value !== id) return
-      sharedValues.value = result.values
+      if (result.status === 'passive') await loadLastValues()
+      else sharedValues.value = result.values
       if (transport === 'warmlink_raw') await refreshSnapshot()
       const received = registers.filter(register => result.values[String(register)]?.transport === transport).length
       specialMessage.value = result.status === 'passive'
-        ? received + ' lokale Werte empfangen · Display-Modbus liest passiv'
+        ? received + ' von ' + registers.length + ' über Display empfangen · übrige aus dem Wertespeicher, sofern vorhanden'
         : result.updated + ' Werte gelesen · ' + received + ' von ' + registers.length + ' verfügbar'
       return
     }
@@ -495,6 +508,7 @@ onMounted(async () => {
   syncRoute()
   const session = checkAdminSession()
   void loadOverview()
+  connectionClockTimer = setInterval(() => { connectionClock.value = Date.now() }, 60000)
   window.addEventListener('hashchange', syncRoute)
   document.addEventListener('visibilitychange', onVisibilityChange)
   document.addEventListener('keydown', closeSpecialOnEscape)
@@ -517,6 +531,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   document.removeEventListener('keydown', closeSpecialOnEscape)
   clearTimeout(valuesTimer)
+  clearInterval(connectionClockTimer)
   cloudAdminPassword.value = ''
 })
 </script>
@@ -587,6 +602,7 @@ onBeforeUnmount(() => {
 
         <div class="below-hero">
           <p v-if="transportPaused" class="notice" role="status">Kommunikation pausiert. Angezeigt werden zuletzt bekannte Werte.</p>
+          <p v-else-if="longValuePause" class="notice" role="status">Über die gewählte Verbindung sind seit über 30 Minuten keine neuen Werte eingetroffen.</p>
           <div v-if="error" class="notice" role="status">
             <Bell :size="18" /><div><strong>Keine vollständigen Livewerte</strong><span>{{ error }}</span></div>
           </div>
@@ -848,7 +864,7 @@ onBeforeUnmount(() => {
       :current-value="currentRegisterValue(1158)" @updated="loadDashboard(false)" />
     <OperationDialog ref="operationDialog" :transport="selectedTransport" :transport-label="transportLabel"
       :admin="adminAuthenticated" :can-operate="adminAuthenticated && secureAdminContext && browserOnline && !transportPaused"
-      :cloud-rows="cloudRows" @updated="page === 'home' && loadDashboard(false)" @refresh-cloud="loadCloudValues" />
+      :cloud-rows="cloudRows" :cached-value="currentRegisterValue" @updated="page === 'home' && loadDashboard(false)" @refresh-cloud="loadCloudValues" />
 
     <dialog ref="specialDialogElement" class="special-modal panel native-special" aria-labelledby="special-modal-title" @close="specialDialog=null" @cancel="specialDialog=null" @click.self="specialDialog=null">
       <div v-if="specialDialog" class="special-dialog-content">

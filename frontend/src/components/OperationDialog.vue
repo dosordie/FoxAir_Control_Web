@@ -8,6 +8,7 @@ const props = defineProps<{
   cloudRows: CloudRow[]
   admin: boolean
   canOperate: boolean
+  cachedValue?: (register: number) => RegisterValue | null
 }>()
 const emit = defineEmits<{ updated: []; refreshCloud: [] }>()
 
@@ -34,7 +35,9 @@ const current = computed(
     source.value ??
     (props.transport === 'cloud'
       ? (props.cloudRows.find((row) => row.code === code.value) ?? null)
-      : null),
+      : props.transport === 'display_modbus' && code.value
+        ? (props.cachedValue?.(controls[code.value].register) ?? null)
+        : null),
 )
 const options = computed(() => (code.value === 'Mode' ? modes : binaryOptions))
 const label = computed(() => {
@@ -79,7 +82,7 @@ async function refresh() {
     source.value = { ...row, value }
     draft.value = String(value)
   } catch (cause) {
-    if (request === generation)
+    if (request === generation && !(transport === 'display_modbus' && current.value))
       error.value = cause instanceof Error ? cause.message : 'Lesen fehlgeschlagen'
   } finally {
     if (request === generation) reading.value = false
@@ -173,6 +176,9 @@ defineExpose({ open })
     </div>
     <template v-if="code">
       <p class="section-hint">{{ transportLabel }} · Aktueller Wert: {{ label }}</p>
+      <p v-if="transport === 'display_modbus' && !source && current" class="section-hint">
+        Letzter gespeicherter Wert · {{ new Date(current.timestamp!).toLocaleString('de-DE') }}
+      </p>
       <button class="outlined-action" type="button" :disabled="reading || writing" @click="refresh">
         Wert aktualisieren
       </button>

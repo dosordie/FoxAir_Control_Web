@@ -6,6 +6,7 @@ Requests contain complete raw baselines, never inferred defaults.
 """
 from contextlib import contextmanager
 from decimal import Decimal
+from datetime import datetime, timezone
 import threading
 import time
 
@@ -162,6 +163,12 @@ def wire_value(reg, word):
 def cache_words(kind,transport,words,identity):
     if transport == 'cloud':
         merge({code:{'value':wire_value(reg,words[str(reg)])} for reg,code in schema(kind).items()},source=identity)
+    else:
+        from backend.last_values import remember_words
+
+        registers = schema(kind)
+        first = min(registers)
+        remember_words(identity, first, [words[str(reg)] for reg in range(first, max(registers) + 1)], transport=transport)
 
 
 def minute_of_day(word):
@@ -179,15 +186,14 @@ def read_m1(transport):
     stale = False
     registers = (M1_ENABLE, M1_LIMIT, M1_START, M1_END)
     unavailable = {"enabled": None, "max_kw": None, "window": None, "stale": True}
-    if paused():
-        return unavailable
-    if transport == "display_modbus":
+    is_paused = paused()
+    if transport == "display_modbus" or is_paused:
         from backend.display_bus import manager
-        manager.lease()
-        values = manager.values()
-        rows = [values.get(str(reg)) for reg in registers]
-        stale = any(row and row.get("quality") == "stale" for row in rows)
-        words = {reg: row.get("raw") for reg, row in zip(registers, rows) if row}
+        if not is_paused:
+            manager.lease()
+        cached, sources = cached_timer_words({reg: OPERATING[reg] for reg in registers})
+        stale = any(source["stale"] for source in sources.values())
+        words = {int(reg): word for reg, word in cached.items()}
     else:
         if transport == "warmlink_raw":
             from backend.register_scan import status
@@ -219,21 +225,57 @@ def read_m1(transport):
     }
 
 
+def cached_timer_words(registers):
+    from backend.last_values import store
+
+    values = store.values()
+    now = datetime.now(timezone.utc)
+    words, sources = {}, {}
+    for reg, code in registers.items():
+        key = str(reg)
+        row = values.get(key)
+        if not row:
+            continue
+        raw = row.get("raw")
+        if row["transport"] == "cloud":
+            if row.get("code") != code:
+                continue
+            try:
+                raw = cloud_word(reg, row.get("value"))
+            except WriteValidationError:
+                continue
+        if type(raw) is not int or not 0 <= raw <= 65535:
+            continue
+        stamp = row["timestamp"]
+        age = (now - datetime.fromisoformat(stamp)).total_seconds()
+        words[key] = raw
+        sources[key] = {"transport": row["transport"], "timestamp": stamp, "stale": age > 43200}
+    return words, sources
+
+
 def read(kind, transport):
-    schema(kind)
-    if transport == 'display_modbus':
+    from backend.transport_selection import paused
+
+    registers = schema(kind)
+    if transport == "display_modbus" and not paused():
         from backend.display_bus import manager
         manager.lease()
-        available = manager.values()
-        if any(available.get(str(reg), {}).get('raw') is None for reg in schema(kind)):
-            raise WriteValidationError('Display-Zeitprogramm noch unvollständig; alle Werte vom Bus lesen')
-        return {'values':{str(reg):available[str(reg)]['raw'] for reg in schema(kind)},'transport':transport,'kind':kind}
-
-    with _lock, connection(transport) as (client, identity):
-        words = read_words(kind,transport,client)
-        check_connection(transport,identity)
-        cache_words(kind,transport,words,identity)
-        return {'values':words,'transport':transport,'kind':kind}
+    elif not paused():
+        try:
+            with _lock, connection(transport) as (client, identity):
+                words = read_words(kind, transport, client)
+                check_connection(transport, identity)
+                cache_words(kind, transport, words, identity)
+                return {"values": words, "transport": transport, "kind": kind}
+        except (ValueError, OSError, CloudError) as error:
+            words, sources = cached_timer_words(registers)
+            if not words:
+                raise error
+            return {"values": words, "sources": sources, "read_only": True,
+                    "transport": transport, "kind": kind}
+    words, sources = cached_timer_words(registers)
+    return {"values": words, "sources": sources, "read_only": True,
+            "transport": transport, "kind": kind}
 
 
 def check_target_limits(kind, desired, current, transport, client):
