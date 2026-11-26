@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   api,
   type Register,
@@ -43,6 +43,19 @@ watch(
 )
 onBeforeUnmount(() => generation++)
 
+const atMode = computed(() => {
+  const row = props.valueFor(1236)
+  const value = row?.raw ?? row?.value
+  return value == null || value === '' ? null : Number(value)
+})
+const visibleDefinitions = computed(() => {
+  if (props.dialog.id !== 'at') return definitions.value
+  const visible = [1236]
+  if (atMode.value === 1) visible.push(1234, 1235, 1164, 1165)
+  if (atMode.value === 2)
+    visible.push(1164, 1165, ...(props.dialog.curve_points ?? []).map((point) => point.register))
+  return definitions.value.filter((entry) => visible.includes(entry.register))
+})
 function faults(entry: Register) {
   const raw = props.valueFor(entry.register)?.raw
   if (raw == null) return []
@@ -75,7 +88,8 @@ function display(register: number) {
   <div class="special-control-scroll">
     <p v-if="error" class="read-error">{{ error }}</p>
     <HeatingCurve
-      v-if="dialog.id === 'at'"
+      v-if="dialog.id === 'at' && (atMode === 1 || atMode === 2)"
+      :mode="atMode"
       :points="dialog.curve_points ?? []"
       :registers="definitions"
       :transport="transport"
@@ -84,7 +98,11 @@ function display(register: number) {
       @updated="emit('updated')"
     />
     <div class="special-card-grid">
-      <article v-for="entry in definitions" :key="entry.register" class="special-control-card">
+      <article
+        v-for="entry in visibleDefinitions"
+        :key="entry.register"
+        class="special-control-card"
+      >
         <span class="register-code">{{ entry.code || 'Register ' + entry.register }}</span>
         <h3>{{ entry.name }}</h3>
         <p class="special-current" :class="{ 'is-stale': isStale(entry.register) }">

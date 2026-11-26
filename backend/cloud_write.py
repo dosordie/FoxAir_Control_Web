@@ -66,7 +66,7 @@ def _limit(row: dict[str, Any] | None, name: str) -> Decimal:
     return limit
 
 
-def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
+def write_control(code: str, requested: Any, expected: Any, *, require_seven_point=False) -> dict[str, Any]:
     global _LAST_WRITE
     # Legacy controls or grants exported from the pinned desktop source only.
     desired, wire_value = _format_value(code, requested)
@@ -98,6 +98,8 @@ def write_control(code: str, requested: Any, expected: Any) -> dict[str, Any]:
             minimum, maximum = _limit(preflight.get(low), low), _limit(preflight.get(high), high)
             if minimum > maximum or not minimum <= desired <= maximum:
                 raise WriteValidationError(f"{code}: außerhalb der aktuellen {low}/{high}-Grenzen")
+        if require_seven_point and ("H36" not in preflight or _number(preflight["H36"]["value"]) != 2):
+            raise WriteConflictError("Sieben-Punkt-Kurve ist nicht mehr aktiv")
         if code == "compensate_offset" and desired != previous:
             if "H36" not in preflight:
                 raise WriteValidationError("AT-Kurvenmodus nicht lesbar")

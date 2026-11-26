@@ -188,7 +188,7 @@ def convert_baseline(register, entry, expected, source, target):
     return str(raw / SCALES.get(kind, 1))
 
 
-def write(register, transport, requested, expected, *, expected_transport=None):
+def write(register, transport, requested, expected, *, expected_transport=None, curve_edit=False):
     from backend.transport_selection import allows
 
     if not allows(transport):
@@ -197,6 +197,11 @@ def write(register, transport, requested, expected, *, expected_transport=None):
         raise WriteValidationError(
             "Display-Bus ist lesend; nur die separate Snapshot-Spezialfunktion ist freigegeben"
         )
+    if curve_edit:
+        from backend.register_definitions import AT_CURVE_POINTS
+
+        if register not in {address for _, address in AT_CURVE_POINTS}:
+            raise WriteValidationError("Kein Stützpunkt der Sieben-Punkt-Kurve")
     entry = definition(register)
     expected = convert_baseline(
         register, entry, expected, expected_transport, transport
@@ -256,6 +261,8 @@ def write(register, transport, requested, expected, *, expected_transport=None):
             raise WriteValidationError(
                 "Kein bestätigter Cloud-Schreibcode; Modbus verwenden"
             )
+        if curve_edit:
+            return write_control(grant["code"], requested, expected, require_seven_point=True)
         return write_control(grant["code"], requested, expected)
     if transport not in ("warmlink_raw", "standard_modbus"):
         raise WriteValidationError("Verbindung unterstützt keine Schreibzugriffe")
@@ -286,8 +293,11 @@ def write(register, transport, requested, expected, *, expected_transport=None):
                     "SG-Eingang passt nicht zur aktuellen SG01-Konfiguration"
                 )
         curve_point = register in (1250, 1251, 1252, 1253, 1254, 1255)
-        if register == 1235 and previous != word:
-            curve_point = client.read_holding(1236, 1)[0] == 2
+        if curve_edit or (register == 1235 and previous != word):
+            seven_point = client.read_holding(1236, 1)[0] == 2
+            if curve_edit and not seven_point:
+                raise WriteConflictError("Sieben-Punkt-Kurve ist nicht mehr aktiv")
+            curve_point = curve_point or seven_point
         if curve_point and previous != word:
             low, high = client.read_holding(1164, 2)
             if not 50 <= low <= high <= 700 or not low <= word <= high:

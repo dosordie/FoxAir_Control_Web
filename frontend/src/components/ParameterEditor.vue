@@ -7,9 +7,8 @@ const props = defineProps<{
   transport: TransportId
   admin: boolean
   value?: RegisterValue | null
-  proposedValue?: number
 }>()
-const emit = defineEmits<{ updated: []; read: [RegisterValue]; confirmed: [string] }>()
+const emit = defineEmits<{ updated: []; read: [RegisterValue] }>()
 const fieldId = 'parameter-draft-' + useId()
 const baseline = ref<RegisterValue | null>(null)
 const draft = ref<string | number>('')
@@ -51,7 +50,7 @@ function acceptValue(row: RegisterValue | null | undefined) {
     )
       editable = parseInt(String(row.value), 2)
   }
-  draft.value = props.proposedValue ?? editable
+  draft.value = editable
 }
 watch(
   () => props.value,
@@ -68,15 +67,6 @@ watch(
     dirty.value = false
     busy.value = false
     acceptValue(props.value)
-  },
-)
-watch(
-  () => props.proposedValue,
-  (value) => {
-    if (value != null) {
-      draft.value = value
-      dirty.value = true
-    }
   },
 )
 onBeforeUnmount(() => {
@@ -107,7 +97,6 @@ async function submit() {
   const row = baseline.value
   if (!props.admin || !row || busy.value) return
   const current = ++generation
-  const requested = String(draft.value)
   busy.value = true
   error.value = ''
   message.value = ''
@@ -116,7 +105,7 @@ async function submit() {
     const result = await api.writeParameter(
       props.register.register,
       props.transport,
-      requested,
+      String(draft.value),
       String(expected),
       row.transport,
     )
@@ -128,7 +117,6 @@ async function submit() {
         ? 'Wert unverändert; kein Schreibbefehl nötig.'
         : 'Wert per Readback bestätigt.'
       : result.message || 'Readback abweichend. Aktuellen Zustand neu lesen.'
-    if (result.confirmed) emit('confirmed', requested)
     emit('updated')
   } catch (failure) {
     if (!disposed && current === generation) {

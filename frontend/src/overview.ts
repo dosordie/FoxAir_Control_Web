@@ -4,6 +4,7 @@ import {
 } from 'lucide-vue-next'
 
 export const overviewFields = {
+  last_defrost: { label: 'Letztes Abtauen', icon: Snowflake, unit: '' },
   timer_m1: { label: 'Last Timer', icon: Gauge, unit: 'kW' },
   pump_feedback: { label: 'Umwälzpumpe · Rückmeldung', icon: Gauge, unit: '%' },
   flow: { label: 'Durchfluss', icon: Waves, unit: 'm³/h' },

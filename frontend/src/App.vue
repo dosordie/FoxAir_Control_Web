@@ -5,7 +5,7 @@ import {
   ChevronRight, Clock3, Cloud, Gauge, HeartPulse, House,
   Power, RadioTower, RefreshCw,
   Settings2, SlidersHorizontal, Star,
-  Sun, Thermometer, VolumeX, Wifi, Zap
+  Snowflake, Sun, Thermometer, VolumeX, Wifi, Zap
 } from 'lucide-vue-next'
 import TimerEditor from './TimerEditor.vue'
 import CloudInsights from './CloudInsights.vue'
@@ -23,6 +23,7 @@ import { giraIcon } from './giraIcons'
 import { formatGiraValue, isGiraText } from './giraValues'
 import { defaultOverview, overviewFields, type OverviewField, type OverviewLayout } from './overview'
 import type { CameraSettings, GiraItem } from './api'
+import { useLastDefrost } from './composables/useLastDefrost'
 import { useTimerSummary } from './composables/useTimerSummary'
 import RegisterDecoder from './components/RegisterDecoder.vue'
 import PowerSummary from './components/PowerSummary.vue'
@@ -313,6 +314,10 @@ const m1Selected = computed(() =>
   overviewLayout.value[mobileProfile ? 'mobile' : 'desktop'].includes('timer_m1') || glance.value.includes('timer_m1'))
 const { m1Limit, m1Status, m1InWindow } =
   useTimerSummary(page, selectedTransport, transportPaused, m1Selected)
+const defrostSelected = computed(() => page.value === 'home' &&
+  (overviewLayout.value[mobileProfile ? 'mobile' : 'desktop'].includes('last_defrost') ||
+    glance.value.includes('last_defrost')))
+const lastDefrost = useLastDefrost(defrostSelected)
 const readings = computed(() => {
   const keys = overviewLayout.value[mobileProfile ? 'mobile' : 'desktop']
   return keys.flatMap(key => {
@@ -325,6 +330,8 @@ const readings = computed(() => {
     }
     if (!Object.hasOwn(overviewFields, key)) return []
     const field = key as OverviewField
+    if (field === 'last_defrost') return [{ key, ...overviewFields[field], stale: false,
+      compactText: true, text: lastDefrost.value }]
     if (field === 'timer_m1') return [{ key, ...overviewFields[field], stale: m1Limit.value?.stale === true,
       compactText: false, text: m1Limit.value?.max_kw?.toLocaleString('de-DE', { maximumFractionDigits: 1 }) ?? '—' }]
     const row = field === 'spread' ? null : snapshot.value?.metrics[field]
@@ -669,6 +676,10 @@ onBeforeUnmount(() => {
                   <button v-else-if="key === 'silent'" type="button" class="operation operation-button" :disabled="transportPaused" @click="operationDialog?.open('H22')"><span class="operation-icon"><VolumeX :size="24" /></span><span>Ruhemodus</span><strong>{{ metric('silent').replace('Silent-Modus ', '') }}</strong></button>
                   <button v-else-if="key === 'parameters'" type="button" class="main-action glance-wide" @click="navigate('parameters')"><SlidersHorizontal :size="19" /><span>Parameter & Einstellungen</span><ArrowRight :size="19" /></button>
                   <div v-else-if="key.startsWith('spacer:')" class="glance-spacer" aria-hidden="true"></div>
+                  <div v-else-if="key === 'last_defrost'" class="power-summary">
+                    <div><Snowflake :size="17" aria-hidden="true" /><strong>{{ lastDefrost }}</strong>
+                      <small>{{ overviewFields.last_defrost.label }}</small></div>
+                  </div>
                   <div v-else-if="key === 'timer_m1'" class="power-summary">
                     <div :class="{'is-stale':m1Limit?.stale}">
                       <Gauge :size="17" aria-hidden="true" />

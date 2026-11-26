@@ -188,7 +188,7 @@ export type CameraSettings = {
 export const api = {
   cameraSettings: () => get<CameraSettings>('/api/camera/settings'),
   saveCamera: (settings: CameraSettings) => post<CameraSettings>('/api/camera/settings', settings),
-  writeParameter:(register:number,transport:TransportId,value:string,expected:string,expected_transport?:string)=>post<CloudWriteResult>('/api/parameters/'+register+'/write',{transport,value,expected,expected_transport}),
+  writeParameter:(register:number,transport:TransportId,value:string,expected:string,expected_transport?:string,curve_edit?:boolean)=>post<CloudWriteResult>('/api/parameters/'+register+'/write',{transport,value,expected,expected_transport,curve_edit}),
   refreshParameters:(transport:TransportId,registers:number[])=>post<{values:Record<string,RegisterValue>;updated:number;status:string}>('/api/parameters/refresh',{transport,registers}),
   lastValues:()=>get<{values:Record<string,RegisterValue>}>('/api/last-values'),
   lteSnapshot:()=>get<LteSnapshot>('/api/warmlink/state'),
@@ -233,6 +233,7 @@ export const api = {
     if (!response.ok) throw new Error(errorMessage(await response.json().catch(() => ({})), response.status))
     return response.blob()
   },
+  latestDefrost: () => get<{finished_at: string | null}>('/api/history/local/defrost/latest'),
   defrostHistory: (days: number) => get<{events: {start: string; duration_seconds: number}[]}>('/api/history/local/defrost?' + new URLSearchParams({days: String(days)})),
   localHistory: (register: number, days: number) => get<HistorySeries>('/api/history/local?' + new URLSearchParams({ register: String(register), days: String(days) })),
   lanAccess: () => post<LanAccess>('/api/admin/lan-access', {}),

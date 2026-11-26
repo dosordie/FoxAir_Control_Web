@@ -106,6 +106,7 @@ def refresh_group(payload: GroupRead, request: Request):
 class ParameterWrite(BaseModel):
     transport: str
     expected_transport: str | None = None
+    curve_edit: bool = False
     value: str = Field(max_length=64)
     expected: str = Field(max_length=64)
 
@@ -127,6 +128,7 @@ def write_parameter(register: int, payload: ParameterWrite, request: Request):
             payload.value,
             payload.expected,
             expected_transport=payload.expected_transport,
+            curve_edit=payload.curve_edit,
         )
     except WriteConflictError as exc:
         raise HTTPException(409, str(exc)) from None

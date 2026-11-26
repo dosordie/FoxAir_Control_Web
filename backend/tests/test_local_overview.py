@@ -116,6 +116,9 @@ class LocalOverviewTests(TestCase):
                     }
                 ],
             )
+            self.assertEqual(local_history.latest_defrost(), {
+                "finished_at": datetime.fromtimestamp(550, timezone.utc).isoformat(),
+            })
 
     def test_profiles_share_storage_and_plan_only_missing_adjacent_registers(self):
         with (
