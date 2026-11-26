@@ -14,7 +14,14 @@ DEFAULT = ["flow", "tank", "outdoor", "return", "supply", "spread"]
 OPTIONS = (
     set(DEFAULT)
     | DIAGNOSTIC_FIELDS.keys()
-    | {"electrical_power", "thermal_power", "cop", "compressor_frequency", "timer_m1"}
+    | {
+        "electrical_power",
+        "thermal_power",
+        "cop",
+        "compressor_frequency",
+        "timer_m1",
+        "last_defrost",
+    }
 )
 GLANCE_DEFAULT = [
     "electrical_power",
@@ -50,10 +57,10 @@ def settings():
 
 
 class Layout(BaseModel):
-    mobile: list[str] = Field(max_length=12)
-    desktop: list[str] = Field(max_length=12)
-    mobile_glance: list[str] | None = Field(default=None, max_length=18)
-    desktop_glance: list[str] | None = Field(default=None, max_length=18)
+    mobile: list[str]
+    desktop: list[str]
+    mobile_glance: list[str] | None = None
+    desktop_glance: list[str] | None = None
     mobile_columns: int = Field(default=3, ge=1, le=4)
     desktop_columns: int = Field(default=8, ge=1, le=9)
 
@@ -76,8 +83,6 @@ def validate_profiles(profiles):
             if name.endswith("_glance")
             else OPTIONS
         )
-        if sum(key not in GLANCE_SPACERS for key in keys) > 12:
-            raise HTTPException(422, "Höchstens zwölf Anzeigen pro Bereich")
         if len(set(keys)) != len(keys) or any(
             key not in options and not re.fullmatch(r"gira:[0-9a-f]{24}", key)
             for key in keys

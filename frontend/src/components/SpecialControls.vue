@@ -8,6 +8,7 @@ import {
   type TransportId,
 } from '../api'
 import ParameterEditor from './ParameterEditor.vue'
+import HeatingCurve from './HeatingCurve.vue'
 
 const props = defineProps<{
   dialog: SpecialDialog
@@ -42,42 +43,19 @@ watch(
 )
 onBeforeUnmount(() => generation++)
 
-function number(register: number) {
-  const row = props.valueFor(register)
-  if (!row || row.value == null) return null
-  const value =
-    register === 1236 && row.raw != null ? row.raw : Number(String(row.value).replace(',', '.'))
-  return Number.isFinite(value) ? value : null
-}
-const curve = computed(() => {
-  const mode = number(1236),
-    minimum = number(1164),
-    maximum = number(1165)
-  if (!mode || minimum == null || maximum == null || minimum > maximum) return []
-  const slope = number(1234),
-    offset = number(1235)
-  const points = props.dialog.curve_points || []
-  const targets = points.map((point) =>
-    mode === 2
-      ? number(point.register)
-      : mode === 1 && slope != null && offset != null
-        ? offset - slope * point.outdoor
-        : null,
-  )
-  if (targets.some((value) => value == null)) return []
-  return points.map((point, index) => {
-    const value = Math.max(minimum, Math.min(maximum, targets[index]!))
-    return {
-      ...point,
-      value,
-      x: 50 + ((point.outdoor + 20) / 40) * 420,
-      y: 200 - ((value - minimum) / Math.max(1, maximum - minimum)) * 170,
-    }
-  })
+const atMode = computed(() => {
+  const row = props.valueFor(1236)
+  const value = row?.raw ?? row?.value
+  return value == null || value === '' ? null : Number(value)
 })
-const path = computed(() =>
-  curve.value.map((point, index) => (index ? 'L' : 'M') + point.x + ',' + point.y).join(' '),
-)
+const visibleDefinitions = computed(() => {
+  if (props.dialog.id !== 'at') return definitions.value
+  const visible = [1236]
+  if (atMode.value === 1) visible.push(1234, 1235)
+  if (atMode.value === 2)
+    visible.push(1164, 1165, ...(props.dialog.curve_points ?? []).map((point) => point.register))
+  return definitions.value.filter((entry) => visible.includes(entry.register))
+})
 function faults(entry: Register) {
   const raw = props.valueFor(entry.register)?.raw
   if (raw == null) return []
@@ -109,35 +87,31 @@ function display(register: number) {
 <template>
   <div class="special-control-scroll">
     <p v-if="error" class="read-error">{{ error }}</p>
-    <section v-if="dialog.id === 'at'" class="curve-panel" aria-label="Heizkennlinie">
-      <h3>Heizkennlinie</h3>
-      <p>Außen: {{ display(2048) }} °C · Aktueller Sollwert: {{ display(2014) }} °C</p>
-      <svg
-        v-if="curve.length"
-        viewBox="0 0 520 250"
-        role="img"
-        aria-label="Heizsollwert über Außentemperatur, begrenzt durch R10 und R11"
-      >
-        <path d="M50 20 V200 H490" fill="none" stroke="#a8b0b9" />
-        <path :d="path" fill="none" stroke="#ec8735" stroke-width="4" />
-        <g v-for="point in curve" :key="point.register">
-          <circle :cx="point.x" :cy="point.y" r="5" fill="#ec8735">
-            <title>{{ point.outdoor }} °C außen: {{ point.value }} °C Sollwert</title>
-          </circle>
-          <text :x="point.x" y="225" text-anchor="middle">{{ point.outdoor }}°</text>
-          <text :x="point.x" :y="point.y - 12" text-anchor="middle">
-            {{ point.value.toLocaleString('de-DE', { maximumFractionDigits: 1 }) }}°
-          </text>
-        </g>
-      </svg>
-      <p v-else class="section-hint">
-        Kennlinie ausgeschaltet oder Kurvenwerte / R10–R11 noch nicht vollständig verfügbar.
-      </p>
-    </section>
+    <HeatingCurve
+      v-if="dialog.id === 'at' && (atMode === 1 || atMode === 2)"
+      :mode="atMode"
+      :points="dialog.curve_points ?? []"
+      :registers="definitions"
+      :transport="transport"
+      :admin="admin"
+      :value-for="valueFor"
+      @updated="emit('updated')"
+    />
     <div class="special-card-grid">
-      <article v-for="entry in definitions" :key="entry.register" class="special-control-card">
+      <article
+        v-for="entry in visibleDefinitions"
+        :key="entry.register"
+        class="special-control-card"
+        :class="{ 'curve-mode-card': dialog.id === 'at' && entry.register === 1236 }"
+      >
         <span class="register-code">{{ entry.code || 'Register ' + entry.register }}</span>
-        <h3>{{ entry.name }}</h3>
+        <h3>
+          {{
+            dialog.id === 'at' && atMode === 1 && entry.register === 1235
+              ? 'Offset / Mittelpunkt'
+              : entry.name
+          }}
+        </h3>
         <p class="special-current" :class="{ 'is-stale': isStale(entry.register) }">
           {{ display(entry.register) }} <small>{{ valueFor(entry.register)?.unit || '' }}</small>
         </p>

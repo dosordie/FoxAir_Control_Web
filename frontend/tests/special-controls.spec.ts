@@ -2,10 +2,11 @@ import { createApp, nextTick } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api, type RegisterValue } from '../src/api'
 import SpecialControls from '../src/components/SpecialControls.vue'
+import HeatingCurve from '../src/components/HeatingCurve.vue'
 
-vi.mock('../src/api',()=>({api:{registers:vi.fn()}}))
+vi.mock('../src/api',()=>({api:{registers:vi.fn(),writeParameter:vi.fn()}}))
 let cleanup: (()=>void)|undefined
-afterEach(()=>{cleanup?.();cleanup=undefined})
+afterEach(()=>{cleanup?.();cleanup=undefined;vi.unstubAllGlobals();vi.useRealTimers();vi.clearAllMocks()})
 
 it('uses all seven firmware curve points, including 1235 at zero degrees, with distinct editor labels',async()=>{
   const points=[[-20,1250],[-10,1251],[-5,1252],[0,1235],[5,1253],[10,1254],[20,1255]]
@@ -23,4 +24,64 @@ it('uses all seven firmware curve points, including 1235 at zero degrees, with d
   const ids=Array.from(root.querySelectorAll('input')).map(input=>input.id)
   expect(ids).toHaveLength(7)
   expect(new Set(ids).size).toBe(7)
+
+  const point = root.querySelector<SVGCircleElement>('circle[aria-label="0 °C außen, Sollwert 35 °C"]')!
+  point.setPointerCapture = vi.fn()
+  const svg = root.querySelector('svg[viewBox="0 0 520 250"]') as SVGSVGElement
+  svg.getScreenCTM = () => new DOMMatrix()
+  vi.stubGlobal('DOMPoint', class {
+    constructor(public x: number, public y: number) {}
+    matrixTransform() { return this }
+  })
+  const pointer = { pointerType: 'mouse', isPrimary: true, pointerId: 1 }
+  point.dispatchEvent(new PointerEvent('pointerdown', { ...pointer, clientY: 133 }))
+  point.dispatchEvent(new PointerEvent('pointermove', { ...pointer, clientY: 111 }))
+  point.dispatchEvent(new PointerEvent('pointerup', { ...pointer, clientY: 111 }))
+  await nextTick()
+  const draft = root.querySelector<HTMLInputElement>('.curve-panel input')!
+  expect(draft.value).toBe('40')
+  const second = root.querySelector<SVGCircleElement>('circle[aria-label="5 °C außen, Sollwert 30 °C"]')!
+  second.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  await nextTick()
+  draft.value = '31'
+  draft.dispatchEvent(new Event('change'))
+  await nextTick()
+  expect(api.writeParameter).not.toHaveBeenCalled()
+  vi.mocked(api.writeParameter).mockResolvedValue({ confirmed: true, status: 'confirmed' })
+  vi.useFakeTimers()
+  root.querySelector<HTMLButtonElement>('.curve-panel .main-action')!.click()
+  expect(api.writeParameter).toHaveBeenNthCalledWith(1, 1235, 'warmlink_raw', '40', '350', 'warmlink_raw', true)
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(api.writeParameter).toHaveBeenNthCalledWith(2, 1253, 'warmlink_raw', '31', '300', 'warmlink_raw', true)
+  expect(root.textContent).toContain('2 von 2 Stützpunkten bestätigt.')
+
+})
+
+it('draws the standard curve with plateaus exactly where the limits are crossed and shows the hovered target', async () => {
+  const values: Record<number, number> = { 1236: 1, 1234: 1, 1235: 35, 1164: 20, 1165: 50 }
+  const root = document.createElement('div')
+  const app = createApp(HeatingCurve, {
+    points: [], registers: [], transport: 'display_modbus', admin: true, mode: 1,
+    valueFor: (register: number) => values[register] == null ? null : {
+      register, value: values[register], raw: null, transport: 'display_modbus', timestamp: '',
+      quality: 'observed', unit: '',
+    },
+  })
+  app.mount(root)
+  cleanup = () => app.unmount()
+
+  expect(root.querySelector('polyline')?.getAttribute('points')).toBe(
+    '62,24 115.75,24 438.25,198 492,198',
+  )
+  expect(root.querySelectorAll('circle')).toHaveLength(0)
+  const svg = root.querySelector('svg')!
+  svg.getScreenCTM = () => new DOMMatrix()
+  svg.getBoundingClientRect = () => new DOMRect(0, 0, 520, 250)
+  vi.stubGlobal('DOMPoint', class {
+    constructor(public x: number, public y: number) {}
+    matrixTransform() { return this }
+  })
+  svg.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', clientX: 277, clientY: 110 }))
+  await nextTick()
+  expect(root.querySelector('.history-tooltip')?.textContent).toContain('35 °C Sollwert')
 })

@@ -95,6 +95,7 @@ async function load() {
         ...data,
         objects: data.objects.map((item: Config['objects'][number]) => ({
           ...item,
+          key: item.key.replace(/^CO@/i, ''),
           text_encoding: item.text_encoding || 'auto',
           icon: item.icon || 'knx',
           decimals: item.decimals ?? null,
@@ -197,54 +198,66 @@ onBeforeUnmount(() => {
         <fieldset :disabled="!admin || !secure || busy">
           <label><input type="checkbox" v-model="cfg.enabled" /> Gira-Anzeigen aktivieren</label>
           <template v-if="cfg.enabled">
-            <label
-              >HomeServer-IP<input
-                class="settings-input"
-                v-model="cfg.host"
-                placeholder="Private IP-Adresse"
-            /></label>
-            <label
-              >Port<input
-                class="settings-input"
-                type="number"
-                min="1"
-                max="65535"
-                v-model.number="cfg.port"
-            /></label>
-            <label
-              >WebSocket-Pfad<input class="settings-input" v-model="cfg.path" placeholder="/"
-            /></label>
-            <label
-              ><input type="checkbox" v-model="cfg.tls" /> TLS (wss; vertrauenswürdiges Zertifikat
-              erforderlich)</label
-            >
-            <label
-              >Benutzername<input class="settings-input" v-model="cfg.username" autocomplete="off"
-            /></label>
-            <label
-              >Passwort<input
-                class="settings-input"
-                type="password"
-                v-model="cfg.password"
-                autocomplete="new-password"
-                :placeholder="
-                  cfg.password_configured ? 'Leer = gespeichertes Passwort behalten' : ''
-                "
-            /></label>
-            <label
-              ><input type="checkbox" v-model="cfg.clear_password" /> Gespeichertes Passwort
-              entfernen</label
-            >
-            <label
-              ><input type="checkbox" v-model="cfg.auth_header" /> Anmeldung als HTTP-Header senden
-              (sonst Gira-URL-Verfahren)</label
-            >
-            <div v-for="(object, index) in cfg.objects" :key="index" class="expert-object">
+            <details class="expert-object">
+              <summary>HomeServer-Kommunikation</summary>
               <label
-                >Objektschlüssel<input
+                >HomeServer-IP<input
+                  class="settings-input"
+                  v-model="cfg.host"
+                  placeholder="Private IP-Adresse"
+              /></label>
+              <label
+                >Port<input
+                  class="settings-input"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  v-model.number="cfg.port"
+              /></label>
+              <label
+                >WebSocket-Pfad<input class="settings-input" v-model="cfg.path" placeholder="/"
+              /></label>
+              <label
+                ><input type="checkbox" v-model="cfg.tls" /> TLS (wss; vertrauenswürdiges Zertifikat
+                erforderlich)</label
+              >
+              <label
+                >Benutzername<input
+                  class="settings-input"
+                  v-model="cfg.username"
+                  autocomplete="off"
+              /></label>
+              <label
+                >Passwort<input
+                  class="settings-input"
+                  type="password"
+                  v-model="cfg.password"
+                  autocomplete="new-password"
+                  :placeholder="
+                    cfg.password_configured ? 'Leer = gespeichertes Passwort behalten' : ''
+                  "
+              /></label>
+              <label
+                ><input type="checkbox" v-model="cfg.clear_password" /> Gespeichertes Passwort
+                entfernen</label
+              >
+              <label
+                ><input type="checkbox" v-model="cfg.auth_header" /> Anmeldung als HTTP-Header
+                senden (sonst Gira-URL-Verfahren)</label
+              >
+            </details>
+            <details v-for="(object, index) in cfg.objects" :key="index" class="expert-object">
+              <summary>
+                {{
+                  object.name ||
+                  (object.key ? 'CO@' + object.key.replace(/^CO@/i, '') : 'Neues Objekt')
+                }}
+              </summary>
+              <label
+                >Objektschlüssel (z. B. 123)<input
                   class="settings-input"
                   v-model="object.key"
-                  placeholder="CO@123"
+                  placeholder="123"
                   required
               /></label>
               <label
@@ -287,7 +300,7 @@ onBeforeUnmount(() => {
               <button type="button" class="outlined-action" @click="cfg.objects.splice(index, 1)">
                 Objekt entfernen
               </button>
-            </div>
+            </details>
             <button
               type="button"
               class="outlined-action"

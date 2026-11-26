@@ -23,7 +23,13 @@ const accountLabel = computed(() =>
 const username = defineModel<string>('username', { default: 'admin' })
 const password = defineModel<string>('password', { required: true })
 const loginOpen = defineModel<boolean>('loginOpen', { required: true })
-const emit = defineEmits<{ navigate: [page: Page]; login: []; logout: []; ssoLogin: [] }>()
+const emit = defineEmits<{
+  navigate: [page: Page]
+  openUpdate: []
+  login: []
+  logout: []
+  ssoLogin: []
+}>()
 const menu = ref<HTMLElement | null>(null)
 const usernameInput = ref<HTMLInputElement | null>(null)
 const close = () => {
@@ -89,8 +95,8 @@ onBeforeUnmount(() => {
         type="button"
         class="update-badge"
         title="Update verfügbar"
-        aria-label="Update verfügbar – Einstellungen öffnen"
-        @click="emit('navigate', 'settings')"
+        aria-label="Updatebereich öffnen"
+        @click="emit('openUpdate')"
       >
         <ArrowUpCircle :size="17" />
         <span>Update</span>

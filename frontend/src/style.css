@@ -535,15 +535,19 @@ a{color:inherit}
 .glance-order>.power-summary{display:block;margin:0}
 .glance-order>.power-summary>div{height:100%}
 .glance-order>.expert-metrics .power-summary{margin:0}
-@media(min-width:1024px){.target-delta{font-size:16px;font-weight:700}}
+@media(min-width:1024px){.target-delta{font-size:16px;font-weight:500}}
 .target-delta.delta-neutral{color:inherit}
-.target-delta.delta-cold{color:#12366d}
-.target-delta.delta-warm{color:#781328}
-.heat-hero-off .target-delta.delta-cold{color:#b9e4ff;text-shadow:0 1px 2px #263444}
-.heat-hero-off .target-delta.delta-warm{color:#ffd0d8;text-shadow:0 1px 2px #442832}
+.target-delta.delta-cold{color:#91d8ff;text-shadow:0 1px 2px #233951}
+.target-delta.delta-warm{color:#d00020;text-shadow:0 0 2px #fff9}
+.heat-hero-off .target-delta.delta-warm{color:#ff6675;text-shadow:0 1px 2px #482028}
 .overview-order{border:0;padding:12px 0;margin:0}.overview-order ol{margin:0;padding:0;list-style:none}
 .overview-order li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef0f2;cursor:grab}
-.overview-order li>span{flex:1}.overview-order li button{padding:5px 10px}
+.overview-order-label{flex:1;min-width:0}
+.overview-drag-handle{display:grid;place-items:center;flex:0 0 30px;min-height:32px;border-radius:6px;color:#586271;cursor:grab;touch-action:none;user-select:none}
+.overview-drag-handle:hover,.overview-drag-handle:active{background:#f2f3f5;color:#303842}
+.overview-drag-handle:active{cursor:grabbing}
+.overview-order li.overview-drop-target{background:#fff6eb;box-shadow:inset 0 -2px #fa8c38}
+#settings-update{scroll-margin-top:16px}.overview-order li button{padding:5px 10px}
 .history-plot{position:relative}.history-plot .history-chart{display:block}
 .history-tooltip{position:absolute;z-index:2;pointer-events:none;transform:translate(8px,calc(-100% - 8px));display:grid;gap:3px;background:#1d2735;color:#fff;padding:7px 11px;border-radius:8px;white-space:nowrap;font-size:12px;box-shadow:0 3px 12px #0003}
 .history-tooltip.tip-left{transform:translate(calc(-100% - 8px),calc(-100% - 8px))}
@@ -565,3 +569,5 @@ a{color:inherit}
   .connection-dialog.camera-dialog{width:min(var(--app-shell-max-width),calc(100vw - 32px))}
   .heatpump-camera-stream{max-height:calc(90dvh - 100px)}
 }
+
+.curve-mode-card{grid-column:1 / -1}

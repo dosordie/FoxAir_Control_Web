@@ -364,6 +364,20 @@ def defrost_events(days: int = Query(1, ge=1, le=365)):
     }
 
 
+@router.get("/api/history/local/defrost/latest")
+def latest_defrost():
+    cutoff = time.time() - config().retention_days * 86400
+    if not (cloud_config.STATE_DIR / "local-history.sqlite").exists():
+        return {"finished_at": None}
+    with closing(connect()) as db:
+        row = db.execute(
+            "SELECT MAX(finish) FROM defrost WHERE scope IN (?, ?) AND finish>=?",
+            (*archive_scopes(db), cutoff),
+        ).fetchone()
+    finish = row[0]
+    return {"finished_at": datetime.fromtimestamp(finish, timezone.utc).isoformat() if finish is not None else None}
+
+
 @router.get("/api/history/local")
 def series(register: int, days: int = Query(1, ge=1, le=365)):
     from fastapi import HTTPException

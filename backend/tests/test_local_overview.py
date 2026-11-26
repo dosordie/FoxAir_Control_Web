@@ -116,6 +116,9 @@ class LocalOverviewTests(TestCase):
                     }
                 ],
             )
+            self.assertEqual(local_history.latest_defrost(), {
+                "finished_at": datetime.fromtimestamp(550, timezone.utc).isoformat(),
+            })
 
     def test_profiles_share_storage_and_plan_only_missing_adjacent_registers(self):
         with (
@@ -145,6 +148,41 @@ class LocalOverviewTests(TestCase):
                 blocks[len(STANDARD_DASHBOARD_BLOCKS) :],
                 ((2023, 1), (2063, 1), (2074, 2)),
             )
+
+    def test_overview_accepts_more_than_previous_tile_limits(self):
+        fields = sorted(overview.OPTIONS)
+        self.assertGreater(len(fields), 18)
+        app = FastAPI()
+        app.include_router(overview.router)
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+            patch.object(cloud_config, "require_admin"),
+        ):
+            client = TestClient(app)
+            profiles = {name: fields for name in ("mobile", "desktop", "mobile_glance", "desktop_glance")}
+            result = client.post("/api/overview", json=profiles)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(client.get("/api/overview").json(), {
+                **profiles, "mobile_columns": 3, "desktop_columns": 8,
+            })
+
+    def test_pump_feedback_is_available_in_both_dashboard_areas(self):
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+        ):
+            from backend.register_definitions import LTE_DASHBOARD_BLOCKS
+
+            profiles = {
+                **overview.settings(),
+                "desktop": ["pump_feedback"],
+                "mobile_glance": ["pump_feedback"],
+            }
+            overview.validate_profiles(profiles)
+            cloud_config._atomic_json(overview.config_path(), profiles)
+            self.assertIn((2116, 1), overview.standard_ranges(STANDARD_DASHBOARD_BLOCKS))
+            self.assertIn((2115, 2), LTE_DASHBOARD_BLOCKS)
 
     def test_history_buffers_deduplicates_flushes_and_expires(self):
         with (
