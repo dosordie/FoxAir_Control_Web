@@ -229,38 +229,10 @@ def rollback():
         run("systemctl", "start", "foxair-web.service")
 
 
-def install():
-    ready = latest(force=True)
-    if ready is None:
-        raise RuntimeError("No complete approved stable release is available")
-    validate_ready(ready)
-    installed_file = BASE / "app/build-manifest.json"
-    if installed_file.is_file():
-        installed = validate(json.loads(installed_file.read_text()))
-        if newer(installed["version"], ready["version"]):
-            raise RuntimeError(
-                "Automatic downgrade is forbidden; use explicit local rollback"
-            )
-        if (
-            installed["build_channel"] == "release"
-            and installed["source_commit"] == ready["source_commit"]
-        ):
-            print("Release already installed; rollback reference retained")
-            return
-    releases = BASE / "releases"
-    releases.mkdir(parents=True, exist_ok=True)
-    releases.chmod(0o755)
-    target = releases / (ready["version"] + "-" + ready["source_commit"])
-    if target.exists():
-        if not (target / "install-ready.json").is_file():
-            if (BASE / "app").resolve() == target.resolve():
-                raise RuntimeError("Active release is incomplete; recover manually")
-            target.rename(target.with_name(target.name + f".failed-{time.time_ns()}"))
-        elif json.loads((target / "install-ready.json").read_text()) != ready:
-            raise RuntimeError(
-                "Immutable version already exists with different metadata"
-            )
-    if not target.exists():
+def stage_release(releases, target, ready):
+    # Root creates public application artifacts, even from a shell with umask 077.
+    previous_umask = os.umask(0o022)
+    try:
         with tempfile.TemporaryDirectory(
             prefix=".release-stage-", dir=releases
         ) as temp:
@@ -299,6 +271,53 @@ def install():
             cwd=target,
         )
         (target / "install-ready.json").write_text(json.dumps(ready, sort_keys=True))
+    finally:
+        os.umask(previous_umask)
+
+
+def runtime_tree_accessible(target):
+    return all(
+        path.is_dir() and path.stat().st_mode & 0o005 == 0o005
+        for path in (target, target / "venv", target / "venv/bin")
+    )
+
+
+def install():
+    ready = latest(force=True)
+    if ready is None:
+        raise RuntimeError("No complete approved stable release is available")
+    validate_ready(ready)
+    installed_file = BASE / "app/build-manifest.json"
+    if installed_file.is_file():
+        installed = validate(json.loads(installed_file.read_text()))
+        if newer(installed["version"], ready["version"]):
+            raise RuntimeError(
+                "Automatic downgrade is forbidden; use explicit local rollback"
+            )
+        if (
+            installed["build_channel"] == "release"
+            and installed["source_commit"] == ready["source_commit"]
+        ):
+            print("Release already installed; rollback reference retained")
+            return
+    releases = BASE / "releases"
+    releases.mkdir(parents=True, exist_ok=True)
+    releases.chmod(0o755)
+    target = releases / (ready["version"] + "-" + ready["source_commit"])
+    if target.exists():
+        marker = target / "install-ready.json"
+        if marker.is_file() and json.loads(marker.read_text()) != ready:
+            raise RuntimeError(
+                "Immutable version already exists with different metadata"
+            )
+        if not marker.is_file() or not runtime_tree_accessible(target):
+            if (BASE / "app").resolve() == target.resolve():
+                raise RuntimeError(
+                    "Active release is incomplete or inaccessible; recover manually"
+                )
+            target.rename(target.with_name(target.name + f".failed-{time.time_ns()}"))
+    if not target.exists():
+        stage_release(releases, target, ready)
     deploy(target, ready)
 
 

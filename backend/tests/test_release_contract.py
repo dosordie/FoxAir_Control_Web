@@ -23,6 +23,32 @@ def manifest():
 
 
 class ReleaseContractTests(TestCase):
+    @skipIf(os.name == "nt", "POSIX file permissions")
+    def test_release_staging_allows_service_access_with_restrictive_root_umask(self):
+        with TemporaryDirectory() as directory:
+            releases = Path(directory)
+            target = releases / "release"
+
+            def create_venv(*args, **kwargs):
+                if "venv" in args:
+                    (target / "venv/bin").mkdir(parents=True)
+
+            mask = os.umask(0o077)
+            try:
+                target.mkdir()
+                self.assertFalse(installer.runtime_tree_accessible(target))
+                target.rmdir()
+                with (
+                    patch.object(installer.urllib.request, "urlopen", return_value=io.BytesIO(b"archive")),
+                    patch.object(installer, "extract"),
+                    patch.object(installer, "run", side_effect=create_venv),
+                ):
+                    installer.stage_release(releases, target, {"archive_url": "unused"})
+                self.assertTrue(installer.runtime_tree_accessible(target))
+                self.assertEqual(os.umask(0o077), 0o077)
+            finally:
+                os.umask(mask)
+
     def test_health_url_uses_systemd_host_and_port(self):
         command = "/opt/foxair-web/venv/bin/python -m backend.server"
         cases = (
