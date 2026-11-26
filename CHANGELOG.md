@@ -1,5 +1,10 @@
 # Änderungen
 
+## v0.1.16
+
+- Der Linux-Installer verwendet für die Startprüfung die IP-Adresse und den Port aus dem systemd-Dienst. Bei einem Fehlschlag nennt er die geprüfte Adresse und den letzten Fehler.
+- Release-Dateien und die Python-Umgebung bleiben auch bei restriktiver Root-umask für das FoxWeb-Dienstkonto zugänglich. Ein unzugängliches, inaktives Release-Verzeichnis wird beim nächsten Installationsversuch gesichert und neu aufgebaut.
+
 ## v0.1.15
 
 - Der Update-Button in der Kopfzeile öffnet direkt den Updatebereich in den Einstellungen.
