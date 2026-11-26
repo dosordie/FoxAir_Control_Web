@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -100,17 +101,34 @@ def health_url():
         ["systemctl", "show", "foxair-web.service", "--property=ExecStart", "--value"],
         text=True,
     )
-    match = re.search(r"--host\s+([0-9a-fA-F:.]+)", text)
-    host = str(ipaddress.ip_address(match.group(1))) if match else "127.0.0.1"
+    argv = re.search(r"argv\[\]=(.*?)(?:\s+;|$)", text)
+    args = shlex.split(argv.group(1) if argv else text)
+    options = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    options.add_argument("--host", default="127.0.0.1")
+    options.add_argument("--port", type=int, default=8081)
+    config, _ = options.parse_known_args(args)
+    if not 1 <= config.port <= 65535:
+        raise ValueError("FoxAir service uses an invalid health-check port")
+    host = config.host
+    try:
+        host = str(ipaddress.ip_address(host))
+    except ValueError:
+        if not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?", host):
+            raise ValueError(
+                "FoxAir service uses an invalid health-check host"
+            ) from None
     host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(host, host)
-    return f"http://{'[' + host + ']' if ':' in host else host}:8081/api/health"
+    return (
+        f"http://{'[' + host + ']' if ':' in host else host}:{config.port}/api/health"
+    )
 
 
 def verify_running(ready):
     url = health_url()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     for _ in range(30):
         try:
-            with urllib.request.urlopen(url, timeout=2) as response:
+            with opener.open(url, timeout=2) as response:
                 body = json.load(response)
             if (
                 body.get("ok")
@@ -118,10 +136,13 @@ def verify_running(ready):
                 and body["build"].get("build_consistent")
             ):
                 return
-        except (OSError, ValueError, KeyError):
-            pass
+            failure = "running build did not match the release manifest"
+        except (OSError, ValueError, KeyError) as error:
+            failure = str(error)
         time.sleep(1)
-    raise RuntimeError("New release failed its health/version check")
+    raise RuntimeError(
+        f"New release failed its health/version check at {url}: {failure}"
+    )
 
 
 def deploy(target, ready):
@@ -208,38 +229,10 @@ def rollback():
         run("systemctl", "start", "foxair-web.service")
 
 
-def install():
-    ready = latest(force=True)
-    if ready is None:
-        raise RuntimeError("No complete approved stable release is available")
-    validate_ready(ready)
-    installed_file = BASE / "app/build-manifest.json"
-    if installed_file.is_file():
-        installed = validate(json.loads(installed_file.read_text()))
-        if newer(installed["version"], ready["version"]):
-            raise RuntimeError(
-                "Automatic downgrade is forbidden; use explicit local rollback"
-            )
-        if (
-            installed["build_channel"] == "release"
-            and installed["source_commit"] == ready["source_commit"]
-        ):
-            print("Release already installed; rollback reference retained")
-            return
-    releases = BASE / "releases"
-    releases.mkdir(parents=True, exist_ok=True)
-    releases.chmod(0o755)
-    target = releases / (ready["version"] + "-" + ready["source_commit"])
-    if target.exists():
-        if not (target / "install-ready.json").is_file():
-            if (BASE / "app").resolve() == target.resolve():
-                raise RuntimeError("Active release is incomplete; recover manually")
-            target.rename(target.with_name(target.name + f".failed-{time.time_ns()}"))
-        elif json.loads((target / "install-ready.json").read_text()) != ready:
-            raise RuntimeError(
-                "Immutable version already exists with different metadata"
-            )
-    if not target.exists():
+def stage_release(releases, target, ready):
+    # Root creates public application artifacts, even from a shell with umask 077.
+    previous_umask = os.umask(0o022)
+    try:
         with tempfile.TemporaryDirectory(
             prefix=".release-stage-", dir=releases
         ) as temp:
@@ -278,6 +271,53 @@ def install():
             cwd=target,
         )
         (target / "install-ready.json").write_text(json.dumps(ready, sort_keys=True))
+    finally:
+        os.umask(previous_umask)
+
+
+def runtime_tree_accessible(target):
+    return all(
+        path.is_dir() and path.stat().st_mode & 0o005 == 0o005
+        for path in (target, target / "venv", target / "venv/bin")
+    )
+
+
+def install():
+    ready = latest(force=True)
+    if ready is None:
+        raise RuntimeError("No complete approved stable release is available")
+    validate_ready(ready)
+    installed_file = BASE / "app/build-manifest.json"
+    if installed_file.is_file():
+        installed = validate(json.loads(installed_file.read_text()))
+        if newer(installed["version"], ready["version"]):
+            raise RuntimeError(
+                "Automatic downgrade is forbidden; use explicit local rollback"
+            )
+        if (
+            installed["build_channel"] == "release"
+            and installed["source_commit"] == ready["source_commit"]
+        ):
+            print("Release already installed; rollback reference retained")
+            return
+    releases = BASE / "releases"
+    releases.mkdir(parents=True, exist_ok=True)
+    releases.chmod(0o755)
+    target = releases / (ready["version"] + "-" + ready["source_commit"])
+    if target.exists():
+        marker = target / "install-ready.json"
+        if marker.is_file() and json.loads(marker.read_text()) != ready:
+            raise RuntimeError(
+                "Immutable version already exists with different metadata"
+            )
+        if not marker.is_file() or not runtime_tree_accessible(target):
+            if (BASE / "app").resolve() == target.resolve():
+                raise RuntimeError(
+                    "Active release is incomplete or inaccessible; recover manually"
+                )
+            target.rename(target.with_name(target.name + f".failed-{time.time_ns()}"))
+    if not target.exists():
+        stage_release(releases, target, ready)
     deploy(target, ready)
 
 
