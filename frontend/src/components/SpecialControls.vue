@@ -51,7 +51,7 @@ const atMode = computed(() => {
 const visibleDefinitions = computed(() => {
   if (props.dialog.id !== 'at') return definitions.value
   const visible = [1236]
-  if (atMode.value === 1) visible.push(1234, 1235, 1164, 1165)
+  if (atMode.value === 1) visible.push(1234, 1235)
   if (atMode.value === 2)
     visible.push(1164, 1165, ...(props.dialog.curve_points ?? []).map((point) => point.register))
   return definitions.value.filter((entry) => visible.includes(entry.register))
@@ -102,9 +102,16 @@ function display(register: number) {
         v-for="entry in visibleDefinitions"
         :key="entry.register"
         class="special-control-card"
+        :class="{ 'curve-mode-card': dialog.id === 'at' && entry.register === 1236 }"
       >
         <span class="register-code">{{ entry.code || 'Register ' + entry.register }}</span>
-        <h3>{{ entry.name }}</h3>
+        <h3>
+          {{
+            dialog.id === 'at' && atMode === 1 && entry.register === 1235
+              ? 'Offset / Mittelpunkt'
+              : entry.name
+          }}
+        </h3>
         <p class="special-current" :class="{ 'is-stale': isStale(entry.register) }">
           {{ display(entry.register) }} <small>{{ valueFor(entry.register)?.unit || '' }}</small>
         </p>

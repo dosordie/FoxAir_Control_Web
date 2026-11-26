@@ -149,6 +149,24 @@ class LocalOverviewTests(TestCase):
                 ((2023, 1), (2063, 1), (2074, 2)),
             )
 
+    def test_overview_accepts_more_than_previous_tile_limits(self):
+        fields = sorted(overview.OPTIONS)
+        self.assertGreater(len(fields), 18)
+        app = FastAPI()
+        app.include_router(overview.router)
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(cloud_config, "STATE_DIR", Path(folder)),
+            patch.object(cloud_config, "require_admin"),
+        ):
+            client = TestClient(app)
+            profiles = {name: fields for name in ("mobile", "desktop", "mobile_glance", "desktop_glance")}
+            result = client.post("/api/overview", json=profiles)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(client.get("/api/overview").json(), {
+                **profiles, "mobile_columns": 3, "desktop_columns": 8,
+            })
+
     def test_pump_feedback_is_available_in_both_dashboard_areas(self):
         with (
             TemporaryDirectory() as folder,

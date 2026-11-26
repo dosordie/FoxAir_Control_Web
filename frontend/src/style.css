@@ -537,7 +537,7 @@ a{color:inherit}
 .glance-order>.expert-metrics .power-summary{margin:0}
 @media(min-width:1024px){.target-delta{font-size:16px;font-weight:500}}
 .target-delta.delta-neutral{color:inherit}
-.target-delta.delta-cold{color:#59bfff;text-shadow:0 1px 2px #233951}
+.target-delta.delta-cold{color:#91d8ff;text-shadow:0 1px 2px #233951}
 .target-delta.delta-warm{color:#d00020;text-shadow:0 0 2px #fff9}
 .heat-hero-off .target-delta.delta-warm{color:#ff6675;text-shadow:0 1px 2px #482028}
 .overview-order{border:0;padding:12px 0;margin:0}.overview-order ol{margin:0;padding:0;list-style:none}
@@ -569,3 +569,5 @@ a{color:inherit}
   .connection-dialog.camera-dialog{width:min(var(--app-shell-max-width),calc(100vw - 32px))}
   .heatpump-camera-stream{max-height:calc(90dvh - 100px)}
 }
+
+.curve-mode-card{grid-column:1 / -1}

@@ -37,9 +37,9 @@ export function useLastDefrost(visible: Ref<boolean>) {
   )
   return computed(() => {
     if (finish.value === null) return '—'
-    const elapsed = Math.max(0, Math.floor((now.value - finish.value) / 1000))
-    const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0')
-    const seconds = String(elapsed % 60).padStart(2, '0')
-    return `vor ${minutes}:${seconds} min`
+    const elapsed = Math.max(0, Math.floor((now.value - finish.value) / 60000))
+    const hours = String(Math.floor(elapsed / 60)).padStart(2, '0')
+    const minutes = String(elapsed % 60).padStart(2, '0')
+    return `vor ${hours}:${minutes} h`
   })
 }

@@ -165,7 +165,7 @@ function restoreDefault() {
 
 function toggle(key: string, checked: boolean) {
   const keys = draft.value[layoutKey.value]
-  if (checked && selectedCount.value < 12) keys.push(key)
+  if (checked && !keys.includes(key)) keys.push(key)
   if (!checked) {
     draft.value[layoutKey.value] = keys.filter((item) => item !== key)
   }
@@ -210,7 +210,7 @@ async function save() {
         {{ count }}
       </option>
     </select>
-    <p class="section-hint">{{ selectedCount }} von 12 Werten ausgewählt (einschließlich Gira).</p>
+    <p class="section-hint">{{ selectedCount }} Werte ausgewählt (einschließlich Gira).</p>
     <p v-if="giraError" class="read-error" role="alert">Gira-Liste: {{ giraError }}</p>
     <fieldset :disabled="busy" class="overview-options">
       <legend>
@@ -220,7 +220,6 @@ async function save() {
         <input
           type="checkbox"
           :checked="draft[layoutKey].includes(key)"
-          :disabled="selectedCount >= 12 && !draft[layoutKey].includes(key)"
           @change="toggle(key, ($event.target as HTMLInputElement).checked)"
         />
         {{ field.label }}
@@ -230,7 +229,6 @@ async function save() {
           <input
             type="checkbox"
             :checked="draft[layoutKey].includes(key)"
-            :disabled="selectedCount >= 12 && !draft[layoutKey].includes(key)"
             @change="toggle(key, ($event.target as HTMLInputElement).checked)"
           />
           {{ label }}
@@ -240,7 +238,6 @@ async function save() {
         <input
           type="checkbox"
           :checked="draft[layoutKey].includes(item.layout_key)"
-          :disabled="selectedCount >= 12 && !draft[layoutKey].includes(item.layout_key)"
           @change="toggle(item.layout_key, ($event.target as HTMLInputElement).checked)"
         />
         {{ item.name || item.object_key }}
