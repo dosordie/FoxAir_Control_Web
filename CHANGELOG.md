@@ -1,5 +1,14 @@
 # Änderungen
 
+## v0.1.15
+
+- Der Update-Button in der Kopfzeile öffnet direkt den Updatebereich in den Einstellungen.
+- Standard- und Sieben-Punkt-Heizkurve zeigen Außentemperatur und Sollwert am Mauszeiger. Stützpunkte der Sieben-Punkt-Kurve lassen sich ziehen und gemeinsam mit Rücklesebestätigung speichern. Die lineare Kurve zeigt Steigung und Offset, bei ausgeschalteter Kurve bleibt die Moduswahl sichtbar.
+- In beiden Dashboard-Bereichen lassen sich alle verfügbaren Kacheln auswählen und am Griff per Maus oder Finger sortieren. Die Pfeiltasten bleiben verfügbar.
+- **Umwälzpumpe · Rückmeldung** (Register 2116) und **Letztes Abtauen** sind in beiden Bereichen auswählbar. Die Abtau-Kachel zeigt Stunden und Minuten seit dem letzten archivierten Abtauende.
+- Gira-WebSocket: HomeServer-Verbindung und einzelne KNX-Objekte lassen sich separat aufklappen. Objektschlüssel können mit oder ohne `CO@` eingegeben werden.
+- Die Sollwertabweichung hat am Desktop eine dünnere Schrift. Negative Werte sind heller blau, positive kräftiger rot.
+
 ## v0.1.14
 
 - Die Abweichung zwischen Vorlauf und Sollwert ist kräftiger rot oder blau. Im Neutralbereich entspricht die Schriftfarbe dem aktuellen Sollwert.
