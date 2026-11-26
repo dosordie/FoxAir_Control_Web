@@ -23,6 +23,22 @@ def manifest():
 
 
 class ReleaseContractTests(TestCase):
+    def test_health_url_uses_systemd_host_and_port(self):
+        command = "/opt/foxair-web/venv/bin/python -m backend.server"
+        cases = (
+            ("", "http://127.0.0.1:8081/api/health"),
+            (" --host 0.0.0.0 --port 18081", "http://127.0.0.1:18081/api/health"),
+            (" --host=192.168.1.50 --port=8087", "http://192.168.1.50:8087/api/health"),
+            (" --host :: --port 8088", "http://[::1]:8088/api/health"),
+        )
+        for flags, expected in cases:
+            with self.subTest(flags=flags), patch.object(
+                installer.subprocess,
+                "check_output",
+                return_value="{ path=/usr/bin/python ; argv[]=" + command + flags + " ; ignore_errors=no }",
+            ):
+                self.assertEqual(installer.health_url(), expected)
+
     def test_versions_compare_numerically_and_incomplete_releases_fail_closed(self):
         self.assertTrue(releases.newer("0.10.0", "0.9.9"))
         self.assertFalse(releases.newer("0.1.0-rc.1", "0.1.0"))

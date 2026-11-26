@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -100,17 +101,34 @@ def health_url():
         ["systemctl", "show", "foxair-web.service", "--property=ExecStart", "--value"],
         text=True,
     )
-    match = re.search(r"--host\s+([0-9a-fA-F:.]+)", text)
-    host = str(ipaddress.ip_address(match.group(1))) if match else "127.0.0.1"
+    argv = re.search(r"argv\[\]=(.*?)(?:\s+;|$)", text)
+    args = shlex.split(argv.group(1) if argv else text)
+    options = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    options.add_argument("--host", default="127.0.0.1")
+    options.add_argument("--port", type=int, default=8081)
+    config, _ = options.parse_known_args(args)
+    if not 1 <= config.port <= 65535:
+        raise ValueError("FoxAir service uses an invalid health-check port")
+    host = config.host
+    try:
+        host = str(ipaddress.ip_address(host))
+    except ValueError:
+        if not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?", host):
+            raise ValueError(
+                "FoxAir service uses an invalid health-check host"
+            ) from None
     host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(host, host)
-    return f"http://{'[' + host + ']' if ':' in host else host}:8081/api/health"
+    return (
+        f"http://{'[' + host + ']' if ':' in host else host}:{config.port}/api/health"
+    )
 
 
 def verify_running(ready):
     url = health_url()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     for _ in range(30):
         try:
-            with urllib.request.urlopen(url, timeout=2) as response:
+            with opener.open(url, timeout=2) as response:
                 body = json.load(response)
             if (
                 body.get("ok")
@@ -118,10 +136,13 @@ def verify_running(ready):
                 and body["build"].get("build_consistent")
             ):
                 return
-        except (OSError, ValueError, KeyError):
-            pass
+            failure = "running build did not match the release manifest"
+        except (OSError, ValueError, KeyError) as error:
+            failure = str(error)
         time.sleep(1)
-    raise RuntimeError("New release failed its health/version check")
+    raise RuntimeError(
+        f"New release failed its health/version check at {url}: {failure}"
+    )
 
 
 def deploy(target, ready):
